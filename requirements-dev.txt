@@ -1,0 +1,22 @@
+# Development dependencies
+# Include core dependencies
+-r requirements.txt
+
+# Code Quality & Linting
+black==23.12.1
+ruff==0.1.8
+mypy==1.7.1
+
+# Security Auditing
+pip-audit==2.6.1
+bandit==1.7.5
+
+# Testing Extended
+pytest-cov==4.1.0
+httpx==0.28.1  # For TestClient
+
+# Build Tools
+maturin==1.10.2
+
+# Documentation
+Markdown==3.10

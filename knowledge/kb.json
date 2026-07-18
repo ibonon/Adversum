@@ -1,0 +1,47 @@
+{
+    "vulnerabilities": [
+        {
+            "id": "CWE-78",
+            "name": "OS Command Injection",
+            "description": "The software constructs all or part of an OS command using externally-influenced input directly from an upstream component.",
+            "remediation": "Use parameterized APIs or allow-lists."
+        },
+        {
+            "id": "CWE-89",
+            "name": "SQL Injection",
+            "description": "The software constructs all or part of an SQL command using externally-influenced input directly from an upstream component.",
+            "remediation": "Use parameterized queries (prepared statements)."
+        },
+        {
+            "id": "CWE-22",
+            "name": "Path Traversal",
+            "description": "The software uses external input to construct a pathname intended to be within a restricted directory, but it does not properly neutralize special elements like '../'.",
+            "remediation": "Validate input against an allow-list or use os.path.abspath() and verify the base directory."
+        },
+        {
+            "cve_id": "CVE-2017-0144",
+            "cwe_id": "CWE-119",
+            "name": "Windows SMB Remote Code Execution Vulnerability (EternalBlue)",
+            "description": "A critical remote code execution vulnerability in Microsoft's implementation of the SMBv1 protocol. Attackers could exploit it to run arbitrary code on the target system.",
+            "status": "patched",
+            "discovery_timeline": {
+                "exploited_as_zero_day": "Before 2017-03-14",
+                "disclosed_by_msrc": "2017-03-14",
+                "patch_released": "2017-03-14 (MS17-010)"
+            },
+            "affected_components": [
+                "Microsoft Windows SMBv1 Server"
+            ],
+            "severity": "Critical",
+            "cvss_score": 9.3,
+            "remediation": "Apply security update MS17-010. As an immediate mitigation, disable SMBv1 protocol on all systems.",
+            "reference": "https://nvd.nist.gov/vuln/detail/CVE-2017-0144"
+        }
+    ],
+    "rules_map": {
+        "R001": "CWE-78",
+        "R002": "CWE-89",
+        "RUST_CORE_004_PATH_TRAVERSAL": "CWE-22",
+        "RUST_CORE_006_SMB_VULN": "CVE-2017-0144"
+    }
+}

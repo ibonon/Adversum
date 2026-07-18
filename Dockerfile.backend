@@ -1,0 +1,73 @@
+# Multi-stage build for Rust Core + Python Backend
+
+# Stage 1: Rust Builder
+FROM python:3.10-slim as builder
+
+# Install system dependencies for building Rust
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install maturin for building Python extension
+RUN pip install maturin
+
+# Copy source code
+WORKDIR /app
+COPY . .
+
+# Build Rust Core Extension
+WORKDIR /app/adversum/core
+# We use maturin build --release and then install the wheel
+RUN maturin build --release --out ../../dist
+
+# Stage 2: Final Runtime
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install Runtime dependencies and curl for healthcheck
+RUN apt-get update && apt-get install -y \
+    sqlite3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copy built wheels from builder
+COPY --from=builder /app/dist /app/dist
+
+# Install the Rust Core wheel
+RUN pip install /app/dist/*.whl
+
+# Copy application code
+COPY . .
+
+# Install Python dependencies
+# Explicitly installing from requirements or manually if no file exists yet
+# For now, manually installing key deps as per project history
+RUN pip install fastapi uvicorn[standard] sqlmodel pydantic httpx python-multipart slowapi
+
+# Change ownership to appuser
+RUN chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose API Port
+EXPOSE 8000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/ || exit 1
+
+# Run API
+CMD ["python", "adversum/api/main.py"]
+

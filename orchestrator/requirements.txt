@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+python-multipart
+requests
+sqlmodel
+pytest
+httpx
+slowapi
+cryptography

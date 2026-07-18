@@ -1,0 +1,33 @@
+[package]
+name = "adversum_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "adversum_core"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tree-sitter = "0.22"
+tree-sitter-python = "0.21"
+ndarray = { version = "0.15", features = ["serde"] }
+thiserror = "1.0"
+rayon = "1.7"
+walkdir = "2.3"
+memmap2 = "0.9"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+regex = "1.10"
+once_cell = "1.19"
+rand = "0.8"
+rand_distr = "0.4"
+pythonize = "0.23"
+
+
+
+[[bin]]
+name = "adversum_cli"
+path = "src/main.rs"

@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import './date-picker.css';
+
+@layer base {
+  :root {
+    --monolith-black: #000000;
+    --monolith-mirror: rgba(255, 255, 255, 0.1);
+    --chrome-specular: #FFFFFF;
+  }
+
+  body {
+    background-color: #000000;
+    color: white;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    perspective: 2500px;
+    /* Deep perspective for the monolith */
+  }
+}
+
+/* --- THE OBSIDIAN MONOLITH --- */
+
+.monolith-layer {
+  transform-style: preserve-3d;
+  transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.monolith-structure {
+  background: linear-gradient(165deg, #0a0a0c 0%, #000000 100%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow:
+    0 100px 200px rgba(0, 0, 0, 1),
+    inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  position: relative;
+  overflow: hidden;
+  /* Monolithic Depth */
+  transform: translateZ(0);
+}
+
+/* Museum Lighting Effect */
+.monolith-lighting {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+      rgba(255, 255, 255, 0.08) 0%,
+      transparent 60%);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Liquid Chrome Inlay */
+.chrome-inlay {
+  height: 2px;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      #ffffff 20%,
+      #a1a1a1 50%,
+      #ffffff 80%,
+      transparent 100%);
+  opacity: 0.6;
+  filter: blur(0.5px);
+}
+
+/* Precision Metrics Grid */
+.monolith-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.03);
+  /* Grid lines */
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.grid-cell {
+  background: black;
+  padding: 2rem;
+}
+
+/* High-Contrast Mirror Typography */
+.monolith-mirror-text {
+  background: linear-gradient(to bottom,
+      #ffffff 0%,
+      #ffffff 48%,
+      #333333 50%,
+      #ffffff 52%,
+      #ffffff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.2));
+}
+
+/* Animations */
+.animate-scan {
+  position: absolute;
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  animation: scan 10s linear infinite;
+  z-index: 10;
+  pointer-events: none;
+}
+
+@keyframes scan {
+  from {
+    top: 0;
+  }
+
+  to {
+    top: 100%;
+  }
+}
+
+/* Selection */
+::selection {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+* {
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
