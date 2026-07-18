@@ -1,4 +1,4 @@
-import { Github, Twitter, Linkedin } from 'lucide-react';
+import { Github, Twitter, Linkedin, Shield } from 'lucide-react';
 
 const Footer = () => {
   const links = {
@@ -39,12 +39,7 @@ const Footer = () => {
             <a href="#" className="flex items-center gap-3 mb-6">
               <div className="relative w-10 h-10 flex items-center justify-center">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary to-accent rounded-xl opacity-20" />
-                <svg viewBox="0 0 24 24" className="w-6 h-6 text-primary relative z-10">
-                  <path
-                    fill="currentColor"
-                    d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.5l6.5 3.25L12 11 5.5 7.75 12 4.5zM4 8.75l7 3.5v7l-7-3.5v-7zm9 10.5v-7l7-3.5v7l-7 3.5z"
-                  />
-                </svg>
+                <Shield className="w-6 h-6 text-primary relative z-10" />
               </div>
               <span className="text-xl font-semibold">Adversum</span>
             </a>
