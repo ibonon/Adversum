@@ -1,50 +1,51 @@
-# Core dependencies - Pinned for reproducibility
-# Generated: 2025-12-20
-# Python 3.10.8
+# Core dependencies — Python 3.14 compatible
+# Last updated: 2026-07-18
 
 # Web Framework
-fastapi==0.124.4
-uvicorn==0.38.0
-starlette==0.50.0
-pydantic==2.12.5
-pydantic-core==2.41.5
-python-multipart==0.0.21
+fastapi>=0.115.0
+uvicorn>=0.30.0
+starlette>=0.40.0
+pydantic>=2.7.0
+pydantic-core>=2.18.0
+python-multipart>=0.0.9
 
 # Database
-sqlmodel==0.0.27
-SQLAlchemy==2.0.45
-asyncpg==0.30.0
+sqlmodel>=0.0.18
+SQLAlchemy>=2.0.0
+# asyncpg — install separately if PostgreSQL is needed; no py3.14 wheel yet
+# asyncpg>=0.29.0
 
-# AI/LLM
-openai==1.0.0
-anthropic==0.75.0
-litellm==1.80.9
-tiktoken==0.12.0
+# AI/LLM  (grpcio excluded — no py3.14 wheel; litellm works without it for OpenAI/Anthropic)
+openai>=2.8.0
+anthropic>=0.20.0
+litellm>=1.40.0
+tiktoken>=0.7.0
 
 # HTTP Clients
-httpx==0.28.1
-requests==2.32.5
+httpx>=0.27.0
+requests>=2.31.0
 
 # Data Processing
-pandas==2.3.3
-networkx==3.4.2
-numpy==2.2.6
+pandas>=2.2.0
+networkx>=3.3
+numpy>=2.0
 
 # Security
-cryptography==46.0.3
-slowapi==0.1.9
+cryptography>=42.0.0
+slowapi>=0.1.9
 
 # Background Tasks
-arq==0.26.1
-redis==5.2.1
-docker==7.1.0
+arq>=0.26.0
+redis>=5.0.0
+docker>=7.0.0
 
 # Testing
-pytest==9.0.2
-pytest-asyncio==0.21.1
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+respx>=0.21.0
 
 # Utilities
-python-dotenv==1.2.1
-click==8.3.1
-rich==14.2.0
-PyYAML==6.0.3
+python-dotenv>=1.0.0
+click>=8.1.0
+rich>=13.7.0
+PyYAML>=6.0.0

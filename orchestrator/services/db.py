@@ -27,3 +27,9 @@ async def get_session() -> AsyncSession:
     )
     async with async_session() as session:
         yield session
+
+
+def get_engine():
+    """Returns the global async engine, or None if not initialized."""
+    return engine
+

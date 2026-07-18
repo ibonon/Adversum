@@ -1,98 +1,73 @@
-"use client";
-
-import React, { Component, ReactNode } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Component, type ReactNode } from 'react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
-    children: ReactNode;
-    fallback?: ReactNode;
-    onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
-    widgetName?: string;
+  children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface State {
-    hasError: boolean;
-    error: Error | null;
-    errorInfo: React.ErrorInfo | null;
+  hasError: boolean;
+  error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-    constructor(props: Props) {
-        super(props);
-        this.state = {
-            hasError: false,
-            error: null,
-            errorInfo: null,
-        };
-    }
+class ErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false, error: null };
 
-    static getDerivedStateFromError(error: Error): State {
-        return {
-            hasError: true,
-            error,
-            errorInfo: null,
-        };
-    }
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
 
-    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-        console.error("ErrorBoundary caught an error:", error, errorInfo);
-        this.setState({
-            error,
-            errorInfo,
-        });
-        this.props.onError?.(error, errorInfo);
-    }
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
 
-    handleReset = () => {
-        this.setState({
-            hasError: false,
-            error: null,
-            errorInfo: null,
-        });
-    };
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
 
-    render() {
-        if (this.state.hasError) {
-            if (this.props.fallback) {
-                return this.props.fallback;
-            }
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
 
-            return (
-                <div className="bg-surface/30 border border-red-500/20 rounded-2xl p-8 backdrop-blur-sm">
-                    <div className="flex items-start gap-4">
-                        <div className="p-3 bg-red-500/10 rounded-lg text-red-500">
-                            <AlertTriangle className="w-6 h-6" />
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="text-xl font-bold text-white mb-2">
-                                {this.props.widgetName || "Component"} Error
-                            </h3>
-                            <p className="text-sm text-primaryMuted mb-4">
-                                {this.state.error?.message || "An unexpected error occurred"}
-                            </p>
-                            {process.env.NODE_ENV === "development" && this.state.errorInfo && (
-                                <details className="mb-4">
-                                    <summary className="text-xs text-white/40 cursor-pointer hover:text-white/60 transition-colors">
-                                        Technical Details
-                                    </summary>
-                                    <pre className="mt-2 p-4 bg-black/50 rounded-lg text-[10px] text-white/60 overflow-auto max-h-40 font-mono">
-                                        {this.state.errorInfo.componentStack}
-                                    </pre>
-                                </details>
-                            )}
-                            <button
-                                onClick={this.handleReset}
-                                className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider hover:bg-white/90 transition-colors"
-                            >
-                                <RefreshCw className="w-4 h-4" />
-                                Retry
-                            </button>
-                        </div>
-                    </div>
+      return (
+        <section className="relative py-32 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-background via-card/20 to-background" />
+          <div className="container mx-auto px-6 relative z-10">
+            <div className="max-w-2xl mx-auto rounded-2xl bg-card/80 backdrop-blur-xl border border-destructive/20 p-10 text-center shadow-2xl shadow-destructive/5">
+              <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle className="w-8 h-8 text-destructive" />
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 tracking-tight">
+                Simulation en maintenance
+              </h2>
+              <p className="text-muted-foreground mb-6 leading-relaxed">
+                La démonstration en temps réel a rencontré un problème. Le reste du site fonctionne normalement.
+              </p>
+              {this.state.error && (
+                <div className="mb-6 p-4 rounded-lg bg-destructive/5 border border-destructive/10 text-left">
+                  <p className="text-xs font-mono text-destructive/80">
+                    {this.state.error.message}
+                  </p>
                 </div>
-            );
-        }
-
-        return this.props.children;
+              )}
+              <button
+                onClick={this.handleReset}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Réessayer la simulation
+              </button>
+            </div>
+          </div>
+        </section>
+      );
     }
+
+    return this.props.children;
+  }
 }
+
+export default ErrorBoundary;

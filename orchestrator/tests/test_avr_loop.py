@@ -1,92 +1,104 @@
-import asyncio
-import os
-import shutil
-import logging
-from orchestrator.services.avr import AVREngine
-from orchestrator.pipeline.analysis_pipeline import AnalysisPipeline
-from orchestrator.models.findings import RawFinding
-
-# Setup logging to see the loop in action
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-
-TEST_DIR = "temp_test_avr"
-TEST_FILE = os.path.join(TEST_DIR, "vulnerable.py")
-
-VULNERABLE_CODE = """
-def process_data(user_input):
-    # DANGEROUS: eval with user input
-    result = eval(user_input)
-    print(f"Result: {result}")
-
-if __name__ == "__main__":
-    process_data("input('enter code: ')")
 """
+Tests pour le moteur AVR (Autonomous Verified Remediation).
+Ces tests fonctionnent avec mocks complets (sans DB, sans Rust natif requis).
+"""
+import pytest
+import os
+import tempfile
+import shutil
+from unittest.mock import patch, MagicMock, AsyncMock
 
-VALID_FIX = "result = int(user_input) # Safe conversion"
-INVALID_FIX = "result = eval(user_input) # Still dangerous!"
+# ─── Mock des dépendances lourdes avant tout import ───────────────────────────
+import sys
+for mod in ["sqlmodel", "sqlalchemy", "sqlalchemy.ext.asyncio", "redis", "arq", "asyncpg"]:
+    sys.modules.setdefault(mod, MagicMock())
 
-async def run_test():
-    print("\n🚀 [AVR TEST] Starting Autonomous Verified Remediation Test")
-    
-    # 1. Setup Test Environment
-    if os.path.exists(TEST_DIR):
-        shutil.rmtree(TEST_DIR)
-    os.makedirs(TEST_DIR)
-    
-    with open(TEST_FILE, "w") as f:
-        f.write(VULNERABLE_CODE)
-    
-    print(f"✓ Created vulnerable file: {TEST_FILE}")
+from orchestrator.services.avr import AVREngine  # noqa: E402
+from orchestrator.models.findings import RawFinding  # noqa: E402
 
-    pipeline = AnalysisPipeline()
+
+def _make_finding(path: str, line: int) -> RawFinding:
+    return RawFinding(
+        file_path=path,
+        line=line,
+        snippet="eval(user_input)",
+        id="RUST_CORE_001_DANGEROUS_EVAL",
+        severity="CRITICAL",
+        message="Dangerous eval() detected",
+        flow_path=["fallback"],
+        proof=None,
+        immune_context=None,
+        proof_anchor=None,
+    )
+
+
+@pytest.fixture
+def tmp_vulnerable_file():
+    """Crée un fichier temporaire avec un eval vulnérable."""
+    d = tempfile.mkdtemp()
+    path = os.path.join(d, "vulnerable.py")
+    with open(path, "w") as f:
+        f.write("def run(user_input):\n    result = eval(user_input)\n    return result\n")
+    yield path
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.mark.asyncio
+@patch("orchestrator.core_bridge.core_wrapper.CoreWrapper.analyze")
+@patch("orchestrator.services.patcher.PatchService.apply_fix", return_value=True)
+async def test_avr_valid_fix_accepted(mock_patch, mock_analyze, tmp_vulnerable_file):
+    """Un fix valide (qui élimine le finding) doit être accepté par l'AVR."""
+    # Après application du patch, le scan retourne 0 findings
+    mock_analyze.return_value = ([], {}, 1.0)
+
     avr = AVREngine()
-
-    # 2. Initial Scan
-    print("\n🔍 [AVR TEST] Step 1: Initial Scan...")
-    result = await pipeline.run(TEST_FILE)
-    findings = result["findings"]
-    
-    if not findings:
-        print("❌ FAILED: No vulnerabilities detected in initial scan.")
-        return
-
-    target_finding = findings[0]
-    print(f"✓ Detected: {target_finding.raw.rule_id} at line {target_finding.raw.line_number}")
-
-    # 3. Test INVALID Fix (Should fail verification)
-    print("\n🛡️ [AVR TEST] Step 2: Testing INVALID Fix (Expect failure)...")
-    # We simulate the finding details
     success = await avr.run_remediation(
         finding_id=1,
-        file_path=os.path.abspath(TEST_FILE),
-        line_number=target_finding.raw.line_number,
-        old_snippet=target_finding.raw.snippet,
-        fix_code=INVALID_FIX
+        file_path=tmp_vulnerable_file,
+        line_number=2,
+        old_snippet="result = eval(user_input)",
+        fix_code="result = int(user_input)  # Safe conversion",
     )
-    
-    if not success:
-        print("✓ SUCCESS: Invalid fix correctly rejected by Rust Core verification.")
-    else:
-        print("❌ FAILED: Invalid fix was wrongly accepted.")
+    assert success is True, "L'AVR doit accepter un fix qui élimine le finding"
 
-    # 4. Test VALID Fix (Should pass verification)
-    print("\n🛡️ [AVR TEST] Step 3: Testing VALID Fix (Expect success)...")
+
+@pytest.mark.asyncio
+@patch("orchestrator.core_bridge.core_wrapper.CoreWrapper.analyze")
+@patch("orchestrator.services.patcher.PatchService.apply_fix", return_value=True)
+async def test_avr_invalid_fix_rejected(mock_patch, mock_analyze, tmp_vulnerable_file):
+    """Un fix invalide (qui ne corrige pas la vulnérabilité) doit être rejeté."""
+    # Après application du patch, le scan retourne encore le même finding
+    mock_analyze.return_value = (
+        [_make_finding(tmp_vulnerable_file, 2)],
+        {},
+        0.4,
+    )
+
+    avr = AVREngine()
+    # Désactiver le mode speculatif pour éviter les appels AI
     success = await avr.run_remediation(
         finding_id=2,
-        file_path=os.path.abspath(TEST_FILE),
-        line_number=target_finding.raw.line_number,
-        old_snippet=target_finding.raw.snippet,
-        fix_code=VALID_FIX
+        file_path=tmp_vulnerable_file,
+        line_number=2,
+        old_snippet="result = eval(user_input)",
+        fix_code="result = eval(user_input)  # Still dangerous!",
+        speculative=False,
     )
-    
-    if success:
-        print("✓ SUCCESS: Valid fix applied and VERIFIED by Rust Core.")
-    else:
-        print("❌ FAILED: Valid fix was rejected.")
+    assert success is False, "L'AVR doit rejeter un fix qui laisse la vulnérabilité"
 
-    # 5. Cleanup
-    # shutil.rmtree(TEST_DIR)
-    print("\n✨ [AVR TEST] Test Cycle Complete.")
 
-if __name__ == "__main__":
-    asyncio.run(run_test())
+@pytest.mark.asyncio
+@patch("orchestrator.core_bridge.core_wrapper.CoreWrapper.analyze")
+@patch("orchestrator.services.patcher.PatchService.apply_fix", return_value=False)
+async def test_avr_patch_failure(mock_patch, mock_analyze, tmp_vulnerable_file):
+    """Si l'application du patch échoue, l'AVR doit retourner False."""
+    avr = AVREngine()
+    success = await avr.run_remediation(
+        finding_id=3,
+        file_path=tmp_vulnerable_file,
+        line_number=2,
+        old_snippet="result = eval(user_input)",
+        fix_code="result = safe_eval(user_input)",
+    )
+    assert success is False
+    mock_analyze.assert_not_called()

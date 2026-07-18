@@ -96,13 +96,17 @@ class CoreWrapper:
                 
                 result = MockResult(data)
 
-            # O(1) Rules map for FFI reduction
+            # O(1) Rules map for FFI reduction (Including semantic, attack_graph, scoring, and adversarial modules)
             RULES_DICT = {
                 1: ("RUST_CORE_001_DANGEROUS_EVAL", "CRITICAL", "Dangerous eval() detected"),
                 2: ("RUST_CORE_002_OS_SYSTEM", "CRITICAL", "os.system() call detected"),
                 3: ("RUST_CORE_003_SUBPROCESS_POPEN", "CRITICAL", "subprocess.Popen() shell invocation"),
                 4: ("RUST_CORE_004_PATH_TRAVERSAL", "HIGH", "Arbitrary file open() detected"),
                 6: ("RUST_CORE_006_SMB_VULN", "CRITICAL", "Insecure SMBConnection configuration"),
+                10: ("SEMANTIC_001_TAINT_FLOW", "HIGH", "Taint flow detected via semantic analysis"),
+                11: ("GRAPH_001_ATTACK_PATH", "CRITICAL", "Critical attack path constructed from multiple vulnerabilities"),
+                12: ("SCORING_001_RISK_DEGRADATION", "MEDIUM", "Component risk score degraded due to cumulative flaws"),
+                13: ("ADVERSARIAL_001_PROMPT_INJECTION", "CRITICAL", "LLM Prompt Injection vector detected (Fast Adversarial Kit)"),
                 0: ("RUST_CORE_GENERIC_FLOW", "MEDIUM", "Semantic flow violation")
             }
             

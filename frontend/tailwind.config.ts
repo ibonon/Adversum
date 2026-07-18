@@ -1,77 +1,99 @@
 import type { Config } from "tailwindcss";
 
-const config: Config = {
-  content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+export default {
+  darkMode: ["class"],
+  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  prefix: "",
   theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
       colors: {
-        // Obsidian & Liquid Chrome Core
-        obsidian: {
-          DEFAULT: "#000000",
-          surface: "#08080A",
-          glass: "rgba(10, 10, 12, 0.7)",
-          border: "rgba(255, 255, 255, 0.08)",
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
         },
-        mercury: {
-          50: "#FFFFFF",
-          100: "#F2F2F2",
-          200: "#E6E6E6",
-          300: "#CCCCCC",
-          400: "#999999",
-          500: "#666666",
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
         },
-        nebula: {
-          purple: "#A78BFA",
-          blue: "#60A5FA",
-          cyan: "#22D3EE",
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
         },
-        // Semantic
-        background: "#000000",
-        surface: "#08080A",
-        text: {
-          primary: "#FFFFFF",
-          secondary: "#A1A1AA",
-          muted: "#52525B",
-        }
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+        },
       },
-      backgroundImage: {
-        "liquid-chrome": "linear-gradient(135deg, #FFFFFF 0%, #D1D1D1 20%, #9E9E9E 40%, #FFFFFF 50%, #9E9E9E 60%, #D1D1D1 80%, #FFFFFF 100%)",
-        "deep-metal": "linear-gradient(to bottom, #1A1A1A, #000000)",
-        "obsidian-shine": "linear-gradient(110deg, transparent 40%, rgba(255,255,255,0.05) 45%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 55%, transparent 60%)",
-        "radial-nebula": "radial-gradient(circle at center, rgba(96, 165, 250, 0.15) 0%, transparent 70%)",
-      },
-      boxShadow: {
-        'liquid': '0 0 30px rgba(255, 255, 255, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
-        'obsidian-lg': '0 20px 50px rgba(0, 0, 0, 0.9), 0 0 1px 1px rgba(255, 255, 255, 0.05)',
-        'specular': 'inset 0 2px 4px rgba(255, 255, 255, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.8)',
-        'blue-glow': '0 0 50px -10px rgba(59, 130, 246, 0.3)',
-      },
-      animation: {
-        'liquid-flow': 'liquid-flow 3s ease-in-out infinite',
-        'obsidian-pulse': 'obsidian-pulse 4s ease-in-out infinite',
-        'glint': 'glint 2s linear infinite',
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
-        'liquid-flow': {
-          '0%, 100%': { transform: 'translateY(0) scale(1)' },
-          '50%': { transform: 'translateY(-5px) scale(1.02)' },
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
-        'obsidian-pulse': {
-          '0%, 100%': { opacity: '0.8', filter: 'brightness(1)' },
-          '50%': { opacity: '1', filter: 'brightness(1.2)' },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
         },
-        glint: {
-          '0%': { backgroundPosition: '-200% center' },
-          '100%': { backgroundPosition: '200% center' },
+        shimmer: {
+          "0%": { backgroundPosition: "0% center" },
+          "100%": { backgroundPosition: "200% center" },
         },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+        shimmer: "shimmer 3s linear infinite",
       },
     },
   },
-  plugins: [],
-};
-export default config;
-
+  plugins: [require("tailwindcss-animate")],
+} satisfies Config;
