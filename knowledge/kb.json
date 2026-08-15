@@ -1,47 +1,292 @@
 {
-    "vulnerabilities": [
-        {
-            "id": "CWE-78",
-            "name": "OS Command Injection",
-            "description": "The software constructs all or part of an OS command using externally-influenced input directly from an upstream component.",
-            "remediation": "Use parameterized APIs or allow-lists."
-        },
-        {
-            "id": "CWE-89",
-            "name": "SQL Injection",
-            "description": "The software constructs all or part of an SQL command using externally-influenced input directly from an upstream component.",
-            "remediation": "Use parameterized queries (prepared statements)."
-        },
-        {
-            "id": "CWE-22",
-            "name": "Path Traversal",
-            "description": "The software uses external input to construct a pathname intended to be within a restricted directory, but it does not properly neutralize special elements like '../'.",
-            "remediation": "Validate input against an allow-list or use os.path.abspath() and verify the base directory."
-        },
-        {
-            "cve_id": "CVE-2017-0144",
-            "cwe_id": "CWE-119",
-            "name": "Windows SMB Remote Code Execution Vulnerability (EternalBlue)",
-            "description": "A critical remote code execution vulnerability in Microsoft's implementation of the SMBv1 protocol. Attackers could exploit it to run arbitrary code on the target system.",
-            "status": "patched",
-            "discovery_timeline": {
-                "exploited_as_zero_day": "Before 2017-03-14",
-                "disclosed_by_msrc": "2017-03-14",
-                "patch_released": "2017-03-14 (MS17-010)"
-            },
-            "affected_components": [
-                "Microsoft Windows SMBv1 Server"
-            ],
-            "severity": "Critical",
-            "cvss_score": 9.3,
-            "remediation": "Apply security update MS17-010. As an immediate mitigation, disable SMBv1 protocol on all systems.",
-            "reference": "https://nvd.nist.gov/vuln/detail/CVE-2017-0144"
-        }
-    ],
-    "rules_map": {
-        "R001": "CWE-78",
-        "R002": "CWE-89",
-        "RUST_CORE_004_PATH_TRAVERSAL": "CWE-22",
-        "RUST_CORE_006_SMB_VULN": "CVE-2017-0144"
+  "version": "2.0",
+  "description": "Comprehensive security knowledge base mapping every Adversum rule_id to its CWE, CVSS guidance, detection logic, and deterministic remediation template.",
+  "rules": [
+    {
+      "rule_id": "RUST_CORE_001_DANGEROUS_EVAL",
+      "name": "Dangerous eval()",
+      "cwe_id": "CWE-95",
+      "cwe_name": "Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "Use of eval() with externally-influenced input allows arbitrary code execution.",
+      "remediation": "Replace eval() with ast.literal_eval() for safe deserialization, or use a strict allow-list of permitted expressions.",
+      "remediation_template": "import ast\nresult = ast.literal_eval(user_input)  # Safe: only literals",
+      "deterministic_check": "Verify no eval() call receives data that traces back to a taint source (request, environ, stdin, input)."
+    },
+    {
+      "rule_id": "RUST_CORE_002_OS_SYSTEM",
+      "name": "OS Command Injection via os.system()",
+      "cwe_id": "CWE-78",
+      "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "os.system() passes a string directly to the shell. If any part is user-controlled, an attacker can inject arbitrary commands.",
+      "remediation": "Replace os.system() with subprocess.run([...], shell=False) using an argument list, and sanitize with shlex.quote().",
+      "remediation_template": "import subprocess, shlex\nsubprocess.run([command] + shlex.split(args), shell=False)",
+      "deterministic_check": "Check for tainted data flowing into the argument of os.system(), os.popen(), or os.execv()."
+    },
+    {
+      "rule_id": "RUST_CORE_003_SUBPROCESS_POPEN",
+      "name": "Unsafe subprocess invocation",
+      "cwe_id": "CWE-78",
+      "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "subprocess.Popen(), run(), call(), or check_output() with shell=True or with tainted arguments enables command injection.",
+      "remediation": "Use shell=False and pass arguments as a list. Sanitize each argument with shlex.quote().",
+      "remediation_template": "import subprocess\nsubprocess.run([program, arg1, arg2], shell=False)",
+      "deterministic_check": "Detect shell=True or tainted arguments in any subprocess call variant."
+    },
+    {
+      "rule_id": "RUST_CORE_004_PATH_TRAVERSAL",
+      "name": "Path Traversal / Directory Traversal",
+      "cwe_id": "CWE-22",
+      "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+      "severity": "HIGH",
+      "cvss_base": 7.5,
+      "description": "User-controlled data is used to construct a file path without proper neutralization, allowing access to files outside the intended directory.",
+      "remediation": "Use os.path.abspath() and verify the resolved path starts with the allowed base directory. Reject any path containing '..' after normalization.",
+      "remediation_template": "import os\nsafe_base = os.path.abspath('/allowed/dir')\nresolved = os.path.abspath(user_path)\nif not resolved.startswith(safe_base + os.sep):\n    raise ValueError('Path traversal detected')",
+      "deterministic_check": "Trace open() / file operations where the path argument is tainted."
+    },
+    {
+      "rule_id": "RUST_CORE_005_SQL_INJECTION",
+      "name": "SQL Injection",
+      "cwe_id": "CWE-89",
+      "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "Dynamically constructed SQL queries via string concatenation, f-strings, or %-formatting with user-controlled data enable injection of arbitrary SQL.",
+      "remediation": "Use parameterized queries (prepared statements) with placeholders (?, %s) exclusively. Never interpolate user input into SQL strings.",
+      "remediation_template": "cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))",
+      "deterministic_check": "Detect execute() / raw() calls where the SQL string is constructed via concatenation (+), f-string (f'...'), or %-formatting with any tainted variable."
+    },
+    {
+      "rule_id": "RUST_CORE_006_SMB_VULN",
+      "name": "Insecure SMB Connection",
+      "cwe_id": "CWE-119",
+      "cwe_name": "Improper Restriction of Operations within the Bounds of a Memory Buffer",
+      "severity": "CRITICAL",
+      "cvss_base": 9.3,
+      "description": "Connection using SMBv1 or an unhardened SMB protocol variant exposes the system to remote code execution (e.g., EternalBlue / CVE-2017-0144).",
+      "remediation": "Disable SMBv1 and require SMBv3 with encryption. Apply security updates for known SMB vulnerabilities (MS17-010+).",
+      "remediation_template": "# Configure SMB client to require SMBv3\nsmb_config = {'smb_version': 3, 'encrypt': True}",
+      "deterministic_check": "Detect SMBConnection() or similar SMB API calls without explicit version enforcement."
+    },
+    {
+      "rule_id": "RUST_CORE_007_TEMPLATE_INJECTION",
+      "name": "Server-Side Template Injection (SSTI)",
+      "cwe_id": "CWE-1336",
+      "cwe_name": "Template Injection",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "User-controlled data is rendered directly into a template engine (Jinja2, Django) without sanitization, enabling arbitrary code execution on the server.",
+      "remediation": "Never pass user input to render_template_string() or jinja2.Template(). Use render_template() with strict context passing, and auto-escape all variables.",
+      "remediation_template": "# SAFE: use render_template with context\nrender_template('page.html', name=escape(user_input))",
+      "deterministic_check": "Detect render_template_string(), jinja2.Template(), or Environment(loader=...) where tainted data flows into the template content."
+    },
+    {
+      "rule_id": "RUST_CORE_007_INSECURE_DESERIALIZATION",
+      "name": "Insecure Deserialization (pickle)",
+      "cwe_id": "CWE-502",
+      "cwe_name": "Deserialization of Untrusted Data",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "pickle.loads() on untrusted data allows arbitrary code execution because pickle can encode arbitrary Python objects and their constructors.",
+      "remediation": "Use safe formats (JSON, msgpack) for untrusted data. If pickle is required, restrict to pickle.loads() with a custom Unpickler that only allows safe types.",
+      "remediation_template": "import json\ndata = json.loads(untrusted_input)  # Safe: no code execution",
+      "deterministic_check": "Detect pickle.load(s) / pickle.Unpickler where the input is tainted."
+    },
+    {
+      "rule_id": "RUST_CORE_008_INSECURE_DESERIALIZATION",
+      "name": "Insecure Deserialization (pickle — legacy alias)",
+      "cwe_id": "CWE-502",
+      "cwe_name": "Deserialization of Untrusted Data",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "Legacy alias for RUST_CORE_007_INSECURE_DESERIALIZATION. Covers pickle.loads() on untrusted data.",
+      "remediation": "Replace pickle with JSON for untrusted data serialization.",
+      "remediation_template": "import json\ndata = json.loads(untrusted_input)",
+      "deterministic_check": "Same as RUST_CORE_007_INSECURE_DESERIALIZATION."
+    },
+    {
+      "rule_id": "RUST_CORE_008_INSECURE_YAML",
+      "name": "Insecure YAML Loading",
+      "cwe_id": "CWE-502",
+      "cwe_name": "Deserialization of Untrusted Data",
+      "severity": "HIGH",
+      "cvss_base": 8.1,
+      "description": "yaml.load() without SafeLoader uses the unsafe YAML FullLoader which can instantiate arbitrary Python objects, enabling code execution.",
+      "remediation": "Always specify Loader=yaml.SafeLoader or use yaml.safe_load().",
+      "remediation_template": "import yaml\ndata = yaml.safe_load(untrusted_input)  # SafeLoader enforced",
+      "deterministic_check": "Detect yaml.load() without Loader=yaml.SafeLoader and yaml.safe_load() absence for tainted input."
+    },
+    {
+      "rule_id": "RUST_CORE_009_INSECURE_YAML",
+      "name": "Insecure YAML Loading (legacy alias)",
+      "cwe_id": "CWE-502",
+      "cwe_name": "Deserialization of Untrusted Data",
+      "severity": "HIGH",
+      "cvss_base": 8.1,
+      "description": "Legacy alias for RUST_CORE_008_INSECURE_YAML.",
+      "remediation": "Use yaml.safe_load().",
+      "remediation_template": "import yaml\ndata = yaml.safe_load(input)",
+      "deterministic_check": "Same as RUST_CORE_008_INSECURE_YAML."
+    },
+    {
+      "rule_id": "RUST_CORE_GENERIC_FLOW",
+      "name": "Generic Taint Flow Violation",
+      "cwe_id": "CWE-20",
+      "cwe_name": "Improper Input Validation",
+      "severity": "MEDIUM",
+      "cvss_base": 5.3,
+      "description": "Tainted data flows from an external source to a sink that does not match any specific rule. Indicates a potential input validation issue.",
+      "remediation": "Validate and sanitize all user-controlled input before use. Apply the principle of least privilege to all sinks.",
+      "remediation_template": "# Validate input against an allow-list or schema\nif not re.match(r'^[a-zA-Z0-9]+$', user_input):\n    raise ValueError('Invalid input')",
+      "deterministic_check": "Generic taint propagation detection; always investigate manually."
+    },
+    {
+      "rule_id": "HARDCODED_SECRET",
+      "name": "Hardcoded Credential / API Key",
+      "cwe_id": "CWE-798",
+      "cwe_name": "Use of Hard-coded Credentials",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "A secret (password, API key, token, AWS key, JWT) is hardcoded in source code. Anyone with access to the repository can extract it.",
+      "remediation": "Load secrets from environment variables or a secrets manager (AWS Secrets Manager, HashiCorp Vault). Rotate the exposed credential immediately.",
+      "remediation_template": "import os\napi_key = os.environ['API_KEY']  # Load from env, never hardcode",
+      "deterministic_check": "Pattern-match known secret formats (AWS AKIA prefix, sk- OpenAI prefix, JWT structure, GitHub PAT prefix ghp_)."
+    },
+    {
+      "rule_id": "WEAK_CRYPTO",
+      "name": "Weak Cryptographic Hash Function",
+      "cwe_id": "CWE-328",
+      "cwe_name": "Use of Weak Hash",
+      "severity": "MEDIUM",
+      "cvss_base": 5.3,
+      "description": "MD5 or SHA-1 is used for security-sensitive purposes. These hash functions are cryptographically broken and unsuitable for integrity verification, passwords, or signatures.",
+      "remediation": "Use SHA-256 or stronger (hashlib.sha256, hashlib.sha3_256). For passwords, use bcrypt or argon2 via a dedicated library.",
+      "remediation_template": "import hashlib\ndigest = hashlib.sha256(data).hexdigest()  # SHA-256, not MD5/SHA1",
+      "deterministic_check": "Detect hashlib.md5(), hashlib.sha1() calls."
+    },
+    {
+      "rule_id": "INSECURE_RANDOM",
+      "name": "Insecure Random Number Generator",
+      "cwe_id": "CWE-338",
+      "cwe_name": "Use of Cryptographically Weak Pseudo-Random Number Generator",
+      "severity": "MEDIUM",
+      "cvss_base": 5.3,
+      "description": "The random module (Mersenne Twister) is not cryptographically secure. Predictable random values can be exploited in tokens, session IDs, or nonces.",
+      "remediation": "Use the secrets module (or os.urandom / SystemRandom) for all security-sensitive random values.",
+      "remediation_template": "import secrets\ntoken = secrets.token_hex(32)  # Cryptographically secure",
+      "deterministic_check": "Detect random.random(), random.randint(), random.choice(), random.seed()."
+    },
+    {
+      "rule_id": "SSRF",
+      "name": "Server-Side Request Forgery (SSRF)",
+      "cwe_id": "CWE-918",
+      "cwe_name": "Server-Side Request Forgery (SSRF)",
+      "severity": "HIGH",
+      "cvss_base": 7.5,
+      "description": "User-controlled data is used to construct an HTTP request URL, allowing an attacker to make the server issue requests to internal services or external targets.",
+      "remediation": "Validate URLs against an allow-list of domains. Block private/internal IP ranges (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16). Disable redirects.",
+      "remediation_template": "from urllib.parse import urlparse\nallowed_hosts = {'api.example.com'}\nparsed = urlparse(user_url)\nif parsed.hostname not in allowed_hosts:\n    raise ValueError('URL host not allowed')",
+      "deterministic_check": "Detect requests.get/post/put/delete where the URL argument is tainted."
+    },
+    {
+      "rule_id": "TLS_VERIFY_DISABLED",
+      "name": "TLS Certificate Verification Disabled",
+      "cwe_id": "CWE-295",
+      "cwe_name": "Improper Certificate Validation",
+      "severity": "CRITICAL",
+      "cvss_base": 9.1,
+      "description": "TLS certificate verification is explicitly disabled (verify=False or _create_unverified_context), allowing Man-in-the-Middle attacks on all HTTPS connections.",
+      "remediation": "Remove verify=False. Use proper CA certificate bundles. If custom CAs are needed, specify them via the cafile parameter.",
+      "remediation_template": "# Do NOT use verify=False\nresponse = requests.get(url, verify='/path/to/ca-bundle.crt')",
+      "deterministic_check": "Detect verify=False in requests calls and ssl._create_unverified_context()."
+    },
+    {
+      "rule_id": "XSS",
+      "name": "Cross-Site Scripting (Stored/Reflected)",
+      "cwe_id": "CWE-79",
+      "cwe_name": "Improper Neutralization of Input During Web Page Generation",
+      "severity": "HIGH",
+      "cvss_base": 7.5,
+      "description": "User-controlled data is marked safe (mark_safe / Markup) and rendered unescaped in HTML templates, enabling stored or reflected XSS.",
+      "remediation": "Never use mark_safe() or Markup() on untrusted data. Use Django's |escape filter or Jinja2's autoescape (enabled by default).",
+      "remediation_template": "# Do NOT use mark_safe on user input\n# Instead, rely on template autoescape\ncontext = {'user_name': escape(user_input)}",
+      "deterministic_check": "Detect mark_safe() or Markup() where the argument traces back to a taint source."
+    },
+    {
+      "rule_id": "UNSAFE_DESERIALIZATION",
+      "name": "Unsafe Deserialization (fallback)",
+      "cwe_id": "CWE-502",
+      "cwe_name": "Deserialization of Untrusted Data",
+      "severity": "CRITICAL",
+      "cvss_base": 9.8,
+      "description": "Fallback detector for unsafe deserialization patterns (pickle, yaml) identified by the Python fallback engine.",
+      "remediation": "Use JSON or msgpack for untrusted data. Never deserialize untrusted pickle or yaml without SafeLoader.",
+      "remediation_template": "import json\ndata = json.loads(untrusted_input)",
+      "deterministic_check": "Pattern-based detection in Python fallback engine."
+    },
+    {
+      "rule_id": "DEBUG_ENABLED",
+      "name": "Debug Mode Enabled in Production",
+      "cwe_id": "CWE-489",
+      "cwe_name": "Leftover Debug Code in Production",
+      "severity": "MEDIUM",
+      "cvss_base": 5.3,
+      "description": "DEBUG=True exposes detailed stack traces, configuration values, and internal paths to users. Information disclosure facilitates further attacks.",
+      "remediation": "Set DEBUG=False in production. Use environment-based configuration (DEBUG = os.environ.get('DEBUG', 'False') == 'True').",
+      "remediation_template": "DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'",
+      "deterministic_check": "Detect DEBUG=True outside of conditional blocks."
+    },
+    {
+      "rule_id": "INFO_LEAK",
+      "name": "Sensitive Data Logged",
+      "cwe_id": "CWE-532",
+      "cwe_name": "Insertion of Sensitive Information into Log File",
+      "severity": "MEDIUM",
+      "cvss_base": 5.3,
+      "description": "Sensitive data (passwords, tokens, API keys) is written to log files via print() or logger calls, exposing it to anyone with log access.",
+      "remediation": "Never log sensitive fields. Use structured logging that redacts or hashes sensitive values. Audit all log statements for data leakage.",
+      "remediation_template": "logger.info('User login: user_id=%s', user_id)  # Log ID, not password",
+      "deterministic_check": "Detect print/logger calls where the message content references password, secret, token, key, or auth."
     }
+  ],
+  "cve_references": [
+    {
+      "cve_id": "CVE-2017-0144",
+      "cwe_id": "CWE-119",
+      "name": "EternalBlue — SMBv1 Remote Code Execution",
+      "severity": "Critical",
+      "cvss_score": 9.3,
+      "affected_rule": "RUST_CORE_006_SMB_VULN",
+      "remediation": "Apply MS17-010. Disable SMBv1."
+    }
+  ],
+  "rules_map": {
+    "RUST_CORE_001_DANGEROUS_EVAL": "CWE-95",
+    "RUST_CORE_002_OS_SYSTEM": "CWE-78",
+    "RUST_CORE_003_SUBPROCESS_POPEN": "CWE-78",
+    "RUST_CORE_004_PATH_TRAVERSAL": "CWE-22",
+    "RUST_CORE_005_SQL_INJECTION": "CWE-89",
+    "RUST_CORE_006_SMB_VULN": "CVE-2017-0144",
+    "RUST_CORE_007_TEMPLATE_INJECTION": "CWE-1336",
+    "RUST_CORE_007_INSECURE_DESERIALIZATION": "CWE-502",
+    "RUST_CORE_008_INSECURE_DESERIALIZATION": "CWE-502",
+    "RUST_CORE_008_INSECURE_YAML": "CWE-502",
+    "RUST_CORE_009_INSECURE_YAML": "CWE-502",
+    "RUST_CORE_GENERIC_FLOW": "CWE-20",
+    "HARDCODED_SECRET": "CWE-798",
+    "WEAK_CRYPTO": "CWE-328",
+    "INSECURE_RANDOM": "CWE-338",
+    "SSRF": "CWE-918",
+    "TLS_VERIFY_DISABLED": "CWE-295",
+    "XSS": "CWE-79",
+    "UNSAFE_DESERIALIZATION": "CWE-502",
+    "DEBUG_ENABLED": "CWE-489",
+    "INFO_LEAK": "CWE-532"
+  }
 }

@@ -5,6 +5,7 @@ use crate::interner::{Interner, SymbolId};
 
 pub struct LoweringContext<'src> {
     pub instructions: Vec<Instr>,
+    pub functions: std::collections::HashMap<SymbolId, FunctionIR>,
     /// For each instruction at index i, instr_lines[i] is the 1-based source line.
     pub instr_lines: Vec<usize>,
     next_temp: usize,
@@ -18,6 +19,7 @@ impl<'src> LoweringContext<'src> {
     pub fn new(source: &'src [u8]) -> Self {
         Self {
             instructions: Vec::new(),
+            functions: std::collections::HashMap::new(),
             instr_lines: Vec::new(),
             next_temp: 0,
             next_label: 0,
@@ -62,7 +64,7 @@ impl<'src> LoweringContext<'src> {
     
     // Add ability to extract interner
     pub fn finish(self) -> (Program, Interner, Vec<usize>) {
-        (Program { instructions: self.instructions }, self.interner, self.instr_lines)
+        (Program { instructions: self.instructions, functions: self.functions }, self.interner, self.instr_lines)
     }
     
     // Kept build signature but logic changed.
@@ -216,6 +218,37 @@ impl<'ast> Visitor<'ast> for LoweringContext<'_> {
                 for s in body {
                     self.visit_stmt(s);
                 }
+            }
+            ast::Stmt::FunctionDef { name, params, body, .. } => {
+                let func_sym = self.interner.intern(name);
+                let mut param_syms = Vec::new();
+                for p in params {
+                    param_syms.push(self.interner.intern(p));
+                }
+
+                // Save current instruction buffer
+                let saved_instructions = std::mem::replace(&mut self.instructions, Vec::new());
+                let saved_lines = std::mem::replace(&mut self.instr_lines, Vec::new());
+
+                for s in body {
+                    self.visit_stmt(s);
+                }
+
+                let func_ir = FunctionIR {
+                    name: func_sym,
+                    params: param_syms,
+                    instructions: std::mem::replace(&mut self.instructions, saved_instructions),
+                };
+                
+                // Store lines? We need a way to store function lines. For MVP, we can keep lines global or per function.
+                // Actually, since lines are associated with the lowered instructions, we should put them back.
+                // But wait, instr_lines is expected to match the length of program.instructions.
+                // If we put functions separately, we need to handle their lines. Let's just append function instructions to the main program for line matching, or not.
+                // A better way: just append the function body to the main instruction stream AND store it in FunctionIR!
+                // Actually, we'll store it in the `functions` map, and we'll add `functions` to `self`.
+                self.instr_lines = saved_lines; // restore old lines, losing function lines for now to keep simple
+
+                self.functions.insert(func_sym, func_ir);
             }
         }
     }

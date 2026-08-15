@@ -14,6 +14,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tree-sitter = "0.22"
 tree-sitter-python = "0.21"
+tree-sitter-javascript = "0.21"
+tree-sitter-java = "0.21"
 ndarray = { version = "0.15", features = ["serde"] }
 thiserror = "1.0"
 rayon = "1.7"

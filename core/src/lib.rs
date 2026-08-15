@@ -4,10 +4,12 @@
 #[path = "../cfg/mod.rs"] pub mod cfg;
 #[path = "../dataflow/mod.rs"] pub mod dataflow;
 #[path = "../interner/mod.rs"] pub mod interner;
+#[path = "../callgraph/mod.rs"] pub mod callgraph;
 pub mod adversarial;
 pub mod safety;
 pub mod learning;
-
+pub mod rules;
+pub mod attack_graph;
 #[macro_use]
 extern crate serde;
 use serde::{Serialize, Deserialize};
@@ -75,6 +77,28 @@ pub struct AnalysisResult {
     pub findings: Vec<LightFinding>,
     pub file_hashes: std::collections::HashMap<String, String>,
     pub robustness_score: f32, // Adversarial Machine Learning Metric
+}
+
+/// Convert a pipeline Finding into a rule-engine Report so the AttackGraph
+/// builder can reason over them deterministically.
+pub fn finding_to_report(f: &Finding, instr_idx: usize) -> crate::rules::types::Report {
+    use crate::rules::types::Severity;
+    let severity = match f.severity.as_str() {
+        "CRITICAL" => Severity::Critical,
+        "HIGH"     => Severity::High,
+        "MEDIUM"   => Severity::Medium,
+        _          => Severity::Low,
+    };
+    crate::rules::types::Report {
+        rule_id: f.id.clone(),
+        name: f.id.clone(),
+        description: f.message.clone(),
+        severity,
+        block_id: 0,
+        instr_idx,
+        line: Some(f.line),
+        file_path: f.file_path.clone(),
+    }
 }
 
 pub fn map_finding_to_light(f: Finding) -> LightFinding {
@@ -189,111 +213,144 @@ impl<'a> Pipeline<'a> {
         // 2. Lower AST to IR  (now receives source bytes for line-number mapping)
         let mut lowering = LoweringContext::new(source_code);
         let (ir_program, mut interner, instr_lines) = lowering.build(&ast_program);
+        let module = crate::ir::types::Module { program: ir_program };
 
-        // 3. Build CFG
-        let cfg_builder = CfgBuilder::new(&ir_program);
-        let cfg = cfg_builder.build();
-
-        // 4. Configure & Run Taint Analysis
+        // 3. Configure Taint Analysis
         let mut config = TaintConfig::default();
         // --- Taint Sources (user-controlled inputs) ---
         config.sources.push(interner.intern("input"));
         config.sources.push(interner.intern("environ"));
-        config.sources.push(interner.intern("request"));   // Flask/Django HTTP request
-        config.sources.push(interner.intern("args"));      // CLI args / request.args
-        config.sources.push(interner.intern("get"));       // request.get / dict.get
-        config.sources.push(interner.intern("read"));      // file.read()
-        config.sources.push(interner.intern("readline"));  // file.readline()
-        config.sources.push(interner.intern("stdin"));     // sys.stdin
+        config.sources.push(interner.intern("request"));
+        config.sources.push(interner.intern("args"));
+        config.sources.push(interner.intern("get"));
+        config.sources.push(interner.intern("read"));
+        config.sources.push(interner.intern("readline"));
+        config.sources.push(interner.intern("stdin"));
 
         // --- Taint Sinks (dangerous execution points) ---
-        // Short names (when call is `eval(x)` or `open(x)` directly)
         config.sinks.push(interner.intern("eval"));
-        config.sinks.push(interner.intern("system"));      // os.system
-        config.sinks.push(interner.intern("Popen"));       // subprocess.Popen
-        config.sinks.push(interner.intern("run"));         // subprocess.run
-        config.sinks.push(interner.intern("call"));        // subprocess.call
-        config.sinks.push(interner.intern("open"));        // file open with user path
+        config.sinks.push(interner.intern("system"));
+        config.sinks.push(interner.intern("Popen"));
+        config.sinks.push(interner.intern("run"));
+        config.sinks.push(interner.intern("call"));
+        config.sinks.push(interner.intern("open"));
         config.sinks.push(interner.intern("SMBConnection"));
-        config.sinks.push(interner.intern("execute"));     // SQLAlchemy / psycopg2 SQL exec
-        config.sinks.push(interner.intern("executemany")); // batch SQL
-        config.sinks.push(interner.intern("render"));      // Django template injection
-        config.sinks.push(interner.intern("render_template_string")); // Flask SSTI
-        // Composite names (when call is `subprocess.run(x)` -> attribute flatten)
+        config.sinks.push(interner.intern("execute"));
+        config.sinks.push(interner.intern("executemany"));
+        config.sinks.push(interner.intern("render"));
+        config.sinks.push(interner.intern("render_template_string"));
         config.sinks.push(interner.intern("subprocess.run"));
         config.sinks.push(interner.intern("subprocess.Popen"));
         config.sinks.push(interner.intern("subprocess.call"));
         config.sinks.push(interner.intern("subprocess.check_output"));
-        config.sinks.push(interner.intern("os.system"));
-        config.sinks.push(interner.intern("os.popen"));
-        config.sinks.push(interner.intern("os.execv"));
-        config.sinks.push(interner.intern("cursor.execute"));
-        config.sinks.push(interner.intern("db.execute"));
-        config.sinks.push(interner.intern("conn.execute"));
-        config.sinks.push(interner.intern("flask.render_template_string"));
-        config.sinks.push(interner.intern("jinja2.Template"));
-        config.sinks.push(interner.intern("pickle.loads"));
-        config.sinks.push(interner.intern("yaml.load"));
-        // Composite sources
-        config.sources.push(interner.intern("request.args"));
-        config.sources.push(interner.intern("request.form"));
-        config.sources.push(interner.intern("request.get_json"));
-        config.sources.push(interner.intern("sys.argv"));
-        config.sources.push(interner.intern("os.environ"));
-        config.sources.push(interner.intern("os.getenv"));
 
-        let mut analysis = TaintAnalysis::new(&ir_program, &cfg, config)
-            .with_line_map(instr_lines);
-        analysis.run(crate::dataflow::taint::TaintState::default());
+        // 4. Inter-procedural Phase
+        let cg_builder = crate::callgraph::CallGraphBuilder::new(&module.program);
+        let cg = cg_builder.build();
+        let summaries = crate::dataflow::summary::compute_summaries(&module, &cg, &config);
 
-        // 5. Build Findings from Dataflow Results
-        for flow_finding in analysis.findings {
-            let func_name = interner.resolve(flow_finding.sink_func);
-            let rule_id = match func_name {
-                "eval"                         => "RUST_CORE_001_DANGEROUS_EVAL",
-                "system" | "os.system"
-                | "os.popen" | "os.execv"      => "RUST_CORE_002_OS_SYSTEM",
-                "Popen"   | "subprocess.Popen" => "RUST_CORE_003_SUBPROCESS_POPEN",
-                "run"     | "subprocess.run"
-                | "call"  | "subprocess.call"
-                | "subprocess.check_output"    => "RUST_CORE_003_SUBPROCESS_POPEN",
-                "open"                         => "RUST_CORE_004_PATH_TRAVERSAL",
-                "execute" | "executemany"
-                | "cursor.execute"
-                | "db.execute" | "conn.execute" => "RUST_CORE_005_SQL_INJECTION",
-                "SMBConnection"                => "RUST_CORE_006_SMB_VULN",
-                "render" | "render_template_string"
-                | "flask.render_template_string"
-                | "jinja2.Template"             => "RUST_CORE_007_TEMPLATE_INJECTION",
-                "pickle.loads"                  => "RUST_CORE_008_INSECURE_DESERIALIZATION",
-                "yaml.load"                     => "RUST_CORE_009_INSECURE_YAML",
-                _                              => "RUST_CORE_GENERIC_FLOW",
+        // 5. Build Findings using RuleEngine
+        let mut engine = crate::rules::RuleEngine::new();
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_001_DANGEROUS_EVAL", "Dangerous Eval", "Use of eval with tainted input",
+            crate::rules::Severity::Critical, vec!["eval"]
+        ));
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_002_OS_SYSTEM", "OS Command Injection", "Use of os.system with tainted input",
+            crate::rules::Severity::Critical, vec!["system", "os.system", "os.popen", "os.execv"]
+        ));
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_003_SUBPROCESS_POPEN", "Subprocess Injection", "Use of subprocess with tainted input",
+            crate::rules::Severity::Critical, vec!["Popen", "subprocess.Popen", "run", "subprocess.run", "call", "subprocess.call", "subprocess.check_output"]
+        ));
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_004_PATH_TRAVERSAL", "Path Traversal", "File open with tainted input",
+            crate::rules::Severity::High, vec!["open"]
+        ));
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_005_SQL_INJECTION", "SQL Injection", "SQL query execution with tainted input",
+            crate::rules::Severity::High, vec!["execute", "executemany", "cursor.execute", "db.execute", "conn.execute"]
+        ));
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_006_SMB_VULN", "SMB Vulnerability", "Insecure SMB Connection",
+            crate::rules::Severity::Critical, vec!["SMBConnection"]
+        ));
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_007_TEMPLATE_INJECTION", "Template Injection", "SSTI with tainted input",
+            crate::rules::Severity::Critical, vec!["render", "render_template_string", "flask.render_template_string", "jinja2.Template"]
+        ));
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_008_INSECURE_DESERIALIZATION", "Insecure Deserialization", "Unsafe pickle loads",
+            crate::rules::Severity::Critical, vec!["pickle.loads"]
+        ));
+        engine.add_rule(crate::rules::GenericTaintRule::new(
+            "RUST_CORE_009_INSECURE_YAML", "Insecure YAML", "Unsafe yaml load",
+            crate::rules::Severity::Critical, vec!["yaml.load"]
+        ));
+
+        let mut engine_reports = Vec::new();
+
+        // Evaluate top-level
+        let top_cfg = CfgBuilder::new(&module.program).build();
+        let mut top_analysis = TaintAnalysis::new(&module.program, &top_cfg, config.clone(), &summaries)
+            .with_line_map(instr_lines.clone());
+        top_analysis.run(crate::dataflow::taint::TaintState::new());
+        
+        let match_ctx = crate::rules::MatchContext {
+            program: &module.program,
+            cfg: &top_cfg,
+            dataflow: &top_analysis,
+            interner: &interner,
+        };
+        engine_reports.extend(engine.execute(&match_ctx));
+
+        // Evaluate each function
+        for (_func_id, func_ir) in &module.program.functions {
+            let func_program = crate::ir::types::Program {
+                instructions: func_ir.instructions.clone(),
+                functions: std::collections::HashMap::new(),
             };
+            let func_cfg = CfgBuilder::new(&func_program).build();
+            let mut func_analysis = TaintAnalysis::new(&func_program, &func_cfg, config.clone(), &summaries)
+                .with_line_map(instr_lines.clone());
+            func_analysis.run(crate::dataflow::taint::TaintState::new());
 
-            // Locate instruction in IR to get span from AST (if we kept it, but IR currently doesn't keep spans)
-            // For now, we'll use a placeholder line number or try to map back.
-            // Simplified: we'll still use the tree-sitter results for location but verify with analysis.
-            // Actually, let's just use the analysis results as the primary source of truth.
+            let func_ctx = crate::rules::MatchContext {
+                program: &func_program,
+                cfg: &func_cfg,
+                dataflow: &func_analysis,
+                interner: &interner,
+            };
+            engine_reports.extend(engine.execute(&func_ctx));
+        }
+
+        for report in engine_reports {
+            let line = report.line.unwrap_or(report.instr_idx);
             
-            // Range Filtering: Only keep findings within the targeted dirty ranges
+            // Range Filtering
             if let Some(r) = ranges {
-                if !r.iter().any(|(start, end)| flow_finding.line >= *start && flow_finding.line <= *end) {
+                if !r.iter().any(|(start, end)| line >= *start && line <= *end) {
                     continue;
                 }
             }
 
             findings.push(Finding {
-                id: rule_id.to_string(),
-                message: format!("[Taint Flow] {} — tainted data reaches dangerous sink `{}`", flow_finding.evidence, func_name),
-                severity: "CRITICAL".to_string(),
-                line: if flow_finding.line > 0 { flow_finding.line } else { 1 },
+                id: report.rule_id,
+                message: report.description,
+                severity: match report.severity {
+                    crate::rules::Severity::Low => "LOW".into(),
+                    crate::rules::Severity::Medium => "MEDIUM".into(),
+                    crate::rules::Severity::High => "HIGH".into(),
+                    crate::rules::Severity::Critical => "CRITICAL".into(),
+                },
+                line: if line > 0 { line } else { 1 },
                 snippet: "Flow-based detection — see surrounding source context".into(),
                 file_path: file_path.map(|s| s.to_string()),
-                flow_path: vec!["Source → Propagation → Sink (Taint Analysis)".into()],
+                flow_path: vec!["Source → Propagation → Sink (Rule Engine)".into()],
                 proof: Some(TaintProof {
                     verified: true,
-                    evidence: vec![flow_finding.evidence],
-                    taint_source: Some("External Input Identified".into()),
+                    evidence: vec!["Dataflow tracked to sink".into()],
+                    taint_source: report.source_var,
                 }),
                 immune_context: None,
             });
@@ -448,6 +505,73 @@ fn validate_findings(_py: Python<'_>, findings: Vec<PyRef<Finding>>) -> PyResult
     Ok(validated_results)
 }
 
+// --- Attack Graph FFI Types ---
+
+#[pyclass(get_all)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PyAttackNode {
+    pub id: usize,
+    pub rule_id: String,
+    pub severity: String,
+    pub line: usize,
+    pub file_path: Option<String>,
+}
+
+#[pyclass(get_all)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PyAttackEdge {
+    pub from: usize,
+    pub to: usize,
+    pub description: String,
+}
+
+#[pyclass(get_all)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PyAttackGraph {
+    pub nodes: Vec<PyAttackNode>,
+    pub edges: Vec<PyAttackEdge>,
+}
+
+/// Build a deterministic AttackGraph from a list of pipeline Findings.
+/// Each Finding is converted to a Report (with line + file_path) and the
+/// GraphBuilder constructs edges using the two deterministic rules:
+///   1. Intra-file enablement (enabler categories → later sinks)
+///   2. Severity escalation (Critical → later High/Medium)
+#[pyfunction]
+fn build_attack_graph(_py: Python<'_>, findings: Vec<PyRef<Finding>>) -> PyResult<PyAttackGraph> {
+    let reports: Vec<crate::rules::types::Report> = findings
+        .iter()
+        .enumerate()
+        .map(|(idx, f)| finding_to_report(&f, idx))
+        .collect();
+
+    let graph = attack_graph::build::GraphBuilder::build(reports);
+
+    let nodes = graph
+        .nodes
+        .iter()
+        .map(|n| PyAttackNode {
+            id: n.id,
+            rule_id: n.report.rule_id.clone(),
+            severity: format!("{:?}", n.report.severity),
+            line: n.report.line.unwrap_or(0),
+            file_path: n.report.file_path.clone(),
+        })
+        .collect();
+
+    let edges = graph
+        .edges
+        .iter()
+        .map(|e| PyAttackEdge {
+            from: e.from,
+            to: e.to,
+            description: e.description.clone(),
+        })
+        .collect();
+
+    Ok(PyAttackGraph { nodes, edges })
+}
+
 
 #[pymodule]
 fn adversum_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -462,6 +586,9 @@ fn adversum_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<learning::theory::StabilityAnalysis>()?;
     m.add_class::<crate::safety::ImmuneResponse>()?;
     m.add_class::<ValidatedFinding>()?;
+    m.add_class::<PyAttackGraph>()?;
+    m.add_class::<PyAttackNode>()?;
+    m.add_class::<PyAttackEdge>()?;
     
     m.add_function(wrap_pyfunction!(inspect_code, m)?)?;
     m.add_function(wrap_pyfunction!(inspect_targeted, m)?)?;
@@ -471,6 +598,7 @@ fn adversum_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run_adversarial, m)?)?;
     m.add_function(wrap_pyfunction!(check_stability, m)?)?;
     m.add_function(wrap_pyfunction!(validate_findings, m)?)?;
+    m.add_function(wrap_pyfunction!(build_attack_graph, m)?)?;
     Ok(())
 }
 

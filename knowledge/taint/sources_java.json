@@ -1,0 +1,20 @@
+{
+  "language": "java",
+  "sources": [
+    "request.getParameter",
+    "request.getHeader",
+    "request.getCookies",
+    "request.getQueryString",
+    "System.getenv",
+    "System.getProperty"
+  ],
+  "sinks": [
+    "Runtime.getRuntime().exec",
+    "ProcessBuilder.start",
+    "Statement.executeQuery",
+    "Statement.executeUpdate",
+    "PreparedStatement.executeQuery",
+    "PrintWriter.println",
+    "PrintWriter.write"
+  ]
+}

@@ -129,14 +129,61 @@ impl<'a> PythonParser<'a> {
             "function_definition" => {
                 let body_node = node.child_by_field_name("body")?;
                 let body = self.collect_block(body_node);
-                let condition = Expr::Literal { value: Literal::Bool(true), span: span.clone() };
-                Some(Stmt::If { condition, then_block: body, else_block: None, span })
-            }
-
             // ── Return statement ────────────────────────────────────────────
             "return_statement" => {
-                let value = node.child(1).and_then(|n| self.parse_expr(n));
+                let value = if let Some(expr_node) = node.child(1) {
+                    self.parse_expr(expr_node)
+                } else {
+                    None
+                };
                 Some(Stmt::Return { value, span })
+            }
+
+            // ── Function Definition ─────────────────────────────────────────
+            "function_definition" | "decorated_definition" => {
+                let (def_node, _span) = if node.kind() == "decorated_definition" {
+                    let mut def = None;
+                    let mut cursor = node.walk();
+                    for child in node.children(&mut cursor) {
+                        if child.kind() == "function_definition" {
+                            def = Some(child);
+                            break;
+                        }
+                    }
+                    (def?, span)
+                } else {
+                    (node, span)
+                };
+
+                let name_node = def_node.child_by_field_name("name")?;
+                let name = name_node.utf8_text(self.source).ok()?.to_string();
+
+                let params_node = def_node.child_by_field_name("parameters")?;
+                let mut params = Vec::new();
+                let mut p_cursor = params_node.walk();
+                for child in params_node.children(&mut p_cursor) {
+                    if child.kind() == "identifier" {
+                        if let Ok(param_name) = child.utf8_text(self.source) {
+                            params.push(param_name.to_string());
+                        }
+                    } else if child.kind() == "typed_parameter" || child.kind() == "default_parameter" {
+                        // Extract just the identifier part
+                        let mut sub_cursor = child.walk();
+                        for sub_child in child.children(&mut sub_cursor) {
+                            if sub_child.kind() == "identifier" {
+                                if let Ok(param_name) = sub_child.utf8_text(self.source) {
+                                    params.push(param_name.to_string());
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                let body_node = def_node.child_by_field_name("body")?;
+                let body = self.collect_block(body_node);
+
+                Some(Stmt::FunctionDef { name, params, body, span })
             }
 
             // ── Class definition ────────────────────────────────────────────

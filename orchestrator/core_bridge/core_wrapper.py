@@ -7,15 +7,43 @@ from ..models.findings import RawFinding
 
 logger = logging.getLogger(__name__)
 
+
+def _mock_core_forced() -> bool:
+    """True when MOCK_CORE is explicitly enabled via the settings singleton
+    or via the ADVERSUM_MOCK_CORE env var. The env var is authoritative so
+    tests can toggle the flag without re-importing the settings module."""
+    env_forced = os.getenv("ADVERSUM_MOCK_CORE", "false").lower() == "true"
+    if env_forced:
+        return True
+    try:
+        from ..config.settings import settings
+
+        return bool(getattr(settings, "MOCK_CORE", False))
+    except Exception:
+        # Never let a config import error silently force the fallback;
+        # default to the real engine.
+        return False
+
+
 class CoreWrapper:
     """
     Bridge between Python Orchestrator and Rust Core.
     Attempts to use the compiled Rust extension via FFI.
-    Falls back to Mock logic if the extension is not available.
+    Falls back to the Python fallback engine if the extension is not available
+    or if MOCK_CORE is explicitly enabled (tests only).
     """
 
     def __init__(self):
         self.use_ffi = False
+        self.rust_core = None
+
+        if _mock_core_forced():
+            logger.warning(
+                "MOCK_CORE is explicitly enabled — Python fallback engine forced "
+                "(tests only). Do NOT use in production."
+            )
+            return
+
         try:
             import adversum_core
             # Verify that the extension is fully functional and the correct version

@@ -1,7 +1,8 @@
 use crate::ir::types::{Instr, Program, Operand};
 use crate::cfg::types::{ControlFlowGraph, BlockId};
 use crate::dataflow::taint::TaintState;
-use std::collections::{VecDeque, BTreeMap};
+use std::collections::{VecDeque, BTreeMap, HashMap};
+use crate::dataflow::summary::FunctionSummary;
 
 pub struct TaintAnalysis<'a> {
     program: &'a Program,
@@ -17,6 +18,7 @@ pub struct TaintAnalysis<'a> {
     /// Map from instruction index to source line (1-indexed).
     /// Built by the IR lowering pass and passed in here.
     pub instr_lines: Vec<usize>,
+    pub summaries: &'a HashMap<crate::interner::SymbolId, FunctionSummary>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -35,7 +37,7 @@ pub struct FlowFinding {
 }
 
 impl<'a> TaintAnalysis<'a> {
-    pub fn new(program: &'a Program, cfg: &'a ControlFlowGraph, config: TaintConfig) -> Self {
+    pub fn new(program: &'a Program, cfg: &'a ControlFlowGraph, config: TaintConfig, summaries: &'a HashMap<crate::interner::SymbolId, FunctionSummary>) -> Self {
         Self {
             program,
             cfg,
@@ -44,6 +46,7 @@ impl<'a> TaintAnalysis<'a> {
             config,
             findings: Vec::new(),
             instr_lines: Vec::new(),
+            summaries,
         }
     }
 
@@ -142,6 +145,41 @@ impl<'a> TaintAnalysis<'a> {
                 }
             }
             Instr::Call { dest, func, args } => {
+                let src_line = self.instr_lines.get(instr_idx).copied().unwrap_or(0);
+                
+                // Check if callee is a known summary
+                let mut is_known_callee = false;
+                let mut return_tainted = false;
+
+                if let Some(summary) = self.summaries.get(func) {
+                    is_known_callee = true;
+                    // Check if any argument passed to a sink-parameter is tainted
+                    for (param_idx, sinks) in &summary.sink_params {
+                        if let Some(arg) = args.get(*param_idx) {
+                            if state.is_tainted(arg) {
+                                for sink_func in sinks {
+                                    self.findings.push(FlowFinding {
+                                        sink_instr_idx: instr_idx,
+                                        sink_func: *sink_func,
+                                        evidence: format!("Tainted argument {} passed to sensitive sink via inter-procedural flow", param_idx),
+                                        line: src_line,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Check if return value becomes tainted
+                    for param_idx in &summary.tainted_returns {
+                        if let Some(arg) = args.get(*param_idx) {
+                            if state.is_tainted(arg) {
+                                return_tainted = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 // Rule 1: Identification of Sources
                 if self.config.sources.contains(func) {
                     if let Some(d) = dest {
@@ -149,14 +187,10 @@ impl<'a> TaintAnalysis<'a> {
                     }
                 }
 
-                // Rule 2: Identification of Sinks
+                // Rule 2: Identification of Sinks (Direct)
                 if self.config.sinks.contains(func) {
                     for (i, arg) in args.iter().enumerate() {
                         if state.is_tainted(arg) {
-                            let src_line = self.instr_lines
-                                .get(instr_idx)
-                                .copied()
-                                .unwrap_or(0);
                             self.findings.push(FlowFinding {
                                 sink_instr_idx: instr_idx,
                                 sink_func: *func,
@@ -167,14 +201,24 @@ impl<'a> TaintAnalysis<'a> {
                     }
                 }
 
-                // Rule 3: Propagation via calls (Conservative)
-                let any_tainted = args.iter().any(|a| state.is_tainted(a));
+                // Rule 3: Propagation via calls
                 if let Some(d) = dest {
-                    // Don't "untaint" if it was already marked as source above
-                    if any_tainted {
-                        state.taint(d);
-                    } else if !self.config.sources.contains(func) {
-                        state.untaint(d);
+                    if self.config.sources.contains(func) {
+                        // Already tainted
+                    } else if is_known_callee {
+                        if return_tainted {
+                            state.taint(d);
+                        } else {
+                            state.untaint(d);
+                        }
+                    } else {
+                        // Unknown callee -> Conservative Propagation
+                        let any_tainted = args.iter().any(|a| state.is_tainted(a));
+                        if any_tainted {
+                            state.taint(d);
+                        } else {
+                            state.untaint(d);
+                        }
                     }
                 }
             }

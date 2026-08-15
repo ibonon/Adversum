@@ -1,0 +1,26 @@
+{
+  "language": "javascript",
+  "sources": [
+    "req.query",
+    "req.body",
+    "req.params",
+    "req.headers",
+    "req.cookies",
+    "process.argv",
+    "process.env"
+  ],
+  "sinks": [
+    "eval",
+    "setTimeout",
+    "setInterval",
+    "exec",
+    "execSync",
+    "spawn",
+    "spawnSync",
+    "res.send",
+    "res.write",
+    "db.query",
+    "connection.query",
+    "Model.find"
+  ]
+}

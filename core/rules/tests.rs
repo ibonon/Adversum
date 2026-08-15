@@ -31,7 +31,11 @@ fn test_taint_sink_rule() {
     ];
     let prog = Program { instructions };
     let cfg = CfgBuilder::new(&prog).build();
-    let mut analysis = TaintAnalysis::new(&prog, &cfg);
+    use crate::dataflow::analysis::TaintConfig;
+    let mut config = TaintConfig::default();
+    // The sink must be registered for the analysis to flag tainted args.
+    config.sinks.push(exec);
+    let mut analysis = TaintAnalysis::new(&prog, &cfg, config);
     
     let mut initial_state = TaintState::new();
     initial_state.taint(&Operand::Var(source));

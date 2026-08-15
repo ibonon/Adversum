@@ -26,16 +26,41 @@ class AdversarialSimulator:
         Supports Dynamic Oracles (1), Transfer Attacks (4), and Query Budgeting (2).
         """
         if not self.wrapper.use_ffi:
-            logger.warning(f"Adversarial Kit (Rust) not found. Running high-fidelity RBAT simulation (Mock Mode).")
-            # Successful attack mock: Resilience drop
-            import random
+            from ..config.settings import settings
+
+            # Strict mode (opt-in via ADVERSUM_STRICT_CORE=true) raises instead
+            # of degrading, which is useful in CI to assert the Rust kit is
+            # built. Default behaviour degrades gracefully and DETERMINISTICALLY:
+            # we never fabricate a probabilistic attack result.
+            strict = os.getenv("ADVERSUM_STRICT_CORE", "false").lower() == "true"
+            if strict and not settings.MOCK_CORE:
+                raise RuntimeError(
+                    "Adversarial Kit (Rust) not linked and ADVERSUM_STRICT_CORE "
+                    "is set. Cannot run adversarial simulation."
+                )
+
+            # Determinism: never fabricate a probabilistic attack result.
+            # Without the Rust kit we cannot run a real adversarial simulation,
+            # so we return a deterministic "skipped" result with a neutral
+            # robustness score (1.0 = no observed weakness) rather than a
+            # random success/failure that would corrupt RBAT scores.
+            logger.warning(
+                "Adversarial Kit (Rust) not linked — skipping adversarial "
+                "simulation (deterministic skip, no fabricated result)."
+            )
             return {
-                "success": random.choice([True, False]),
-                "perturbed_data": [p + 0.05 for p in (data_payload or [])],
+                "success": False,
+                "perturbed_data": list(data_payload or []),
                 "method": method,
                 "epsilon": epsilon,
                 "query_count": 0,
-                "cost": 0.0
+                "cost": 0.0,
+                "detected": False,
+                "blocked_by_waf": False,
+                "threat_score": 0.0,
+                "robustness_score": 1.0,
+                "adversarial_prompt": None,
+                "skipped": True,
             }
 
         try:

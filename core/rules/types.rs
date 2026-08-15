@@ -13,6 +13,20 @@ pub struct Report {
     // Location info (BlockId, Instruction Index)
     pub block_id: usize,
     pub instr_idx: usize,
+    /// Optional source line (1-indexed), used for deterministic attack-chain
+    /// ordering across reports. Populated when the analysis carries line info.
+    #[serde(default)]
+    pub line: Option<usize>,
+    /// File the report belongs to, used to scope attack chains to a single
+    /// translation unit (we never guess cross-file flows without proof).
+    #[serde(default)]
+    pub file_path: Option<String>,
+    /// The input variable or expression that was consumed by the sink.
+    #[serde(default)]
+    pub source_var: Option<String>,
+    /// The output variable populated by this vulnerability, enabling later steps.
+    #[serde(default)]
+    pub output_var: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

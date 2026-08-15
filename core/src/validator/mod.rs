@@ -106,6 +106,8 @@ impl DeterministicValidator {
         sanitizers.insert("cgi.escape".to_string(), SanitizerType::Escape);
         sanitizers.insert("urllib.parse.quote".to_string(), SanitizerType::Escape);
         sanitizers.insert("urllib.parse.quote_plus".to_string(), SanitizerType::Escape);
+        sanitizers.insert("DOMPurify.sanitize".to_string(), SanitizerType::Escape);
+        sanitizers.insert("StringEscapeUtils.escapeHtml4".to_string(), SanitizerType::Escape);
         
         // Validation sanitizers
         sanitizers.insert("re.match".to_string(), SanitizerType::Validate);
@@ -123,6 +125,8 @@ impl DeterministicValidator {
         sanitizers.insert("sqlite3.execute".to_string(), SanitizerType::Parameterize);
         sanitizers.insert("psycopg2.execute".to_string(), SanitizerType::Parameterize);
         sanitizers.insert("pymysql.execute".to_string(), SanitizerType::Parameterize);
+        sanitizers.insert("mysql.format".to_string(), SanitizerType::Parameterize);
+        sanitizers.insert("PreparedStatement".to_string(), SanitizerType::Parameterize);
         
         let mut validation_rules = HashMap::new();
         

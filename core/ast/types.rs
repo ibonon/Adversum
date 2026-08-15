@@ -58,6 +58,13 @@ pub enum Stmt {
         expr: Expr,
         span: Span,
     },
+    /// Function definition: `def foo(a, b): ...`
+    FunctionDef {
+        name: String,
+        params: Vec<String>,
+        body: Vec<Stmt>,
+        span: Span,
+    },
 }
 
 /// Represents an expression that evaluates to a value.

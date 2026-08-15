@@ -46,6 +46,19 @@ pub enum Instr {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FunctionIR {
+    pub name: SymbolId,
+    pub params: Vec<SymbolId>,
+    pub instructions: Vec<Instr>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Program {
     pub instructions: Vec<Instr>,
+    pub functions: std::collections::HashMap<SymbolId, FunctionIR>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Module {
+    pub program: Program,
 }

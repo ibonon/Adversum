@@ -25,7 +25,15 @@ class Settings:
     
     # Core Bridge Settings
     CORE_BINARY_PATH: str = "adversum_core" # expected on PATH or overridden
-    MOCK_CORE: bool = True # Force mock for now
+    # MOCK_CORE forces the Python fallback engine regardless of whether the
+    # compiled Rust extension (adversum_core.pyd) is available. Production and
+    # the default pipeline must run against the real Rust core, so this is off
+    # by default. Set ADVERSUM_MOCK_CORE=true only in isolated tests where the
+    # native engine cannot be built.
+    # NOTE: Settings is a plain class (not pydantic BaseSettings), so we must
+    # resolve the env value eagerly; Field(default_factory=...) would stay an
+    # unresolved FieldInfo object at runtime.
+    MOCK_CORE: bool = False
 
     # API Settings
     API_HOST: str = "0.0.0.0"
@@ -53,6 +61,10 @@ class Settings:
 
     def __init__(self, **values):
         super().__init__(**values)
+        # Resolve MOCK_CORE eagerly from the environment. Settings is a plain
+        # class (not pydantic BaseSettings), so the class-level Field(...) value
+        # would never be evaluated; we read the env var here instead.
+        self.MOCK_CORE = os.getenv("ADVERSUM_MOCK_CORE", "false").lower() == "true"
         # In production, enforce strong secrets
         if os.getenv("ADVERSUM_ENV") == "production":
             if self.API_KEY_SECRET == "adv-dev-key-123":
