@@ -1,5 +1,6 @@
 {
   "language": "javascript",
+  "version": "2.0",
   "sources": [
     "req.query",
     "req.body",
@@ -10,17 +11,20 @@
     "process.env"
   ],
   "sinks": [
-    "eval",
-    "setTimeout",
-    "setInterval",
-    "exec",
-    "execSync",
-    "spawn",
-    "spawnSync",
-    "res.send",
-    "res.write",
-    "db.query",
-    "connection.query",
-    "Model.find"
+    {"name": "eval", "cwe": "CWE-95", "severity": "critical"},
+    {"name": "setTimeout", "cwe": "CWE-95", "severity": "critical"},
+    {"name": "setInterval", "cwe": "CWE-95", "severity": "critical"},
+    {"name": "exec", "cwe": "CWE-78", "severity": "critical"},
+    {"name": "execSync", "cwe": "CWE-78", "severity": "critical"},
+    {"name": "spawn", "cwe": "CWE-78", "severity": "critical"},
+    {"name": "spawnSync", "cwe": "CWE-78", "severity": "critical"},
+    {"name": "res.send", "cwe": "CWE-79", "severity": "medium"},
+    {"name": "res.write", "cwe": "CWE-79", "severity": "medium"},
+    {"name": "db.query", "cwe": "CWE-89", "severity": "high"},
+    {"name": "connection.query", "cwe": "CWE-89", "severity": "high"},
+    {"name": "Model.find", "cwe": "CWE-943", "severity": "high"}
+  ],
+  "sanitizers": [
+    {"name": "escape", "clears": ["CWE-79"]}
   ]
 }

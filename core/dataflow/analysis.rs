@@ -123,6 +123,18 @@ impl<'a> TaintAnalysis<'a> {
     
     fn transfer_instr(&mut self, state: &mut TaintState, instr: &Instr, instr_idx: usize) {
         match instr {
+            Instr::FieldStore { obj, field, src } => {
+                if state.is_tainted(src) {
+                    state.taint_field(*obj, *field);
+                }
+            }
+            Instr::FieldLoad { dest, obj, field } => {
+                if state.is_field_tainted(*obj, *field) {
+                    state.taint(dest);
+                } else {
+                    state.untaint(dest);
+                }
+            }
             Instr::Assign { dest, src } => {
                 if state.is_tainted(src) {
                     state.taint(dest);

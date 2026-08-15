@@ -10,6 +10,9 @@ pub mod safety;
 pub mod learning;
 pub mod rules;
 pub mod attack_graph;
+#[path = "../kb/mod.rs"] pub mod kb;
+#[path = "../scoring/mod.rs"] pub mod scoring;
+#[path = "../sarif/mod.rs"] pub mod sarif;
 #[macro_use]
 extern crate serde;
 use serde::{Serialize, Deserialize};
@@ -17,6 +20,8 @@ use serde::{Serialize, Deserialize};
 use crate::context::{Quotas, Tracer, PipelineError, NoOpTracer};
 use crate::adversarial::{AdversarialRequest, AdversarialResult, OracleConfig, attacks};
 use crate::ast::python::PythonParser;
+use crate::ast::javascript::JavaScriptParser;
+use crate::ast::java::JavaParser;
 use crate::ir::lower::LoweringContext;
 use crate::cfg::build::CfgBuilder;
 use crate::dataflow::analysis::{TaintAnalysis, TaintConfig};
@@ -168,19 +173,52 @@ pub struct TaintProof {
     pub taint_source: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnalysisLanguage {
+    Python,
+    JavaScript,
+    Java,
+}
+
+impl AnalysisLanguage {
+    pub fn from_extension(ext: &str) -> Option<Self> {
+        match ext {
+            "py" => Some(Self::Python),
+            "js" => Some(Self::JavaScript),
+            "java" => Some(Self::Java),
+            _ => None,
+        }
+    }
+}
+
 pub struct Pipeline<'a> {
     quotas: Quotas,
     tracer: &'a dyn Tracer,
     language: Language,
+    analysis_language: AnalysisLanguage,
 }
 
 impl<'a> Pipeline<'a> {
-    pub fn new(quotas: Quotas, tracer: &'a dyn Tracer) -> Self {
+    pub fn new(quotas: Quotas, tracer: &'a dyn Tracer, lang: Option<AnalysisLanguage>) -> Self {
+        let analysis_language = lang.unwrap_or(AnalysisLanguage::Python);
+        let language = match analysis_language {
+            AnalysisLanguage::Python => tree_sitter_python::language(),
+            AnalysisLanguage::JavaScript => tree_sitter_javascript::language(),
+            AnalysisLanguage::Java => tree_sitter_java::language(),
+        };
         Self { 
             quotas, 
             tracer,
-            language: tree_sitter_python::language()
+            language,
+            analysis_language
         }
+    }
+
+    pub fn analyze_auto(&self, source_code: &[u8], file_path: &str) -> Result<Vec<Finding>, PipelineError> {
+        let ext = std::path::Path::new(file_path).extension().and_then(|e| e.to_str()).unwrap_or("");
+        let lang = AnalysisLanguage::from_extension(ext).unwrap_or(self.analysis_language);
+        let pipeline = Pipeline::new(self.quotas.clone(), self.tracer, Some(lang));
+        pipeline.analyze(source_code, Some(file_path), None)
     }
 
     pub fn analyze(&self, source_code: &[u8], file_path: Option<&str>, ranges: Option<&[(usize, usize)]>) -> Result<Vec<Finding>, PipelineError> {
@@ -200,12 +238,27 @@ impl<'a> Pipeline<'a> {
         
         // --- Semantic Analysis Phase (DEEP FLOW) ---
         // 1. Lower tree-sitter tree to custom AST
-        let python_parser = PythonParser::new(source_code);
         let mut ast_stmts = Vec::new();
         let mut cursor = root_node.walk();
-        for child in root_node.children(&mut cursor) {
-            if let Some(s) = python_parser.parse_stmt(child) {
-                ast_stmts.push(s);
+        
+        match self.analysis_language {
+            AnalysisLanguage::Python => {
+                let parser = PythonParser::new(source_code);
+                for child in root_node.children(&mut cursor) {
+                    if let Some(s) = parser.parse_stmt(child) { ast_stmts.push(s); }
+                }
+            },
+            AnalysisLanguage::JavaScript => {
+                let parser = JavaScriptParser::new(source_code);
+                for child in root_node.children(&mut cursor) {
+                    if let Some(s) = parser.parse_stmt(child) { ast_stmts.push(s); }
+                }
+            },
+            AnalysisLanguage::Java => {
+                let parser = JavaParser::new(source_code);
+                for child in root_node.children(&mut cursor) {
+                    if let Some(s) = parser.parse_stmt(child) { ast_stmts.push(s); }
+                }
             }
         }
         let ast_program = crate::ast::Program { statements: ast_stmts };
@@ -217,32 +270,19 @@ impl<'a> Pipeline<'a> {
 
         // 3. Configure Taint Analysis
         let mut config = TaintConfig::default();
-        // --- Taint Sources (user-controlled inputs) ---
-        config.sources.push(interner.intern("input"));
-        config.sources.push(interner.intern("environ"));
-        config.sources.push(interner.intern("request"));
-        config.sources.push(interner.intern("args"));
-        config.sources.push(interner.intern("get"));
-        config.sources.push(interner.intern("read"));
-        config.sources.push(interner.intern("readline"));
-        config.sources.push(interner.intern("stdin"));
-
-        // --- Taint Sinks (dangerous execution points) ---
-        config.sinks.push(interner.intern("eval"));
-        config.sinks.push(interner.intern("system"));
-        config.sinks.push(interner.intern("Popen"));
-        config.sinks.push(interner.intern("run"));
-        config.sinks.push(interner.intern("call"));
-        config.sinks.push(interner.intern("open"));
-        config.sinks.push(interner.intern("SMBConnection"));
-        config.sinks.push(interner.intern("execute"));
-        config.sinks.push(interner.intern("executemany"));
-        config.sinks.push(interner.intern("render"));
-        config.sinks.push(interner.intern("render_template_string"));
-        config.sinks.push(interner.intern("subprocess.run"));
-        config.sinks.push(interner.intern("subprocess.Popen"));
-        config.sinks.push(interner.intern("subprocess.call"));
-        config.sinks.push(interner.intern("subprocess.check_output"));
+        let kb = match self.analysis_language {
+            AnalysisLanguage::Python => crate::kb::get_python_kb(),
+            AnalysisLanguage::JavaScript => crate::kb::get_js_kb(),
+            AnalysisLanguage::Java => crate::kb::get_java_kb(),
+        };
+        
+        for src in kb.sources {
+            config.sources.push(interner.intern(&src));
+        }
+        
+        for sink in kb.sink_names() {
+            config.sinks.push(interner.intern(&sink));
+        }
 
         // 4. Inter-procedural Phase
         let cg_builder = crate::callgraph::CallGraphBuilder::new(&module.program);
@@ -365,11 +405,23 @@ impl<'a> Pipeline<'a> {
 
 pub fn analyze_default(source: &[u8], file_path: Option<&str>, ranges: Option<&[(usize, usize)]>) -> Result<Vec<Finding>, PipelineError> {
     let tracer = NoOpTracer;
-    let pipeline = Pipeline::new(Quotas::default(), &tracer);
+    let pipeline = Pipeline::new(Quotas::default(), &tracer, None);
     pipeline.analyze(source, file_path, ranges)
 }
 
 // --- FFI Interface ---
+
+#[pyfunction]
+pub fn analyze_sarif(_py: Python<'_>, source: String, file_path: String) -> PyResult<String> {
+    if let Ok(findings) = analyze_default(source.as_bytes(), Some(&file_path), None) {
+        let sarif_log = sarif::emit_sarif(&findings, &file_path);
+        let json_str = serde_json::to_string_pretty(&sarif_log)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to serialize SARIF: {}", e)))?;
+        Ok(json_str)
+    } else {
+        Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Pipeline error".to_string()))
+    }
+}
 
 #[pyfunction]
 fn inspect_code(_py: Python<'_>, source: String) -> PyResult<AnalysisResult> {
@@ -382,6 +434,16 @@ fn inspect_code(_py: Python<'_>, source: String) -> PyResult<AnalysisResult> {
         } else {
             Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Pipeline error".to_string()))
         }
+}
+
+#[pyfunction]
+fn analyze_auto_py(_py: Python<'_>, source: String, file_path: String) -> PyResult<Vec<Finding>> {
+    let tracer = NoOpTracer;
+    let pipeline = Pipeline::new(Quotas::default(), &tracer, None);
+    match pipeline.analyze_auto(source.as_bytes(), &file_path) {
+        Ok(findings) => Ok(findings),
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Pipeline error: {:?}", e)))
+    }
 }
 
 #[pyfunction]
@@ -591,6 +653,8 @@ fn adversum_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyAttackEdge>()?;
     
     m.add_function(wrap_pyfunction!(inspect_code, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_sarif, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_auto_py, m)?)?;
     m.add_function(wrap_pyfunction!(inspect_targeted, m)?)?;
     m.add_function(wrap_pyfunction!(inspect_files, m)?)?;
     m.add_function(wrap_pyfunction!(inspect_project, m)?)?;

@@ -88,8 +88,17 @@ impl<'src> LoweringContext<'src> {
                 Operand::Constant(val_str)
             }
             ast::Expr::Identifier { name, .. } => {
-                let sym = self.interner.intern(name);
-                Operand::Var(sym)
+                if name.contains('.') {
+                    let parts: Vec<&str> = name.splitn(2, '.').collect();
+                    let obj_sym = self.interner.intern(parts[0]);
+                    let field_sym = self.interner.intern(parts[1]);
+                    let dest = self.new_temp();
+                    self.emit(Instr::FieldLoad { dest: dest.clone(), obj: obj_sym, field: field_sym });
+                    dest
+                } else {
+                    let sym = self.interner.intern(name);
+                    Operand::Var(sym)
+                }
             }
             ast::Expr::Binary { op, left, right, .. } => {
                 let lhs = self.lower_expr(left);
@@ -158,8 +167,15 @@ impl<'ast> Visitor<'ast> for LoweringContext<'_> {
             ast::Stmt::Assign { target, value, .. } => {
                 let val = self.lower_expr(value);
                 if let ast::Expr::Identifier { name, .. } = target {
-                     let sym = self.interner.intern(name);
-                     self.emit(Instr::Assign { dest: Operand::Var(sym), src: val });
+                    if name.contains('.') {
+                        let parts: Vec<&str> = name.splitn(2, '.').collect();
+                        let obj_sym = self.interner.intern(parts[0]);
+                        let field_sym = self.interner.intern(parts[1]);
+                        self.emit(Instr::FieldStore { obj: obj_sym, field: field_sym, src: val });
+                    } else {
+                        let sym = self.interner.intern(name);
+                        self.emit(Instr::Assign { dest: Operand::Var(sym), src: val });
+                    }
                 } else {
                     // TODO complex assign
                 }

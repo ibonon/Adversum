@@ -40,6 +40,11 @@ pub enum Instr {
     
     /// return t1
     Return(Option<Operand>),
+
+    /// self.field = src
+    FieldStore { obj: SymbolId, field: SymbolId, src: Operand },
+    /// dest = obj.field
+    FieldLoad { dest: Operand, obj: SymbolId, field: SymbolId },
     
     /// No-op
     Nop,

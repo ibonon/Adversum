@@ -1,5 +1,6 @@
 {
   "language": "java",
+  "version": "2.0",
   "sources": [
     "request.getParameter",
     "request.getHeader",
@@ -9,12 +10,15 @@
     "System.getProperty"
   ],
   "sinks": [
-    "Runtime.getRuntime().exec",
-    "ProcessBuilder.start",
-    "Statement.executeQuery",
-    "Statement.executeUpdate",
-    "PreparedStatement.executeQuery",
-    "PrintWriter.println",
-    "PrintWriter.write"
+    {"name": "Runtime.getRuntime().exec", "cwe": "CWE-78", "severity": "critical"},
+    {"name": "ProcessBuilder.start", "cwe": "CWE-78", "severity": "critical"},
+    {"name": "Statement.executeQuery", "cwe": "CWE-89", "severity": "high"},
+    {"name": "Statement.executeUpdate", "cwe": "CWE-89", "severity": "high"},
+    {"name": "PreparedStatement.executeQuery", "cwe": "CWE-89", "severity": "high"},
+    {"name": "PrintWriter.println", "cwe": "CWE-79", "severity": "medium"},
+    {"name": "PrintWriter.write", "cwe": "CWE-79", "severity": "medium"}
+  ],
+  "sanitizers": [
+    {"name": "ESAPI.encoder().encodeForHTML", "clears": ["CWE-79"]}
   ]
 }
