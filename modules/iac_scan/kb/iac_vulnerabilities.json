@@ -1,0 +1,13 @@
+[
+  {
+    "id": "IaC-DF-001",
+    "title": "Container running as root",
+    "cwe": "CWE-250",
+    "severity": "HIGH",
+    "cvss_score": 7.8,
+    "description": "Container runs as root by default.",
+    "cex_impact": "Full exchange server compromise.",
+    "fix": "Add USER instruction.",
+    "references": []
+  }
+]

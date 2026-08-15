@@ -1,0 +1,43 @@
+{
+  "title": "CEX Infrastructure Hardening Checklist",
+  "context": "AlphaNex Exchange Security Assessment",
+  "categories": [
+    {
+      "name": "Hot Wallet Infrastructure",
+      "controls": [
+        "Hot wallet container must NOT run as root",
+        "Hot wallet pod must have NetworkPolicy restricting ingress to signing service only",
+        "Private keys must NEVER appear in ENV, ConfigMap, or image layers",
+        "HSM or KMS required for key storage (not filesystem)",
+        "Multi-signature required for withdrawals > threshold"
+      ]
+    },
+    {
+      "name": "Cold Wallet / Custody",
+      "controls": [
+        "Cold wallet must be air-gapped (no internet connectivity)",
+        "MPC threshold signature scheme recommended (t-of-n)",
+        "Geographic key share distribution required",
+        "Hardware security module (HSM) for master key"
+      ]
+    },
+    {
+      "name": "Trading Engine",
+      "controls": [
+        "Rate limiting on order placement API",
+        "Order book access restricted by NetworkPolicy",
+        "Audit log for all order mutations (immutable)",
+        "Withdrawal velocity limits enforced at infrastructure level"
+      ]
+    },
+    {
+      "name": "API Security",
+      "controls": [
+        "TLS 1.3 minimum on all external endpoints",
+        "JWT token rotation < 15 minutes for trading sessions",
+        "IP allowlisting for institutional API access",
+        "DDoS protection required on all public endpoints"
+      ]
+    }
+  ]
+}

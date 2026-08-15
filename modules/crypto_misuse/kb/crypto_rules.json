@@ -1,0 +1,226 @@
+{
+  "version": "1.0",
+  "context": "CEX/Wallet cryptographic misuse detection",
+  "rules": [
+    {
+      "id": "CRYPTO-001",
+      "title": "MD5 Hash Function",
+      "cwe": "CWE-327",
+      "severity": "MEDIUM",
+      "cvss_score": 5.3,
+      "description": "MD5 is cryptographically broken. Collisions can be generated in seconds on modern hardware.",
+      "cex_impact": "If used for transaction hash verification or password storage, attacker can forge identical hashes.",
+      "recommendation": "Replace with SHA-256 or SHA-3. For passwords, use bcrypt/argon2/scrypt.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-002",
+      "title": "DES Cipher",
+      "cwe": "CWE-326",
+      "severity": "HIGH",
+      "cvss_score": 7.5,
+      "description": "DES uses a 56-bit key which is completely broken and can be cracked in hours.",
+      "cex_impact": "Plaintext can be recovered by an attacker, leading to data exposure.",
+      "recommendation": "Use AES-256-GCM.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-003",
+      "title": "AES-ECB Mode",
+      "cwe": "CWE-327",
+      "severity": "HIGH",
+      "cvss_score": 7.4,
+      "description": "AES-ECB mode leaks plaintext patterns.",
+      "cex_impact": "Attackers can observe repetitive structures in encrypted data.",
+      "recommendation": "Use AES in GCM mode.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-004",
+      "title": "Hardcoded Cryptographic Keys",
+      "cwe": "CWE-798",
+      "severity": "CRITICAL",
+      "cvss_score": 10.0,
+      "description": "Hardcoded keys expose systems to anyone with access to the source code.",
+      "cex_impact": "Attackers can decrypt traffic, forge JWTs, or steal user funds.",
+      "recommendation": "Use an HSM or key management system (AWS KMS, HashiCorp Vault).",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-005",
+      "title": "Non-Cryptographic PRNG",
+      "cwe": "CWE-338",
+      "severity": "HIGH",
+      "cvss_score": 7.5,
+      "description": "Using insecure random number generators for security functions.",
+      "cex_impact": "Attackers can predict tokens, passwords, or keys.",
+      "recommendation": "Use secrets.token_bytes or os.urandom in Python, crypto.randomBytes in JS.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-006",
+      "title": "JWT Algorithm None",
+      "cwe": "CWE-347",
+      "severity": "CRITICAL",
+      "cvss_score": 9.1,
+      "description": "JWT alg=none allows an attacker to bypass signature validation.",
+      "cex_impact": "Full account takeover and authentication bypass.",
+      "recommendation": "Always enforce strict signature validation.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-007",
+      "title": "JWT Signature Verification Disabled",
+      "cwe": "CWE-347",
+      "severity": "CRITICAL",
+      "cvss_score": 9.1,
+      "description": "JWT signature verification is disabled.",
+      "cex_impact": "Attackers can forge arbitrary JWTs.",
+      "recommendation": "Set verify=True and enforce signature checking.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-008",
+      "title": "TLS Verification Disabled",
+      "cwe": "CWE-295",
+      "severity": "HIGH",
+      "cvss_score": 7.4,
+      "description": "TLS certificate verification is disabled.",
+      "cex_impact": "Man-in-the-Middle (MitM) attacks.",
+      "recommendation": "Always verify TLS certificates.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-009",
+      "title": "Hardcoded Wallet Seed Phrase",
+      "cwe": "CWE-798",
+      "severity": "CRITICAL",
+      "cvss_score": 10.0,
+      "description": "Wallet seed phrase (mnemonic) is hardcoded.",
+      "cex_impact": "Immediate theft of all crypto assets associated with the wallet.",
+      "recommendation": "Store seeds in HSM or secure enclave.",
+      "languages": ["python", "javascript"]
+    },
+    {
+      "id": "CRYPTO-010",
+      "title": "Hardcoded Ethereum Private Key",
+      "cwe": "CWE-798",
+      "severity": "CRITICAL",
+      "cvss_score": 10.0,
+      "description": "Ethereum private key is hardcoded.",
+      "cex_impact": "Immediate theft of all funds.",
+      "recommendation": "Store keys securely.",
+      "languages": ["python", "javascript"]
+    },
+    {
+      "id": "CRYPTO-011",
+      "title": "Hardcoded Bitcoin WIF Private Key",
+      "cwe": "CWE-798",
+      "severity": "CRITICAL",
+      "cvss_score": 10.0,
+      "description": "Bitcoin private key is hardcoded.",
+      "cex_impact": "Immediate theft of all funds.",
+      "recommendation": "Store keys securely.",
+      "languages": ["python", "javascript"]
+    },
+    {
+      "id": "CRYPTO-012",
+      "title": "PBKDF2 Insufficient Iterations",
+      "cwe": "CWE-916",
+      "severity": "HIGH",
+      "cvss_score": 7.5,
+      "description": "PBKDF2 uses insufficient iterations.",
+      "cex_impact": "Passwords or keys can be cracked via brute-force easily.",
+      "recommendation": "Increase iterations to industry standards (e.g., >600,000 for PBKDF2-HMAC-SHA256).",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-013",
+      "title": "Deprecated TLS Version",
+      "cwe": "CWE-326",
+      "severity": "HIGH",
+      "cvss_score": 7.5,
+      "description": "Deprecated TLS versions like TLSv1.0 or SSLv3 are in use.",
+      "cex_impact": "Vulnerable to known attacks like POODLE or BEAST.",
+      "recommendation": "Require TLS 1.2 or TLS 1.3.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-014",
+      "title": "RC4 Cipher",
+      "cwe": "CWE-327",
+      "severity": "HIGH",
+      "cvss_score": 7.5,
+      "description": "RC4 is a broken stream cipher.",
+      "cex_impact": "Plaintext can be recovered.",
+      "recommendation": "Use AES-GCM or ChaCha20-Poly1305.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-015",
+      "title": "Short JWT Secret",
+      "cwe": "CWE-521",
+      "severity": "HIGH",
+      "cvss_score": 7.5,
+      "description": "JWT secret is too short.",
+      "cex_impact": "Signatures can be forged by brute-forcing the secret.",
+      "recommendation": "Use long, random secrets (at least 256 bits).",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-016",
+      "title": "RSA Without OAEP",
+      "cwe": "CWE-327",
+      "severity": "MEDIUM",
+      "cvss_score": 5.9,
+      "description": "RSA encryption without OAEP padding.",
+      "cex_impact": "Vulnerable to padding oracle attacks.",
+      "recommendation": "Always use RSA-OAEP.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-017",
+      "title": "Reused IV/Nonce",
+      "cwe": "CWE-329",
+      "severity": "HIGH",
+      "cvss_score": 7.5,
+      "description": "Initialization Vector or Nonce is reused.",
+      "cex_impact": "Breaks confidentiality of stream ciphers or GCM.",
+      "recommendation": "Generate a unique IV/nonce for every encryption operation.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-018",
+      "title": "Missing Salt in KDF",
+      "cwe": "CWE-759",
+      "severity": "HIGH",
+      "cvss_score": 7.5,
+      "description": "Key Derivation Function lacks a salt.",
+      "cex_impact": "Vulnerable to precomputation attacks (rainbow tables).",
+      "recommendation": "Always use a strong, unique salt.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-019",
+      "title": "SHA-1 Usage Detected",
+      "cwe": "CWE-327",
+      "severity": "MEDIUM",
+      "cvss_score": 5.3,
+      "description": "SHA-1 is vulnerable to collision attacks.",
+      "cex_impact": "Digital signatures can be forged.",
+      "recommendation": "Migrate to SHA-256 or SHA-3.",
+      "languages": ["python", "javascript", "java"]
+    },
+    {
+      "id": "CRYPTO-020",
+      "title": "Node.js TLS rejectUnauthorized: false",
+      "cwe": "CWE-295",
+      "severity": "HIGH",
+      "cvss_score": 7.4,
+      "description": "Disabling TLS certificate checking in Node.js.",
+      "cex_impact": "MitM attack.",
+      "recommendation": "Set rejectUnauthorized to true.",
+      "languages": ["javascript"]
+    }
+  ]
+}

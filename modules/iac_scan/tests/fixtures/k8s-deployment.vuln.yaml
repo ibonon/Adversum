@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hot-wallet-service
+spec:
+  template:
+    spec:
+      containers:
+      - name: wallet
+        image: alphanex/hot-wallet:latest
+        securityContext:
+          privileged: true    # VULN
+          runAsUser: 0        # VULN: root
+        # VULN: pas de resource limits
+        env:
+        - name: PRIVATE_KEY
+          value: "0xdeadbeef..."  # VULN: clé privée hardcodée

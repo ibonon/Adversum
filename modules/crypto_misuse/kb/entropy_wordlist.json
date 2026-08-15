@@ -1,0 +1,14 @@
+{
+  "high_entropy_threshold": 3.5,
+  "min_length_for_entropy_check": 16,
+  "suspect_variable_names": [
+    "private_key", "secret", "api_key", "password", "passwd",
+    "mnemonic", "seed", "wallet", "token", "signing_key",
+    "hmac", "jwt_secret", "encryption_key", "master_key",
+    "aws_secret", "azure_key", "gcp_key"
+  ],
+  "value_blacklist": [
+    "admin", "password", "123456", "test", "dev", "local",
+    "changeme", "secret", "default", "example"
+  ]
+}
