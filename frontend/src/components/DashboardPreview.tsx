@@ -76,6 +76,36 @@ const DashboardPreview = () => {
 
             {/* Dashboard Content */}
             <div className="p-8 bg-background/30">
+              {/* Git Repo Scan Bar */}
+              <div className="mb-8 p-4 rounded-2xl bg-card/60 border border-border/40 backdrop-blur-md">
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = (e.currentTarget.elements.namedItem('repoUrl') as HTMLInputElement)?.value;
+                    if (input) {
+                      alert(`Scan en cours de : ${input}\n\nL'API clone le dépôt et exécute les modules Adversum (Solidity, Crypto, IaC, Taint).`);
+                    }
+                  }} 
+                  className="flex items-center gap-3"
+                >
+                  <div className="relative flex-1">
+                    <input 
+                      type="url"
+                      name="repoUrl"
+                      placeholder="https://github.com/votre-user/votre-repo..."
+                      className="w-full px-4 py-2.5 rounded-xl bg-background/80 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground/60"
+                      required
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/25 shrink-0"
+                  >
+                    🚀 Analyser ce Dépôt
+                  </button>
+                </form>
+              </div>
+
               {/* Stats Row */}
               <div className="grid grid-cols-4 gap-4 mb-8">
                 {[

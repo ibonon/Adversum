@@ -772,8 +772,69 @@ class ScanAllRequest(BaseModel):
     all_modules: bool = True
     min_severity: str = "INFO"
 
+class CloneAndScanRequest(BaseModel):
+    repo_url: str
+    all_modules: bool = True
+
 class RemediateRequest(BaseModel):
     findings: List[Dict[str, Any]]
+
+
+@app.post("/api/v1/scan/clone-and-scan", tags=["Scanner"])
+async def clone_and_scan_endpoint(
+    payload: CloneAndScanRequest,
+    api_key: str = Depends(get_api_key)
+):
+    """
+    Clones a remote git repository to a temporary directory and runs scan_all.py on it.
+    """
+    import tempfile
+    import shutil
+    import subprocess
+
+    temp_dir = tempfile.mkdtemp(prefix="adversum_scan_")
+    try:
+        # Clone repository
+        clone_res = subprocess.run(
+            ["git", "clone", "--depth", "1", payload.repo_url, temp_dir],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        if clone_res.returncode != 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to clone repository: {clone_res.stderr}"
+            )
+
+        # Run scan
+        script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
+        cmd = [sys.executable, script_path, "--format", "json", "--target", temp_dir]
+        if payload.all_modules:
+            cmd.append("--all")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+
+        raw = stdout.decode("utf-8", errors="ignore")
+        json_start = raw.find("{")
+        if json_start != -1:
+            try:
+                res = json.loads(raw[json_start:])
+                res["repo_url"] = payload.repo_url
+                return res
+            except json.JSONDecodeError:
+                pass
+
+        return {"raw_output": raw, "error": stderr.decode("utf-8", errors="ignore")}
+
+    finally:
+        # Clean up temporary directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @app.post("/api/v1/scan/all", tags=["Scanner"])
