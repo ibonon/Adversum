@@ -58,6 +58,11 @@ pub fn walk_stmt<'ast, V: Visitor<'ast>>(visitor: &mut V, stmt: &'ast Stmt) {
                 visitor.visit_stmt(s);
             }
         }
+        Stmt::FunctionDef { body, .. } => {
+            for s in body {
+                visitor.visit_stmt(s);
+            }
+        }
     }
 }
 

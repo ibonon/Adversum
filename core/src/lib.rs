@@ -8,8 +8,8 @@
 pub mod adversarial;
 pub mod safety;
 pub mod learning;
-pub mod rules;
-pub mod attack_graph;
+#[path = "../rules/mod.rs"] pub mod rules;
+#[path = "../attack_graph/mod.rs"] pub mod attack_graph;
 #[path = "../kb/mod.rs"] pub mod kb;
 #[path = "../scoring/mod.rs"] pub mod scoring;
 #[path = "../sarif/mod.rs"] pub mod sarif;
