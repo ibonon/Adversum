@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, TrendingUp, Download, FileCode, Wrench } from 'lucide-react';
 
 const DashboardPreview = () => {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -23,9 +23,10 @@ const DashboardPreview = () => {
   }, []);
 
   const vulnerabilities = [
-    { severity: 'critical', name: 'SQL Injection', file: 'api/users.ts', status: 'fixed' },
-    { severity: 'high', name: 'XSS Vulnerability', file: 'components/Comment.tsx', status: 'pending' },
-    { severity: 'medium', name: 'Insecure Cookie', file: 'auth/session.ts', status: 'analyzing' },
+    { severity: 'critical', name: 'Reentrancy', file: 'contracts/Vault.sol', module: 'Solidity', status: 'analyzing' },
+    { severity: 'high', name: 'Hardcoded JWT Key', file: 'api/auth.py', module: 'Crypto', status: 'pending' },
+    { severity: 'high', name: 'Root User in Docker', file: 'infra/Dockerfile', module: 'IaC', status: 'fixed' },
+    { severity: 'medium', name: 'Tainted Data Flow', file: 'core/parser.js', module: 'Taint Core', status: 'analyzing' },
   ];
 
   return (
@@ -99,9 +100,19 @@ const DashboardPreview = () => {
 
               {/* Vulnerabilities List */}
               <div className="rounded-2xl bg-card/30 border border-border/30 p-6">
-                <h3 className="text-sm font-medium text-muted-foreground mb-4 uppercase tracking-wide">
-                  Vulnérabilités récentes
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                    Vulnérabilités récentes (Multi-Modules)
+                  </h3>
+                  <div className="flex gap-2">
+                    <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors">
+                      <FileCode className="w-3.5 h-3.5" /> Export SARIF 2.1
+                    </button>
+                    <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors">
+                      <Download className="w-3.5 h-3.5" /> Export Markdown
+                    </button>
+                  </div>
+                </div>
                 <div className="space-y-3">
                   {vulnerabilities.map((vuln, i) => (
                     <div
@@ -122,21 +133,32 @@ const DashboardPreview = () => {
                           }`}
                         />
                         <div>
-                          <div className="text-sm font-medium">{vuln.name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-medium">{vuln.name}</div>
+                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-muted/50 border border-border/50 text-muted-foreground">
+                              {vuln.module}
+                            </span>
+                          </div>
                           <div className="text-xs text-muted-foreground font-mono">{vuln.file}</div>
                         </div>
                       </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          vuln.status === 'fixed'
-                            ? 'bg-success/10 text-success'
-                            : vuln.status === 'pending'
-                            ? 'bg-warning/10 text-warning'
-                            : 'bg-primary/10 text-primary'
-                        }`}
-                      >
-                        {vuln.status === 'fixed' ? 'Corrigé' : vuln.status === 'pending' ? 'En attente' : 'Analyse...'}
-                      </span>
+                      <div className="flex items-center gap-4">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            vuln.status === 'fixed'
+                              ? 'bg-success/10 text-success'
+                              : vuln.status === 'pending'
+                              ? 'bg-warning/10 text-warning'
+                              : 'bg-primary/10 text-primary'
+                          }`}
+                        >
+                          {vuln.status === 'fixed' ? 'Corrigé' : vuln.status === 'pending' ? 'En attente' : 'Analyse...'}
+                        </span>
+                        
+                        <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
+                          <Wrench className="w-3.5 h-3.5" /> Auto-Fix / Apply Patch
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

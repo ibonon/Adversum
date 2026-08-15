@@ -190,6 +190,15 @@ impl<'a> TaintAnalysis<'a> {
                             }
                         }
                     }
+                    
+                    // Apply tainted fields to caller's self object
+                    if !summary.tainted_self_fields.is_empty() {
+                        if let Some(crate::ir::types::Operand::Var(self_sym)) = args.first() {
+                            for field in &summary.tainted_self_fields {
+                                state.taint_field(*self_sym, *field);
+                            }
+                        }
+                    }
                 }
 
                 // Rule 1: Identification of Sources

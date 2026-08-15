@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Lightweight handle to an interned string.
 /// Using u32 for compactness (supports 4 billion strings, sufficient).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct SymbolId(pub u32);
 
 impl SymbolId {

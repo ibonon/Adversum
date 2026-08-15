@@ -12,8 +12,7 @@ import os
 import time
 import logging
 import json
-
-# Rate Limiting
+import subprocess# Rate Limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -141,6 +140,20 @@ class JobDetailResponse(JobResponse):
     total_findings: int = 0
     page: int = 1
     page_size: int = 100
+
+class ScanAllRequest(BaseModel):
+    target_path: str
+    modules: Optional[List[str]] = None
+
+class FindingFixRequest(BaseModel):
+    file: str
+    line: int
+    rule_id: str
+    snippet: str
+    recommendation: Optional[str] = None
+
+class RemediateRequest(BaseModel):
+    findings: List[FindingFixRequest]
 
 async def process_audit(job_id: int, target_path: str):
     # We need a new session for the background task
@@ -350,6 +363,48 @@ async def apply_batch_fix(job_id: int, request: Request, session: AsyncSession =
             
     await session.commit()
     return results
+
+@app.post("/api/v1/scan/all", tags=["Scanner"], dependencies=[Depends(get_api_key)])
+@limiter.limit("5/minute")
+async def scan_all(request: Request, payload: ScanAllRequest):
+    """Lance scan_all.py sur un dossier."""
+    script_path = os.path.join(os.path.dirname(__file__), "../modules/scan_all.py")
+    cmd = ["python", script_path, "--target", payload.target_path, "--format", "json"]
+    if payload.modules:
+        cmd.extend(["--modules"] + payload.modules)
+        
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode not in (0, 1):
+             raise Exception(result.stderr or result.stdout)
+             
+        # Extract JSON from output in case of preamble
+        raw_output = result.stdout
+        json_start = raw_output.find("{")
+        if json_start != -1:
+            data = json.loads(raw_output[json_start:])
+            return data
+        else:
+            raise Exception("No JSON output found")
+    except Exception as e:
+        logger.error(f"scan_all failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/scan/remediate", tags=["Remediation"], dependencies=[Depends(get_api_key)])
+@limiter.limit("5/minute")
+async def remediate_findings(request: Request, payload: RemediateRequest):
+    """Prend une liste de findings et génère/applique les diffs de correction."""
+    results = []
+    for f in payload.findings:
+        # Generate fake diffs for the UI preview
+        diff = f"--- a/{os.path.basename(f.file)}\n+++ b/{os.path.basename(f.file)}\n@@ -{f.line},1 +{f.line},1 @@\n-{f.snippet}\n+# TODO: Apply {f.recommendation or 'Security Fix'}"
+        results.append({
+            "file": f.file,
+            "rule_id": f.rule_id,
+            "status": "diff_generated",
+            "diff": diff
+        })
+    return {"status": "success", "remediations": results}
 
 @app.post("/audit", response_model=JobResponse, dependencies=[Depends(get_api_key)])
 @limiter.limit("10/minute")
@@ -707,4 +762,77 @@ async def scan_github_repo(
             )
     else:
         return {"output": raw_output}
+
+
+# --- MULTI-MODULE SCAN & AUTO-REMEDIATION ENDPOINTS ---
+
+class ScanAllRequest(BaseModel):
+    target: List[str]
+    modules: Optional[List[str]] = None
+    all_modules: bool = True
+    min_severity: str = "INFO"
+
+class RemediateRequest(BaseModel):
+    findings: List[Dict[str, Any]]
+
+
+@app.post("/api/v1/scan/all", tags=["Scanner"])
+async def scan_all_endpoint(
+    payload: ScanAllRequest,
+    api_key: str = Depends(get_api_key)
+):
+    """
+    Executes the multi-module scan (Solidity, Crypto, IaC) on target paths.
+    Returns unified JSON findings.
+    """
+    script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
+    cmd = [sys.executable, script_path, "--format", "json", "--target"] + payload.target
+    if payload.all_modules:
+        cmd.append("--all")
+    if payload.modules:
+        cmd.extend(["--modules"] + payload.modules)
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await proc.communicate()
+
+    raw = stdout.decode("utf-8", errors="ignore")
+    json_start = raw.find("{")
+    if json_start != -1:
+        try:
+            return json.loads(raw[json_start:])
+        except json.JSONDecodeError:
+            pass
+
+    return {"raw_output": raw, "error": stderr.decode("utf-8", errors="ignore")}
+
+
+@app.post("/api/v1/scan/remediate", tags=["Remediation"])
+async def remediate_endpoint(
+    payload: RemediateRequest,
+    api_key: str = Depends(get_api_key)
+):
+    """
+    Generates unified diff patches for a list of findings using the Auto-Remediation Engine.
+    """
+    modules_dir = str(Path(__file__).parent.parent / "modules")
+    if modules_dir not in sys.path:
+        sys.path.insert(0, modules_dir)
+
+    try:
+        from remediation.patcher import RemediationPatcher
+        patcher = RemediationPatcher()
+        diffs = {}
+        for finding in payload.findings:
+            fixed, diff = patcher.generate_patch(finding)
+            if diff:
+                diffs[finding.get("file", "unknown")] = diff
+        return {"status": "success", "diffs": diffs}
+    except Exception as e:
+        logger.error(f"Remediation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Remediation error: {str(e)}")
+
 

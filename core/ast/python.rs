@@ -125,10 +125,6 @@ impl<'a> PythonParser<'a> {
                 })
             }
 
-            // ── Function definition -- lower the body ────────────────────────
-            "function_definition" => {
-                let body_node = node.child_by_field_name("body")?;
-                let body = self.collect_block(body_node);
             // ── Return statement ────────────────────────────────────────────
             "return_statement" => {
                 let value = if let Some(expr_node) = node.child(1) {
@@ -150,9 +146,9 @@ impl<'a> PythonParser<'a> {
                             break;
                         }
                     }
-                    (def?, span)
+                    (def?, span.clone())
                 } else {
-                    (node, span)
+                    (node, span.clone())
                 };
 
                 let name_node = def_node.child_by_field_name("name")?;

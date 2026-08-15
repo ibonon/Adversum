@@ -103,6 +103,8 @@ pub fn finding_to_report(f: &Finding, instr_idx: usize) -> crate::rules::types::
         instr_idx,
         line: Some(f.line),
         file_path: f.file_path.clone(),
+        source_var: None,
+        output_var: None,
     }
 }
 
@@ -276,8 +278,8 @@ impl<'a> Pipeline<'a> {
             AnalysisLanguage::Java => crate::kb::get_java_kb(),
         };
         
-        for src in kb.sources {
-            config.sources.push(interner.intern(&src));
+        for src in &kb.sources {
+            config.sources.push(interner.intern(src));
         }
         
         for sink in kb.sink_names() {

@@ -364,6 +364,10 @@ def main():
                         help="Run all modules regardless of file types")
     parser.add_argument("--min-severity", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
                         default="INFO", help="Minimum severity to report")
+    parser.add_argument("--fix", action="store_true",
+                        help="Automatically apply fixes to vulnerable files")
+    parser.add_argument("--diff", action="store_true",
+                        help="Show recommended diffs for vulnerable files")
     args = parser.parse_args()
 
     # Détection des cibles
@@ -397,6 +401,42 @@ def main():
     stats: dict[str, int] = {"total": len(all_findings)}
     for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
         stats[sev] = sum(1 for f in all_findings if f["severity"] == sev)
+
+    # Remediation (Auto-Fix & Diff)
+    if args.fix or args.diff:
+        try:
+            sys.path.insert(0, str(MODULES_DIR))
+            from remediation.patcher import AutoPatcher
+            patcher = AutoPatcher()
+            
+            findings_by_file = {}
+            for f in all_findings:
+                filepath = f.get("file")
+                if filepath and os.path.isfile(filepath):
+                    findings_by_file.setdefault(filepath, []).append(f)
+                    
+            for filepath, file_findings in findings_by_file.items():
+                try:
+                    with open(filepath, "r", encoding="utf-8") as file_obj:
+                        content = file_obj.read()
+                        
+                    patched_content = content
+                    for finding in file_findings:
+                        patched_content, _ = patcher.generate_patch(finding, patched_content)
+                        
+                    if patched_content != content:
+                        diff = patcher._generate_unified_diff(content, patched_content, filepath)
+                        if args.diff:
+                            print(f"\n{CYAN}{BOLD}[DIFF]{RESET} {filepath}")
+                            print(diff)
+                        if args.fix:
+                            with open(filepath, "w", encoding="utf-8") as file_obj:
+                                file_obj.write(patched_content)
+                            print(f"{GREEN}[FIX] Applied fixes to {filepath}{RESET}")
+                except Exception as ex:
+                    print(f"{YELLOW}[WARN] Failed to remediate {filepath}: {ex}{RESET}", file=sys.stderr)
+        except ImportError as e:
+            print(f"{YELLOW}[WARN] Remediation module not available: {e}{RESET}", file=sys.stderr)
 
     # Génération de l'output
     output_text: str = ""

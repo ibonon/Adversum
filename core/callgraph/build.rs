@@ -16,8 +16,13 @@ impl<'a> CallGraphBuilder<'a> {
         let mut cg = CallGraph::new();
 
         // Register all functions as nodes
-        for (func_id, _func_ir) in &self.program.functions {
-            cg.nodes.insert(*func_id, CallNode { func_name: *func_id });
+        for (func_id, func_ir) in &self.program.functions {
+            let is_method = func_ir.params.first().is_some();
+            cg.nodes.insert(*func_id, CallNode { 
+                func_name: *func_id, 
+                is_method, 
+                class_sym: None 
+            });
             cg.callees.insert(*func_id, HashSet::new());
         }
 

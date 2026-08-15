@@ -5,6 +5,8 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallNode {
     pub func_name: SymbolId,
+    pub is_method: bool,
+    pub class_sym: Option<SymbolId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -8,6 +8,8 @@ pub struct FunctionSummary {
     /// Indices of parameters that are passed to a sensitive sink inside this function.
     /// Maps parameter index to the sink function's SymbolId.
     pub sink_params: HashMap<usize, Vec<SymbolId>>,
+    pub tainted_self_fields: HashSet<SymbolId>,
+    pub reads_self_fields: HashSet<SymbolId>,
 }
 
 impl FunctionSummary {
@@ -15,6 +17,8 @@ impl FunctionSummary {
         Self {
             tainted_returns: HashSet::new(),
             sink_params: HashMap::new(),
+            tainted_self_fields: HashSet::new(),
+            reads_self_fields: HashSet::new(),
         }
     }
 }
@@ -31,15 +35,15 @@ pub fn compute_summaries(module: &Module, cg: &CallGraph, config: &TaintConfig) 
     // Process functions (can be optimized with topological sort later)
     for (func_id, func_ir) in &module.program.functions {
         let mut summary = FunctionSummary::new();
-        
-        let cfg = CfgBuilder::new(&crate::ir::types::Program { instructions: func_ir.instructions.clone(), functions: HashMap::new() }).build();
+        let dummy_prog = crate::ir::types::Program { instructions: func_ir.instructions.clone(), functions: HashMap::new() };
+        let cfg = CfgBuilder::new(&dummy_prog).build();
         
         for (i, param_sym) in func_ir.params.iter().enumerate() {
             let mut initial_state = TaintState::new();
             initial_state.taint(&crate::ir::types::Operand::Var(*param_sym));
             
             let mut analysis = TaintAnalysis::new(
-                &crate::ir::types::Program { instructions: func_ir.instructions.clone(), functions: HashMap::new() },
+                &dummy_prog,
                 &cfg,
                 config.clone(),
                 &summaries
@@ -51,6 +55,13 @@ pub fn compute_summaries(module: &Module, cg: &CallGraph, config: &TaintConfig) 
             let mut returns_tainted = false;
             for exit_block in &cfg.exits {
                 if let Some(state) = analysis.get_exit_state(*exit_block) {
+                    if i == 0 {
+                        for ((obj, field), is_tainted) in &state.tainted_fields {
+                            if *obj == *param_sym && *is_tainted {
+                                summary.tainted_self_fields.insert(*field);
+                            }
+                        }
+                    }
                     let blk = cfg.get_block(*exit_block).unwrap();
                     if blk.instr_range.end > 0 {
                         let last_idx = blk.instr_range.end - 1;
@@ -74,6 +85,16 @@ pub fn compute_summaries(module: &Module, cg: &CallGraph, config: &TaintConfig) 
             }
             if !sinks_reached.is_empty() {
                 summary.sink_params.insert(i, sinks_reached);
+            }
+        }
+        
+        if let Some(self_sym) = func_ir.params.first() {
+            for instr in &func_ir.instructions {
+                if let crate::ir::types::Instr::FieldLoad { obj, field, .. } = instr {
+                    if obj == self_sym {
+                        summary.reads_self_fields.insert(*field);
+                    }
+                }
             }
         }
         
