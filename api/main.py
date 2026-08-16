@@ -778,6 +778,8 @@ class ScanAllRequest(BaseModel):
 class CloneAndScanRequest(BaseModel):
     repo_url: str
     all_modules: bool = True
+    cex_audit: bool = True
+    format: str = "json"
 
 class RemediateRequest(BaseModel):
     findings: List[Dict[str, Any]]
@@ -802,9 +804,11 @@ async def clone_and_scan_endpoint(
     if os.path.exists(target_input):
         print(f"\033[93m[*] Cible détectée : Dossier Local ({target_input}). Analyse immédiate en cours...\033[0m", flush=True)
         script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
-        cmd = [sys.executable, script_path, "--format", "json", "--target", target_input]
+        cmd = [sys.executable, script_path, "--format", payload.format, "--target", target_input]
         if payload.all_modules:
             cmd.append("--all")
+        if payload.cex_audit:
+            cmd.append("--cex-audit")
         scan_res = await asyncio.to_thread(
             subprocess.run,
             cmd,
@@ -814,6 +818,8 @@ async def clone_and_scan_endpoint(
         )
         print(f"\033[92m[✓] Analyse locale terminée avec succès !\033[0m", flush=True)
         raw = scan_res.stdout
+        if payload.format == "cex_report":
+            return {"repo_url": target_input, "markdown_report": raw}
         json_start = raw.find("{")
         if json_start != -1:
             try:
@@ -866,9 +872,11 @@ async def clone_and_scan_endpoint(
 
         # Build scan command
         script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
-        cmd = [sys.executable, script_path, "--format", "json", "--target", temp_dir]
+        cmd = [sys.executable, script_path, "--format", payload.format, "--target", temp_dir]
         if payload.all_modules:
             cmd.append("--all")
+        if payload.cex_audit:
+            cmd.append("--cex-audit")
 
         # Run scan via background thread to avoid Windows asyncio subprocess transport issues
         try:
@@ -886,6 +894,8 @@ async def clone_and_scan_endpoint(
             )
 
         raw = scan_res.stdout
+        if payload.format == "cex_report":
+            return {"repo_url": payload.repo_url, "markdown_report": raw}
         json_start = raw.find("{")
         if json_start != -1:
             try:
@@ -896,6 +906,7 @@ async def clone_and_scan_endpoint(
                 pass
 
         return {"raw_output": raw, "error": scan_res.stderr}
+
 
     finally:
         # Clean up temporary directory

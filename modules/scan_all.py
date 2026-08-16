@@ -53,7 +53,7 @@ def detect_targets(paths: list[str]) -> dict:
     Détecte automatiquement quels modules lancer selon les types de fichiers trouvés.
     Retourne un dict {module: [paths]}.
     """
-    targets = {"solidity": [], "crypto": [], "iac": []}
+    targets = {"solidity": [], "crypto": [], "iac": [], "cex_api": []}
 
     SOLIDITY_EXT  = {".sol", ".vy"}
     CRYPTO_EXT    = {".py", ".js", ".ts", ".java"}
@@ -79,6 +79,7 @@ def detect_targets(paths: list[str]) -> dict:
                 targets["solidity"].append(str(p))
             elif ext in CRYPTO_EXT:
                 targets["crypto"].append(str(p))
+                targets["cex_api"].append(str(p))
             elif ext in {".tf", ".yaml", ".yml"} or any(pat in name for pat in IAC_PATTERNS):
                 targets["iac"].append(str(p))
         elif p.is_dir():
@@ -105,6 +106,7 @@ def detect_targets(paths: list[str]) -> dict:
                         targets["solidity"].append(full_path)
                     elif ext in CRYPTO_EXT:
                         targets["crypto"].append(full_path)
+                        targets["cex_api"].append(full_path)
                     elif (ext in {".tf", ".yaml", ".yml"}
                           or filename == "Dockerfile"
                           or "docker-compose" in filename
@@ -135,14 +137,13 @@ def run_solidity(target_files: list[str]) -> list[dict]:
     if not target_files:
         return []
     try:
-        sys.path.insert(0, str(MODULES_DIR / "solidity"))
-        from scanner import SolidityScanner  # type: ignore
-        import rules as solidity_rules
+        from solidity.scanner import SolidityScanner  # type: ignore
+        import solidity.rules as solidity_rules
         kb_path = os.path.join(MODULES_DIR, "solidity", "kb", "vulnerabilities.json")
         scanner = SolidityScanner(rules_package=solidity_rules, kb_path=kb_path)
         findings = _scan_files_parallel(scanner, target_files)
         return [_normalize(f, "solidity") for f in findings]
-    except ImportError as e:
+    except Exception as e:
         print(f"{YELLOW}[WARN] Solidity module not available: {e}{RESET}", file=sys.stderr)
         return []
 
@@ -152,13 +153,11 @@ def run_crypto(target_files: list[str]) -> list[dict]:
     if not target_files:
         return []
     try:
-        sys.modules.pop('scanner', None)
-        sys.path.insert(0, str(MODULES_DIR / "crypto_misuse"))
-        from scanner import CryptoMisuseScanner  # type: ignore
+        from crypto_misuse.scanner import CryptoMisuseScanner  # type: ignore
         scanner = CryptoMisuseScanner()
         findings = _scan_files_parallel(scanner, target_files)
         return [_normalize(f, "crypto") for f in findings]
-    except ImportError as e:
+    except Exception as e:
         print(f"{YELLOW}[WARN] Crypto module not available: {e}{RESET}", file=sys.stderr)
         return []
 
@@ -168,15 +167,50 @@ def run_iac(target_files: list[str]) -> list[dict]:
     if not target_files:
         return []
     try:
-        sys.modules.pop('scanner', None)
-        sys.path.insert(0, str(MODULES_DIR / "iac_scan"))
-        from scanner import IaCScanner  # type: ignore
+        from iac_scan.scanner import IaCScanner  # type: ignore
         scanner = IaCScanner()
         findings = _scan_files_parallel(scanner, target_files)
         return [_normalize(f, "iac") for f in findings]
-    except ImportError as e:
+    except Exception as e:
         print(f"{YELLOW}[WARN] IaC module not available: {e}{RESET}", file=sys.stderr)
         return []
+
+
+def run_cex_api(target_files: list[str]) -> list[dict]:
+    """Lance le scanner CEX Trading API & Matching Engine."""
+    if not target_files:
+        return []
+    try:
+        from cex_api.scanner import CEXApiScanner  # type: ignore
+        scanner = CEXApiScanner()
+        findings = _scan_files_parallel(scanner, target_files)
+        return [_normalize(f, "cex_api") for f in findings]
+    except Exception as e:
+        print(f"{YELLOW}[WARN] CEX API module not available: {e}{RESET}", file=sys.stderr)
+        return []
+
+
+def run_ccss_audit(target_dir: str):
+    """Lance l'évaluation de conformité CCSS (CryptoCurrency Security Standard)."""
+    try:
+        from ccss_audit.checker import CCSSChecker  # type: ignore
+        checker = CCSSChecker()
+        return checker.audit_target(target_dir)
+    except Exception as e:
+        print(f"{YELLOW}[WARN] CCSS module not available: {e}{RESET}", file=sys.stderr)
+        return None
+
+
+def run_threat_model(target_dir: str):
+    """Lance le générateur de modélisation des menaces CEX STRIDE."""
+    try:
+        from threat_model.generator import CEXThreatModelGenerator  # type: ignore
+        gen = CEXThreatModelGenerator()
+        return gen.generate_model(target_dir)
+    except Exception as e:
+        print(f"{YELLOW}[WARN] Threat Model module not available: {e}{RESET}", file=sys.stderr)
+        return None
+
 
 
 def _normalize(finding, module: str) -> dict:
@@ -381,6 +415,12 @@ def to_markdown(findings: list[dict], targets: list[str], stats: dict) -> str:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
+    if hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser(
         description="Adversum Unified Security Scanner — CEX Audit",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -388,13 +428,14 @@ def main():
     )
     parser.add_argument("--target", nargs="+", required=True, metavar="PATH",
                         help="Files or directories to scan")
-    parser.add_argument("--format", choices=["text", "sarif", "markdown", "json"],
+    parser.add_argument("--format", choices=["text", "sarif", "markdown", "json", "cex_report"],
                         default="text", help="Output format (default: text)")
     parser.add_argument("--output", metavar="FILE",
                         help="Write output to file (default: stdout)")
     parser.add_argument("--modules", nargs="+",
-                        choices=["solidity", "crypto", "iac"],
+                        choices=["solidity", "crypto", "iac", "cex_api"],
                         help="Force specific modules (default: auto-detect)")
+    parser.add_argument("--cex-audit", action="store_true", help="Run comprehensive institutional CEX audit suite (CCSS, API, SMT, Threat Model)")
     parser.add_argument("--all", action="store_true",
                         help="Run all modules regardless of file types")
     parser.add_argument("--min-severity", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
@@ -424,6 +465,21 @@ def main():
     if "iac" in active_modules and targets_map.get("iac"):
         print(f"{CYAN}[*] Running IaC scanner...{RESET}", file=sys.stderr)
         all_findings.extend(run_iac(targets_map["iac"]))
+
+    if ("cex_api" in active_modules or args.cex_audit) and targets_map.get("cex_api"):
+        print(f"{CYAN}[*] Running CEX API & Order Book scanner...{RESET}", file=sys.stderr)
+        all_findings.extend(run_cex_api(targets_map["cex_api"]))
+
+    # CCSS & Threat Modeling for CEX
+    ccss_report = None
+    threat_report = None
+    target_root = args.target[0] if args.target else "."
+
+    if args.cex_audit or args.format == "cex_report":
+        print(f"{CYAN}[*] Running CCSS v3.0 Compliance Audit...{RESET}", file=sys.stderr)
+        ccss_report = run_ccss_audit(target_root)
+        print(f"{CYAN}[*] Generating CEX STRIDE Threat Model...{RESET}", file=sys.stderr)
+        threat_report = run_threat_model(target_root)
 
     # Filtrer par sévérité minimum
     sev_filter = SEVERITY_ORDER.get(args.min_severity, 4)
@@ -479,12 +535,26 @@ def main():
         output_text = json.dumps(to_sarif(all_findings, args.target), indent=2)
     elif args.format == "markdown":
         output_text = to_markdown(all_findings, args.target, stats)
+    elif args.format == "cex_report":
+        if not ccss_report:
+            ccss_report = run_ccss_audit(target_root)
+        if not threat_report:
+            threat_report = run_threat_model(target_root)
+        from cex_report.generator import CEXReportGenerator
+        gen = CEXReportGenerator()
+        output_text = gen.generate_markdown("AlphaNex Exchange", target_root, all_findings, ccss_report, threat_report)
     elif args.format == "json":
+        from dataclasses import asdict, is_dataclass
+        ccss_dict = asdict(ccss_report) if (ccss_report and is_dataclass(ccss_report)) else None
+        threat_dict = asdict(threat_report) if (threat_report and is_dataclass(threat_report)) else None
+
         output_text = json.dumps({
             "version": "5.0",
             "tool": "adversum",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": stats,
+            "ccss_compliance": ccss_dict,
+            "threat_model": threat_dict,
             "findings": all_findings,
         }, indent=2)
 

@@ -1,0 +1,246 @@
+{
+  "version": "3.0",
+  "standard": "CryptoCurrency Security Standard (CCSS)",
+  "organization": "CryptoCurrency Certification Consortium (C4)",
+  "description": "Comprehensive security requirements for centralized cryptocurrency exchanges, custodial wallets, and financial Web3 applications.",
+  "levels": {
+    "Level 1": "Standard security baseline: Multi-signature or MPC custody, basic hot/cold separation, dual control on key generation.",
+    "Level 2": "Enhanced enterprise security: Hardware security modules (HSMs, FIPS 140-2/3 Level 3), automated velocity limits, tamper-proof WORM audit logs, geographic seed distribution.",
+    "Level 3": "Institutional banking-grade: Zero-trust MPC quorum, hardware-isolated air-gapped signing ceremony, real-time Merkle tree Proof of Reserves, biometric/FIDO2 hardware dual authorization."
+  },
+  "aspects": [
+    {
+      "id": "CCSS-01",
+      "name": "Key / Seed Generation",
+      "category": "Key Management",
+      "weight": 10,
+      "criteria": {
+        "level_1": "Keys/seeds generated using a cryptographically secure pseudo-random number generator (CSPRNG).",
+        "level_2": "Keys generated inside an air-gapped environment or certified HSM with hardware entropy source.",
+        "level_3": "Multi-party ceremony with independent keyholders, video audit log, and Shamir Secret Sharing."
+      },
+      "indicators": [
+        "secrets.token_bytes",
+        "os.urandom",
+        "crypto.randomBytes",
+        "SecureRandom",
+        "HSM",
+        "KMS",
+        "airgap",
+        "entropy"
+      ],
+      "risks": [
+        "Deterministic or weak PRNG leading to private key derivation and catastrophic fund drainage."
+      ]
+    },
+    {
+      "id": "CCSS-02",
+      "name": "Key / Seed Storage",
+      "category": "Key Management",
+      "weight": 12,
+      "criteria": {
+        "level_1": "Private keys encrypted at rest using AES-256-GCM or ChaCha20-Poly1305.",
+        "level_2": "Keys stored in FIPS 140-2/3 Level 3 Hardware Security Modules (HSMs) or AWS CloudHSM / HashiCorp Vault.",
+        "level_3": "Pure Multi-Party Computation (MPC) threshold scheme with key shares never reconstructed in a single memory space."
+      },
+      "indicators": [
+        "vault",
+        "kms",
+        "hsm",
+        "mpc",
+        "threshold",
+        "aes-gcm",
+        "chacha20",
+        "fips"
+      ],
+      "risks": [
+        "Direct plaintext key storage or weak encryption enabling server compromise to result in private key exfiltration."
+      ]
+    },
+    {
+      "id": "CCSS-03",
+      "name": "Key / Seed Usage & Multi-Signature Quorum",
+      "category": "Access Control",
+      "weight": 15,
+      "criteria": {
+        "level_1": "Single signatures prohibited for master/custody wallets. Minimum 2-of-3 multi-sig or 2-of-2 MPC.",
+        "level_2": "Minimum 3-of-5 threshold multi-sig with distinct physical keyholders across separate networks.",
+        "level_3": "Dynamic threshold quorums with biometric hardware confirmation (FIDO2/WebAuthn) and time-bounded signing sessions."
+      },
+      "indicators": [
+        "multisig",
+        "gnosis",
+        "safe",
+        "quorum",
+        "threshold",
+        "threshold_sign",
+        "mpc_sign",
+        "m_of_n"
+      ],
+      "risks": [
+        "Single Point of Failure (SPoF) where compromise of one server/admin authorizes arbitrary fund transfers."
+      ]
+    },
+    {
+      "id": "CCSS-04",
+      "name": "Key Compromise & Revocation Policy",
+      "category": "Incident Response",
+      "weight": 8,
+      "criteria": {
+        "level_1": "Documented emergency procedure for key revocation and fund migration to recovery address.",
+        "level_2": "Automated emergency circuit-breaker (freeze contracts / pause transfers) triggered by anomaly detection.",
+        "level_3": "Hardware-enforced instant quorum rotation without service interruption or fund exposure."
+      },
+      "indicators": [
+        "pause",
+        "freeze",
+        "circuit_breaker",
+        "emergency_withdraw",
+        "blacklist",
+        "revoke",
+        "rotate_key"
+      ],
+      "risks": [
+        "Inability to halt ongoing theft when an operator key or API gateway is compromised."
+      ]
+    },
+    {
+      "id": "CCSS-05",
+      "name": "Hot / Cold Wallet Asset Allocation",
+      "category": "Custody Architecture",
+      "weight": 15,
+      "criteria": {
+        "level_1": "Strict separation between Hot Wallet (online) and Cold Storage (offline/air-gapped).",
+        "level_2": "Hot Wallet balance capped at maximum 5% of total exchange reserves with automated sweeps to cold storage.",
+        "level_3": "Cold storage 100% air-gapped with deep vault geographic separation and multi-institution custody (e.g. BitGo/Fireblocks)."
+      },
+      "indicators": [
+        "hot_wallet",
+        "cold_wallet",
+        "sweep",
+        "deposit_forward",
+        "custody",
+        "sweep_threshold",
+        "max_hot_balance"
+      ],
+      "risks": [
+        "Stray funds accumulating in online hot wallets, making the exchange an attractive honeypot for attackers."
+      ]
+    },
+    {
+      "id": "CCSS-06",
+      "name": "Transaction Verification & Velocity Limits",
+      "category": "Risk Engine",
+      "weight": 12,
+      "criteria": {
+        "level_1": "Mandatory 2FA (TOTP/SMS) on all customer and administrative withdrawal requests.",
+        "level_2": "Tiered velocity limits (hourly/daily volume caps) + mandatory 24-hour time-lock on new withdrawal address whitelists.",
+        "level_3": "Automated behavioral risk scoring + manual dual-operator sign-off on transactions exceeding threshold."
+      },
+      "indicators": [
+        "velocity_limit",
+        "daily_limit",
+        "timelock",
+        "whitelist",
+        "2fa",
+        "totp",
+        "fido2",
+        "withdrawal_limit",
+        "cooldown"
+      ],
+      "risks": [
+        "Automated draining of customer balances via unauthorized bulk withdrawal requests."
+      ]
+    },
+    {
+      "id": "CCSS-07",
+      "name": "Proof of Reserves & Solvency Verification",
+      "category": "Transparency & Audit",
+      "weight": 10,
+      "criteria": {
+        "level_1": "Internal automated daily reconciliation between off-chain user ledger and on-chain blockchain balances.",
+        "level_2": "Cryptographic Merkle Tree Proof of Reserves published publicly on a periodic schedule (e.g. monthly).",
+        "level_3": "Real-time zk-SNARK based Proof of Solvency proving reserves >= liabilities without revealing user balances."
+      },
+      "indicators": [
+        "proof_of_reserves",
+        "merkle_tree",
+        "solvency",
+        "reconciliation",
+        "ledger_audit",
+        "zk_reserves"
+      ],
+      "risks": [
+        "Fractional reserve insolvency, unbacked withdrawals, and off-chain ledger discrepancy."
+      ]
+    },
+    {
+      "id": "CCSS-08",
+      "name": "Tamper-Proof Audit Logging",
+      "category": "Security Operations",
+      "weight": 8,
+      "criteria": {
+        "level_1": "Centralized logging of all administrative actions, logins, and financial transactions with NTP time-sync.",
+        "level_2": "Immutable, append-only WORM storage (Write Once Read Many) or S3 Object Lock for audit trails.",
+        "level_3": "Cryptographically chained audit logs (hash-chained or signed by KMS) with real-time SIEM alerting."
+      },
+      "indicators": [
+        "audit_log",
+        "worm",
+        "object_lock",
+        "siem",
+        "tamper_proof",
+        "signed_log",
+        "cloudtrail"
+      ],
+      "risks": [
+        "Attackers deleting or altering logs after intrusion to conceal fund theft."
+      ]
+    },
+    {
+      "id": "CCSS-09",
+      "name": "Dual Control & Segregation of Duties",
+      "category": "Governance",
+      "weight": 5,
+      "criteria": {
+        "level_1": "No single engineer has access to both hot wallet signing keys and database ledger modification rights.",
+        "level_2": "Mandatory dual-authorization (four-eyes principle) for all operational adjustments to fees, limits, or trading pairs.",
+        "level_3": "Strict separation of infrastructure access, cryptographic keys, and application code deployment quorums."
+      },
+      "indicators": [
+        "dual_control",
+        "four_eyes",
+        "rbac",
+        "least_privilege",
+        "role_separation",
+        "approval_workflow"
+      ],
+      "risks": [
+        "Rogue insider or compromised employee account unilaterally manipulating customer balances."
+      ]
+    },
+    {
+      "id": "CCSS-10",
+      "name": "Disaster Recovery & Redundancy",
+      "category": "Resilience",
+      "weight": 5,
+      "criteria": {
+        "level_1": "Encrypted off-site backups of database ledger and configuration state tested quarterly.",
+        "level_2": "Multi-region active-passive failover with automated state synchronization and RPO < 1 minute.",
+        "level_3": "Geographically distributed Shamir Secret Sharing (SSS) key shares across 3+ independent jurisdictions."
+      },
+      "indicators": [
+        "backup",
+        "disaster_recovery",
+        "failover",
+        "shamir",
+        "sss",
+        "multi_region",
+        "rpo_rto"
+      ],
+      "risks": [
+        "Permanent loss of access to cold storage or ledger corruption in case of catastrophic data center outage."
+      ]
+    }
+  ]
+}
