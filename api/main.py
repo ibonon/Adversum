@@ -800,7 +800,8 @@ async def clone_and_scan_endpoint(
         # Clone repository with non-interactive env to prevent hanging prompts
         clone_env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
         try:
-            clone_res = subprocess.run(
+            clone_res = await asyncio.to_thread(
+                subprocess.run,
                 ["git", "clone", "--depth", "1", "--single-branch", "--no-tags", payload.repo_url, temp_dir],
                 capture_output=True,
                 text=True,

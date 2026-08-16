@@ -62,8 +62,12 @@ def detect_targets(paths: list[str]) -> dict:
     IGNORE_DIRS = {
         ".git", "node_modules", "venv", ".venv", "dist", "build", "target", 
         "vendor", "third_party", "deps", ".cache", ".next", ".out", "out", 
-        "coverage", ".tox", "site-packages", ".idea", ".vscode"
+        "coverage", ".tox", "site-packages", ".idea", ".vscode",
+        ".yarn", ".turbo", ".pnpm-store", "locales", "translations", 
+        "docs", "website", "bench", "benchmark", "benchmarks", 
+        "fixtures", "e2e", "test-results", "artifacts", "public", "assets", "static", "tmp", "temp"
     }
+
 
     for path_str in paths:
         p = Path(path_str)
@@ -116,9 +120,10 @@ def _scan_files_parallel(scanner, files: list[str]) -> list:
     if not files:
         return []
     max_workers = min(32, (os.cpu_count() or 4) * 4)
+    chunksize = max(1, len(files) // (max_workers * 4))
     all_findings = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = executor.map(scanner.scan_file, files)
+        results = executor.map(scanner.scan_file, files, chunksize=chunksize)
         for res in results:
             if res:
                 all_findings.extend(res)
@@ -401,14 +406,11 @@ def main():
 
     # Détection des cibles
     targets_map = detect_targets(args.target)
-    if args.all:
-        for k in targets_map:
-            if not targets_map[k]:
-                targets_map[k] = args.target  # forcer sur tous les targets
 
     # Lancement des scanners
     all_findings: list[dict] = []
     active_modules = args.modules or [k for k, v in targets_map.items() if v]
+
 
     if "solidity" in active_modules and targets_map.get("solidity"):
         print(f"{CYAN}[*] Running Solidity scanner...{RESET}", file=sys.stderr)
