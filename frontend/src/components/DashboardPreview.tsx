@@ -25,12 +25,16 @@ const DashboardPreview = () => {
     return () => observer.disconnect();
   }, []);
 
-  const handleScan = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const url = repoUrl.trim();
+  const handleScan = async (e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) e.preventDefault();
+    let url = repoUrl.trim();
     if (!url) {
-      alert("Veuillez saisir l'URL d'un dépôt GitHub valide.");
+      alert("Veuillez saisir l'URL d'un dépôt GitHub valide (ex: https://github.com/ibonon/Sigui).");
       return;
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
     }
 
     setIsScanning(true);
@@ -38,17 +42,34 @@ const DashboardPreview = () => {
     console.log("Submitting scan to API for:", url);
 
     try {
-      const res = await fetch('/api/v1/scan/clone-and-scan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': 'adv-dev-key-123'
-        },
-        body: JSON.stringify({
-          repo_url: url,
-          all_modules: true
-        })
-      });
+      // Try Vite proxy first, fallback to direct port 8080 if needed
+      let res: Response;
+      try {
+        res = await fetch('/api/v1/scan/clone-and-scan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': 'adv-dev-key-123'
+          },
+          body: JSON.stringify({
+            repo_url: url,
+            all_modules: true
+          })
+        });
+      } catch (proxyErr) {
+        console.warn("Proxy fetch failed, attempting direct backend connection...", proxyErr);
+        res = await fetch('http://127.0.0.1:8080/api/v1/scan/clone-and-scan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': 'adv-dev-key-123'
+          },
+          body: JSON.stringify({
+            repo_url: url,
+            all_modules: true
+          })
+        });
+      }
 
       // Read raw text first — avoids crash on empty or non-JSON body
       const rawText = await res.text();
@@ -225,10 +246,10 @@ const DashboardPreview = () => {
             <div className="p-8 bg-background/30">
               {/* Git Repo Scan Bar */}
               <div className="mb-8 p-4 rounded-2xl bg-card/60 border border-border/40 backdrop-blur-md">
-                <form onSubmit={handleScan} className="flex items-center gap-3">
+                <form onSubmit={handleScan} noValidate className="flex items-center gap-3">
                   <div className="relative flex-1">
                     <input 
-                      type="url"
+                      type="text"
                       name="repoUrl"
                       value={repoUrl}
                       onChange={(e) => setRepoUrl(e.target.value)}
@@ -240,8 +261,9 @@ const DashboardPreview = () => {
                   </div>
                   <button 
                     type="submit"
+                    onClick={() => handleScan()}
                     disabled={isScanning}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/25 shrink-0 disabled:opacity-50"
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/25 shrink-0 disabled:opacity-50 cursor-pointer"
                   >
                     {isScanning ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> Analyse en cours...</>
