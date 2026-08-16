@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import {
-  AlertTriangle, Clock, TrendingUp, Download, FileCode, Copy, Check,
+  AlertTriangle, Clock, TrendingUp, Download, FileCode, Copy, Check, Globe,
   Wrench, Loader2, Zap, Shield, Building2, FileText, ChevronDown, ChevronUp, CheckCircle2, Terminal
 } from 'lucide-react';
 
@@ -24,13 +24,13 @@ const SCAN_PROFILES = [
     id: 'smart_contract',
     icon: FileCode,
     label: 'Smart Contract',
-    desc: 'Solidity · Vyper · SMT',
-    detail: ['Reentrancy & Flash Loan', 'Oracle Manipulation', 'Preuve formelle SMT', 'Foundry Exploit PoC'],
+    desc: 'Solidity · Bridges · PoC',
+    detail: ['Reentrancy & Flash Loan', 'Ponts Cross-Chain & Replay', 'Preuve formelle SMT', 'Foundry Exploit PoC'],
     badge: 'Foundry PoC',
     badgeClass: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
     borderActive: 'border-blue-500/60 shadow-blue-500/10',
     all_modules: false,
-    modules: ['solidity'],
+    modules: ['solidity', 'cross_chain'],
     cex_audit: false,
     format: 'json',
     poc: true,
@@ -39,13 +39,13 @@ const SCAN_PROFILES = [
     id: 'cex',
     icon: Building2,
     label: 'CEX / Custody',
-    desc: 'CCSS v3.0 · API · STRIDE',
-    detail: ['Conformité CCSS 10 aspects', 'Race Conditions / Double Spend', 'STRIDE Threat Modeling', 'Sécurité API Trading'],
+    desc: 'CCSS v3.0 · PoR · STRIDE',
+    detail: ['Conformité CCSS 10 aspects', 'Proof of Reserves Merkle Tree', 'STRIDE Threat Modeling', 'Sécurité API Trading'],
     badge: 'Institutionnel',
     badgeClass: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
     borderActive: 'border-amber-500/60 shadow-amber-500/10',
     all_modules: false,
-    modules: ['solidity', 'crypto', 'iac', 'cex_api'],
+    modules: ['solidity', 'crypto', 'iac', 'cex_api', 'cross_chain', 'por'],
     cex_audit: true,
     format: 'json',
     poc: false,
@@ -54,13 +54,13 @@ const SCAN_PROFILES = [
     id: 'full',
     icon: Shield,
     label: 'Complet',
-    desc: 'Tous les modules · PoC · Rapport',
-    detail: ['Tous les modules combinés', 'CCSS + STRIDE + SMT', 'Foundry PoC auto-généré', 'Rapport Exécutif Markdown'],
+    desc: 'Tous les modules · HTML · PoC',
+    detail: ['Tous les modules combinés', 'CCSS + STRIDE + SMT', 'Proof of Reserves & Bridges', 'Dashboard HTML Standalone'],
     badge: '~2-3 min',
     badgeClass: 'text-violet-400 border-violet-500/30 bg-violet-500/10',
     borderActive: 'border-violet-500/60 shadow-violet-500/10',
     all_modules: true,
-    modules: ['solidity', 'crypto', 'iac', 'cex_api'],
+    modules: ['solidity', 'crypto', 'iac', 'cex_api', 'cross_chain', 'por'],
     cex_audit: true,
     format: 'json',
     poc: true,
@@ -293,6 +293,16 @@ const DashboardPreview = () => {
     downloadFile(md, 'adversum_report.md', 'text/markdown');
   };
 
+  const handleExportHtml = () => {
+    if (!scanResult) return;
+    if (scanResult.html_report) {
+      downloadFile(scanResult.html_report, 'adversum_interactive_dashboard.html', 'text/html');
+      return;
+    }
+    // Fallback if raw markdown available
+    handleExportMarkdown();
+  };
+
   const handleCopyPoc = (code: string, idx: number) => {
     navigator.clipboard.writeText(code);
     setCopiedPocIdx(idx);
@@ -321,6 +331,30 @@ const DashboardPreview = () => {
       poc_code: DEMO_REENTRANCY_POC
     },
     {
+      severity: 'critical',
+      name: 'BRIDGE-003: Uninitialized Zero-Root Merkle Proof Bypass',
+      file: 'contracts/CrossChainBridge.sol',
+      module: 'Cross-Chain',
+      description: 'Acceptation de la racine nulle bytes32(0) permettant de valider de faux transferts inter-chaînes (type Nomad Bridge).',
+      recommendation: 'Interdire strictement les racines nulles : require(root != bytes32(0)).',
+      snippet: 'require(acceptableRoots[root], "Root not approved");',
+      cwe: 'CWE-697',
+      cvss: 10.0,
+      poc_code: null
+    },
+    {
+      severity: 'high',
+      name: 'POR-001: Missing Negative Balance Guard',
+      file: 'custody/liabilities.py',
+      module: 'Proof of Reserves',
+      description: 'Agrégation des passifs sans contrôle de non-négativité, permettant de masquer des passifs dans l\'arbre de Merkle.',
+      recommendation: 'Enforcer require(balance >= 0) sur chaque feuille du Merkle Sum Tree.',
+      snippet: 'SELECT user_id, balance FROM accounts',
+      cwe: 'CWE-840',
+      cvss: 9.5,
+      poc_code: null
+    },
+    {
       severity: 'high',
       name: 'CRYPTO-005: Hardcoded API Secret',
       file: 'api/auth.py',
@@ -330,18 +364,6 @@ const DashboardPreview = () => {
       snippet: 'API_KEY = "sk-prod-xxxxxxxxxxxx"',
       cwe: 'CWE-798',
       cvss: 9.0,
-      poc_code: null
-    },
-    {
-      severity: 'high',
-      name: 'CEX-002: Missing recvWindow Replay Guard',
-      file: 'trading/order_api.py',
-      module: 'CEX API',
-      description: 'Absence de validation du parametre recvWindow dans la validation des ordres signes.',
-      recommendation: 'Valider timestamp +- 5000ms pour neutraliser les attaques par rejeu de requetes de trading.',
-      snippet: 'def create_order(self, symbol, qty, timestamp):\n    # Replay window unverified',
-      cwe: 'CWE-294',
-      cvss: 8.5,
       poc_code: null
     },
     {
@@ -385,7 +407,7 @@ const DashboardPreview = () => {
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Multi-Niveaux</span>
           </h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
-            Sélectionnez votre profil d'analyse selon la nature du code — Smart Contracts, Custody CEX, Secrets ou Audit Complet avec PoC Foundry.
+            Sélectionnez votre profil d'analyse selon la nature du code — Smart Contracts, Ponts Cross-Chain, Proof of Reserves ou Audit Complet avec PoC Foundry.
           </p>
         </div>
 
@@ -533,16 +555,19 @@ const DashboardPreview = () => {
 
               {/* FINDINGS */}
               <div className="rounded-2xl bg-card/30 border border-border/30 p-6">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                   <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
                     {findings.length > 0 ? `Résultats · ${displayFindings.length} vulnérabilités` : 'Aperçu démo — Vulnérabilités & PoC Foundry'}
                   </h3>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={handleExportHtml} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary/20 text-primary border border-primary/30 rounded-lg hover:bg-primary/30 transition-colors shadow-sm">
+                      <Globe className="w-3.5 h-3.5" />Dashboard HTML Standalone
+                    </button>
                     <button onClick={handleExportSarif} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors">
                       <FileCode className="w-3.5 h-3.5" />SARIF 2.1
                     </button>
                     <button onClick={handleExportMarkdown} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors">
-                      <Download className="w-3.5 h-3.5" />{scanResult?.markdown_report ? 'Rapport Institutionnel' : 'Markdown'}
+                      <Download className="w-3.5 h-3.5" />{scanResult?.markdown_report ? 'Rapport Exécutif' : 'Markdown'}
                     </button>
                   </div>
                 </div>
@@ -609,7 +634,7 @@ const DashboardPreview = () => {
                                     onClick={(e) => { e.stopPropagation(); downloadFile(vuln.poc_code, `Exploit_${vuln.name.split(':')[0].trim()}.t.sol`, 'text/plain'); }}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded bg-background/50 hover:bg-muted text-muted-foreground hover:text-foreground text-[11px] font-mono transition-colors border border-border/40"
                                   >
-                                    <Download className="w-3 h-3" /> .t.sol
+                                    <Download className="w-3.5 h-3.5" /> .t.sol
                                   </button>
                                 </div>
                               </div>

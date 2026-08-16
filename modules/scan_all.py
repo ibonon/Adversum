@@ -53,10 +53,11 @@ def detect_targets(paths: list[str]) -> dict:
     Détecte automatiquement quels modules lancer selon les types de fichiers trouvés.
     Retourne un dict {module: [paths]}.
     """
-    targets = {"solidity": [], "crypto": [], "iac": [], "cex_api": []}
+    targets = {"solidity": [], "crypto": [], "iac": [], "cex_api": [], "cross_chain": [], "por": []}
 
     SOLIDITY_EXT  = {".sol", ".vy"}
     CRYPTO_EXT    = {".py", ".js", ".ts", ".java"}
+    POR_EXT       = {".py", ".ts", ".js", ".sql", ".sol", ".go"}
     IAC_PATTERNS  = {"Dockerfile", "docker-compose", ".tf", ".yaml", ".yml", ".env"}
 
     IGNORE_DIRS = {
@@ -77,20 +78,21 @@ def detect_targets(paths: list[str]) -> dict:
             name = p.name
             if ext in SOLIDITY_EXT:
                 targets["solidity"].append(str(p))
-            elif ext in CRYPTO_EXT:
+                targets["cross_chain"].append(str(p))
+            if ext in CRYPTO_EXT:
                 targets["crypto"].append(str(p))
                 targets["cex_api"].append(str(p))
-            elif ext in {".tf", ".yaml", ".yml"} or any(pat in name for pat in IAC_PATTERNS):
+            if ext in POR_EXT:
+                targets["por"].append(str(p))
+            if ext in {".tf", ".yaml", ".yml"} or any(pat in name for pat in IAC_PATTERNS):
                 targets["iac"].append(str(p))
         elif p.is_dir():
             for root, dirs, files in os.walk(path_str):
-                # Prune heavy/third-party/generated directories in-place (avoids walking .git / node_modules)
                 dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith('.git')]
                 
                 for filename in files:
                     ext = os.path.splitext(filename)[1].lower()
                     
-                    # Skip minified, bundle, sourcemaps, declaration files
                     if (filename.endswith((".d.ts", ".min.js", ".bundle.js", ".map"))
                             or filename.endswith(".lock")):
                         continue
@@ -104,10 +106,13 @@ def detect_targets(paths: list[str]) -> dict:
 
                     if ext in SOLIDITY_EXT:
                         targets["solidity"].append(full_path)
-                    elif ext in CRYPTO_EXT:
+                        targets["cross_chain"].append(full_path)
+                    if ext in CRYPTO_EXT:
                         targets["crypto"].append(full_path)
                         targets["cex_api"].append(full_path)
-                    elif (ext in {".tf", ".yaml", ".yml"}
+                    if ext in POR_EXT:
+                        targets["por"].append(full_path)
+                    if (ext in {".tf", ".yaml", ".yml"}
                           or filename == "Dockerfile"
                           or "docker-compose" in filename
                           or filename == ".env"):
@@ -187,6 +192,34 @@ def run_cex_api(target_files: list[str]) -> list[dict]:
         return [_normalize(f, "cex_api") for f in findings]
     except Exception as e:
         print(f"{YELLOW}[WARN] CEX API module not available: {e}{RESET}", file=sys.stderr)
+        return []
+
+
+def run_cross_chain(target_files: list[str]) -> list[dict]:
+    """Lance le scanner Cross-Chain Bridges & Interoperability."""
+    if not target_files:
+        return []
+    try:
+        from cross_chain.scanner import CrossChainScanner  # type: ignore
+        scanner = CrossChainScanner()
+        findings = _scan_files_parallel(scanner, target_files)
+        return [_normalize(f, "cross_chain") for f in findings]
+    except Exception as e:
+        print(f"{YELLOW}[WARN] Cross-Chain module not available: {e}{RESET}", file=sys.stderr)
+        return []
+
+
+def run_proof_of_reserves(target_files: list[str]) -> list[dict]:
+    """Lance le scanner Proof of Reserves & Merkle Sum Tree."""
+    if not target_files:
+        return []
+    try:
+        from proof_of_reserves.scanner import ProofOfReservesScanner  # type: ignore
+        scanner = ProofOfReservesScanner()
+        findings = _scan_files_parallel(scanner, target_files)
+        return [_normalize(f, "proof_of_reserves") for f in findings]
+    except Exception as e:
+        print(f"{YELLOW}[WARN] Proof of Reserves module not available: {e}{RESET}", file=sys.stderr)
         return []
 
 
@@ -428,14 +461,14 @@ def main():
     )
     parser.add_argument("--target", nargs="+", required=True, metavar="PATH",
                         help="Files or directories to scan")
-    parser.add_argument("--format", choices=["text", "sarif", "markdown", "json", "cex_report"],
+    parser.add_argument("--format", choices=["text", "sarif", "markdown", "json", "cex_report", "html"],
                         default="text", help="Output format (default: text)")
     parser.add_argument("--output", metavar="FILE",
                         help="Write output to file (default: stdout)")
     parser.add_argument("--modules", nargs="+",
-                        choices=["solidity", "crypto", "iac", "cex_api"],
+                        choices=["solidity", "crypto", "iac", "cex_api", "cross_chain", "por"],
                         help="Force specific modules (default: auto-detect)")
-    parser.add_argument("--cex-audit", action="store_true", help="Run comprehensive institutional CEX audit suite (CCSS, API, SMT, Threat Model)")
+    parser.add_argument("--cex-audit", action="store_true", help="Run comprehensive institutional CEX audit suite (CCSS, API, SMT, Threat Model, Cross-Chain, PoR)")
     parser.add_argument("--all", action="store_true",
                         help="Run all modules regardless of file types")
     parser.add_argument("--min-severity", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
@@ -456,7 +489,7 @@ def main():
     # Lancement des scanners
     all_findings: list[dict] = []
     if args.all:
-        active_modules = ["solidity", "crypto", "iac", "cex_api"]
+        active_modules = ["solidity", "crypto", "iac", "cex_api", "cross_chain", "por"]
     else:
         active_modules = args.modules or [k for k, v in targets_map.items() if v]
 
@@ -477,12 +510,20 @@ def main():
         print(f"{CYAN}[*] Running CEX API & Order Book scanner...{RESET}", file=sys.stderr)
         all_findings.extend(run_cex_api(targets_map["cex_api"]))
 
+    if ("cross_chain" in active_modules or args.cex_audit) and targets_map.get("cross_chain"):
+        print(f"{CYAN}[*] Running Cross-Chain Bridge scanner...{RESET}", file=sys.stderr)
+        all_findings.extend(run_cross_chain(targets_map["cross_chain"]))
+
+    if ("por" in active_modules or args.cex_audit) and targets_map.get("por"):
+        print(f"{CYAN}[*] Running Proof of Reserves (PoR) scanner...{RESET}", file=sys.stderr)
+        all_findings.extend(run_proof_of_reserves(targets_map["por"]))
+
     # CCSS & Threat Modeling for CEX
     ccss_report = None
     threat_report = None
     target_root = args.target[0] if args.target else "."
 
-    if args.cex_audit or args.format == "cex_report":
+    if args.cex_audit or args.format in ("cex_report", "html"):
         print(f"{CYAN}[*] Running CCSS v3.0 Compliance Audit...{RESET}", file=sys.stderr)
         ccss_report = run_ccss_audit(target_root)
         print(f"{CYAN}[*] Generating CEX STRIDE Threat Model...{RESET}", file=sys.stderr)
@@ -497,7 +538,7 @@ def main():
         from poc_generator.generator import FoundryPoCGenerator
         poc_gen = FoundryPoCGenerator()
         for f in all_findings:
-            if f.get("module") == "solidity" or str(f.get("rule_id", "")).startswith("SOL-"):
+            if f.get("module") in ("solidity", "cross_chain") or str(f.get("rule_id", "")).startswith(("SOL-", "BRIDGE-")):
                 poc_sol = poc_gen.generate_poc(f)
                 if poc_sol:
                     f["poc_code"] = poc_sol
@@ -572,6 +613,14 @@ def main():
         output_text = json.dumps(to_sarif(all_findings, args.target), indent=2)
     elif args.format == "markdown":
         output_text = to_markdown(all_findings, args.target, stats)
+    elif args.format == "html":
+        if not ccss_report:
+            ccss_report = run_ccss_audit(target_root)
+        if not threat_report:
+            threat_report = run_threat_model(target_root)
+        from html_report.generator import HTMLReportGenerator
+        html_gen = HTMLReportGenerator()
+        output_text = html_gen.generate(args.project_name, target_root, all_findings, ccss_report, threat_report)
     elif args.format == "cex_report":
         if not ccss_report:
             ccss_report = run_ccss_audit(target_root)
@@ -586,11 +635,18 @@ def main():
         threat_dict = asdict(threat_report) if (threat_report and is_dataclass(threat_report)) else None
 
         md_report = None
+        html_report = None
         if args.cex_audit or ccss_report:
             try:
                 from cex_report.generator import CEXReportGenerator
                 gen = CEXReportGenerator()
                 md_report = gen.generate_markdown(args.project_name, target_root, all_findings, ccss_report, threat_report)
+            except Exception:
+                pass
+            try:
+                from html_report.generator import HTMLReportGenerator
+                html_gen = HTMLReportGenerator()
+                html_report = html_gen.generate(args.project_name, target_root, all_findings, ccss_report, threat_report)
             except Exception:
                 pass
 
@@ -602,6 +658,7 @@ def main():
             "ccss_compliance": ccss_dict,
             "threat_model": threat_dict,
             "markdown_report": md_report,
+            "html_report": html_report,
             "findings": all_findings,
         }, indent=2)
 

@@ -836,6 +836,8 @@ async def clone_and_scan_endpoint(
         raw = scan_res.stdout
         if payload.format == "cex_report":
             return {"repo_url": target_input, "markdown_report": raw}
+        if payload.format == "html":
+            return {"repo_url": target_input, "html_report": raw}
         json_start = raw.find("{")
         if json_start != -1:
             try:
@@ -907,6 +909,8 @@ async def clone_and_scan_endpoint(
         raw = scan_res.stdout
         if payload.format == "cex_report":
             return {"repo_url": payload.repo_url, "markdown_report": raw}
+        if payload.format == "html":
+            return {"repo_url": payload.repo_url, "html_report": raw}
         json_start = raw.find("{")
         if json_start != -1:
             try:

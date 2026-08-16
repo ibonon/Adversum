@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-08-16",
+  "category": "Cross-Chain Bridges & Interoperability Protocols",
+  "vulnerabilities": [
+    {
+      "id": "BRIDGE-001",
+      "swc": "SWC-115",
+      "cwe": "CWE-294",
+      "title": "Cross-Chain Message Replay Attack",
+      "severity": "CRITICAL",
+      "cvss_score": 9.8,
+      "description": "Signed cross-chain message digests without destination chainId binding allow replaying packets across EVM networks.",
+      "mitigation": "Enforce EIP-712 domain separation with block.chainid and persistent execution nullifiers."
+    },
+    {
+      "id": "BRIDGE-003",
+      "swc": "SWC-100",
+      "cwe": "CWE-697",
+      "title": "Uninitialized / Zero-Root Merkle Proof Bypass",
+      "severity": "CRITICAL",
+      "cvss_score": 10.0,
+      "description": "Default storage zero-hash accepted as legitimate Merkle root, allowing forgery of arbitrary cross-chain transfer proofs.",
+      "mitigation": "Explicitly reject bytes32(0) in Merkle proof verification logic."
+    },
+    {
+      "id": "BRIDGE-005",
+      "swc": "SWC-115",
+      "cwe": "CWE-287",
+      "title": "Duplicate Signer Signature Replay in Bridge Multi-Sig",
+      "severity": "CRITICAL",
+      "cvss_score": 9.6,
+      "description": "Multi-signature verification accepts repeated signatures from the same relayer without checking strictly ascending unique addresses.",
+      "mitigation": "Verify require(currentSigner > previousSigner) in all signature aggregation loops."
+    },
+    {
+      "id": "BRIDGE-007",
+      "swc": "SWC-105",
+      "cwe": "CWE-284",
+      "title": "Unbacked / Unconstrained Wrapped Token Minting",
+      "severity": "CRITICAL",
+      "cvss_score": 9.9,
+      "description": "Destination chain minting routine can be invoked without verifiable collateral lock proof on the origin chain.",
+      "mitigation": "Enforce multi-party verification and automated rate-limiting circuit breakers."
+    }
+  ]
+}
