@@ -8,6 +8,18 @@ const DashboardPreview = () => {
   const [scanResult, setScanResult] = useState<any>(null);
   const [repoUrl, setRepoUrl] = useState('https://github.com/ibonon/Sigui');
   const [scanStatusMsg, setScanStatusMsg] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    let interval: any;
+    if (isScanning) {
+      setElapsedSeconds(0);
+      interval = setInterval(() => {
+        setElapsedSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isScanning]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -30,24 +42,24 @@ const DashboardPreview = () => {
     if (e) e.preventDefault();
     let url = repoUrl.trim();
     if (!url) {
-      alert("Veuillez saisir l'URL d'un dépôt GitHub valide (ex: https://github.com/ibonon/Sigui).");
+      alert("Veuillez saisir une URL GitHub ou un chemin de dossier local.");
       return;
     }
 
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    const isLocal = url.startsWith('.') || url.startsWith('/') || url.includes(':\\') || url.includes(':/');
+    if (!isLocal && !url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
     }
 
     setIsScanning(true);
     setScanResult(null);
-    setScanStatusMsg("🚀 Connexion au serveur et lancement de l'analyse...");
+    setScanStatusMsg(isLocal ? "⚡ Analyse instantanée du dossier local..." : "⏳ [1/2] Téléchargement depuis GitHub...");
     console.log("Submitting scan to API for:", url);
 
     try {
       // Try Vite proxy first, fallback to direct port 8080 if needed
       let res: Response;
       try {
-        setScanStatusMsg("⏳ Clonage Git et analyse SAST en cours...");
         res = await fetch('/api/v1/scan/clone-and-scan', {
           method: 'POST',
           headers: {
@@ -98,7 +110,7 @@ const DashboardPreview = () => {
       } else {
         setScanResult(data);
         const count = data.findings?.length || 0;
-        setScanStatusMsg(`✅ Scan terminé avec succès (${count} vulnérabilité${count > 1 ? 's' : ''} détectée${count > 1 ? 's' : ''})`);
+        setScanStatusMsg(`✅ Analyse terminée avec succès ! (${count} vulnérabilité${count > 1 ? 's' : ''} détectée${count > 1 ? 's' : ''})`);
       }
     } catch (err: any) {
       console.error(err);
@@ -278,16 +290,21 @@ const DashboardPreview = () => {
                     </button>
                   </div>
 
-                  {/* Status Banner */}
+                  {/* Status Banner with Timer */}
                   {scanStatusMsg && (
-                    <div className={`text-xs px-3 py-1.5 rounded-lg border font-mono ${
+                    <div className={`text-xs px-3.5 py-2 rounded-lg border font-mono flex items-center justify-between ${
                       scanStatusMsg.includes('✅') 
                         ? 'bg-success/15 border-success/30 text-success' 
                         : scanStatusMsg.includes('❌') 
                         ? 'bg-destructive/15 border-destructive/30 text-destructive' 
                         : 'bg-primary/15 border-primary/30 text-primary animate-pulse'
                     }`}>
-                      {scanStatusMsg}
+                      <span>{scanStatusMsg}</span>
+                      {isScanning && (
+                        <span className="font-bold text-xs bg-primary/20 px-2 py-0.5 rounded border border-primary/40 text-primary">
+                          ⏱️ {elapsedSeconds}s
+                        </span>
+                      )}
                     </div>
                   )}
                 </form>

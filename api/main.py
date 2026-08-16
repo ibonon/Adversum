@@ -789,20 +789,56 @@ async def clone_and_scan_endpoint(
     api_key: str = Depends(get_api_key)
 ):
     """
-    Clones a remote git repository to a temporary directory and runs scan_all.py on it.
+    Clones a remote git repository to a temporary directory (or scans a local folder directly) and runs scan_all.py.
     """
     import tempfile
     import shutil
     import subprocess
 
+    target_input = payload.repo_url.strip()
+
+    # If the user supplied a local path directly, skip git clone and scan instantly!
+    if os.path.exists(target_input):
+        script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
+        cmd = [sys.executable, script_path, "--format", "json", "--target", target_input]
+        if payload.all_modules:
+            cmd.append("--all")
+        scan_res = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=900
+        )
+        raw = scan_res.stdout
+        json_start = raw.find("{")
+        if json_start != -1:
+            try:
+                res = json.loads(raw[json_start:])
+                res["repo_url"] = target_input
+                return res
+            except json.JSONDecodeError:
+                pass
+        return {"raw_output": raw, "error": scan_res.stderr}
+
     temp_dir = tempfile.mkdtemp(prefix="adversum_scan_")
     try:
-        # Clone repository with non-interactive env to prevent hanging prompts
+        # Clone repository with optimized shallow flags
         clone_env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
         try:
             clone_res = await asyncio.to_thread(
                 subprocess.run,
-                ["git", "clone", "--depth", "1", "--single-branch", "--no-tags", payload.repo_url, temp_dir],
+                [
+                    "git", "clone",
+                    "--depth", "1",
+                    "--single-branch",
+                    "--no-tags",
+                    "--recurse-submodules=no",
+                    "-c", "core.autocrlf=false",
+                    "-c", "core.fscache=true",
+                    payload.repo_url,
+                    temp_dir
+                ],
                 capture_output=True,
                 text=True,
                 timeout=900,
