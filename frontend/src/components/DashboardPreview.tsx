@@ -6,7 +6,8 @@ const DashboardPreview = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<any>(null);
-  const [repoUrl, setRepoUrl] = useState('');
+  const [repoUrl, setRepoUrl] = useState('https://github.com/ibonon/Sigui');
+  const [scanStatusMsg, setScanStatusMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -25,7 +26,7 @@ const DashboardPreview = () => {
     return () => observer.disconnect();
   }, []);
 
-  const handleScan = async (e?: React.FormEvent<HTMLFormElement>) => {
+  const handleScan = async (e?: React.FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => {
     if (e) e.preventDefault();
     let url = repoUrl.trim();
     if (!url) {
@@ -39,12 +40,14 @@ const DashboardPreview = () => {
 
     setIsScanning(true);
     setScanResult(null);
+    setScanStatusMsg("🚀 Connexion au serveur et lancement de l'analyse...");
     console.log("Submitting scan to API for:", url);
 
     try {
       // Try Vite proxy first, fallback to direct port 8080 if needed
       let res: Response;
       try {
+        setScanStatusMsg("⏳ Clonage Git et analyse SAST en cours...");
         res = await fetch('/api/v1/scan/clone-and-scan', {
           method: 'POST',
           headers: {
@@ -75,6 +78,7 @@ const DashboardPreview = () => {
       const rawText = await res.text();
 
       if (!rawText || rawText.trim() === '') {
+        setScanStatusMsg("❌ Réponse vide du serveur");
         alert(`L'API a répondu avec un corps vide (HTTP ${res.status}). Vérifie les logs du serveur uvicorn.`);
         return;
       }
@@ -83,21 +87,22 @@ const DashboardPreview = () => {
       try {
         data = JSON.parse(rawText);
       } catch {
+        setScanStatusMsg("❌ Réponse non-JSON reçue");
         alert(`L'API a répondu mais pas en JSON (HTTP ${res.status}):\n\n${rawText.slice(0, 400)}`);
         return;
       }
 
       if (!res.ok) {
+        setScanStatusMsg(`❌ Erreur ${res.status}`);
         alert(`Erreur API (${res.status}) : ${data.detail || JSON.stringify(data)}`);
       } else {
         setScanResult(data);
-        if (data.findings?.length === 0) {
-          alert(`✅ Scan terminé sur ${repoUrl}\nAucune vulnérabilité détectée avec les modules actifs.`);
-        }
+        const count = data.findings?.length || 0;
+        setScanStatusMsg(`✅ Scan terminé avec succès (${count} vulnérabilité${count > 1 ? 's' : ''} détectée${count > 1 ? 's' : ''})`);
       }
     } catch (err: any) {
       console.error(err);
-      // Network-level failure (CORS, no server, etc.)
+      setScanStatusMsg("❌ Erreur de connexion API");
       alert(
         `❌ Impossible de joindre l'API (http://localhost:8080).\n\n` +
         `Vérifie que :\n1. Le serveur uvicorn tourne bien\n2. Le port 8080 n'est pas bloqué\n\n` +
@@ -246,31 +251,45 @@ const DashboardPreview = () => {
             <div className="p-8 bg-background/30">
               {/* Git Repo Scan Bar */}
               <div className="mb-8 p-4 rounded-2xl bg-card/60 border border-border/40 backdrop-blur-md">
-                <form onSubmit={handleScan} noValidate className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <input 
-                      type="text"
-                      name="repoUrl"
-                      value={repoUrl}
-                      onChange={(e) => setRepoUrl(e.target.value)}
-                      placeholder="https://github.com/votre-user/votre-repo..."
-                      className="w-full px-4 py-2.5 rounded-xl bg-background/80 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground/60"
-                      required
+                <form onSubmit={handleScan} noValidate className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex-1">
+                      <input 
+                        type="text"
+                        name="repoUrl"
+                        value={repoUrl}
+                        onChange={(e) => setRepoUrl(e.target.value)}
+                        placeholder="https://github.com/ibonon/Sigui..."
+                        className="w-full px-4 py-2.5 rounded-xl bg-background/80 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground/60"
+                        disabled={isScanning}
+                      />
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={handleScan}
                       disabled={isScanning}
-                    />
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/25 shrink-0 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isScanning ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Analyse en cours...</>
+                      ) : (
+                        <>🚀 Analyser ce Dépôt</>
+                      )}
+                    </button>
                   </div>
-                  <button 
-                    type="submit"
-                    onClick={() => handleScan()}
-                    disabled={isScanning}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/25 shrink-0 disabled:opacity-50 cursor-pointer"
-                  >
-                    {isScanning ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Analyse en cours...</>
-                    ) : (
-                      <>🚀 Analyser ce Dépôt</>
-                    )}
-                  </button>
+
+                  {/* Status Banner */}
+                  {scanStatusMsg && (
+                    <div className={`text-xs px-3 py-1.5 rounded-lg border font-mono ${
+                      scanStatusMsg.includes('✅') 
+                        ? 'bg-success/15 border-success/30 text-success' 
+                        : scanStatusMsg.includes('❌') 
+                        ? 'bg-destructive/15 border-destructive/30 text-destructive' 
+                        : 'bg-primary/15 border-primary/30 text-primary animate-pulse'
+                    }`}>
+                      {scanStatusMsg}
+                    </div>
+                  )}
                 </form>
               </div>
 
