@@ -2,17 +2,20 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Request, s
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from pathlib import Path
 from sqlmodel import select
-from sqlalchemy.ext.asyncio import AsyncSession, func, desc, col
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, desc
+import asyncio
 import uuid
 import sys
 import os
 import time
 import logging
 import json
-import subprocess# Rate Limiting
+import subprocess  # Rate Limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -39,8 +42,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Allow CORS for Frontend - PRODUCTION HARDENING
 from fastapi.middleware.cors import CORSMiddleware
 
-# Get Allowed Origins from env or default to localhost only for safety
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000")
+# Get Allowed Origins from env or default to localhost ports (3000, 5173) for safety
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173")
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
 
 app.add_middleware(
@@ -794,33 +797,50 @@ async def clone_and_scan_endpoint(
 
     temp_dir = tempfile.mkdtemp(prefix="adversum_scan_")
     try:
-        # Clone repository
-        clone_res = subprocess.run(
-            ["git", "clone", "--depth", "1", payload.repo_url, temp_dir],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
+        # Clone repository with non-interactive env to prevent hanging prompts
+        clone_env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+        try:
+            clone_res = subprocess.run(
+                ["git", "clone", "--depth", "1", "--single-branch", "--no-tags", "--filter=blob:none", payload.repo_url, temp_dir],
+                capture_output=True,
+                text=True,
+                timeout=900,
+                env=clone_env
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(
+                status_code=504,
+                detail=f"Délai d'attente dépassé lors du clonage du dépôt ({payload.repo_url}). Vérifiez la connexion ou l'accès au dépôt."
+            )
+
         if clone_res.returncode != 0:
             raise HTTPException(
                 status_code=400,
-                detail=f"Failed to clone repository: {clone_res.stderr}"
+                detail=f"Échec du clonage du dépôt : {clone_res.stderr.strip() or clone_res.stdout.strip()}"
             )
 
-        # Run scan
+        # Build scan command
         script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
         cmd = [sys.executable, script_path, "--format", "json", "--target", temp_dir]
         if payload.all_modules:
             cmd.append("--all")
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await proc.communicate()
+        # Run scan via background thread to avoid Windows asyncio subprocess transport issues
+        try:
+            scan_res = await asyncio.to_thread(
+                subprocess.run,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=900
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(
+                status_code=504,
+                detail=f"Le scan du code source a dépassé la limite de temps de 15 minutes. Le projet ({payload.repo_url}) est trop volumineux."
+            )
 
-        raw = stdout.decode("utf-8", errors="ignore")
+        raw = scan_res.stdout
         json_start = raw.find("{")
         if json_start != -1:
             try:
@@ -830,7 +850,7 @@ async def clone_and_scan_endpoint(
             except json.JSONDecodeError:
                 pass
 
-        return {"raw_output": raw, "error": stderr.decode("utf-8", errors="ignore")}
+        return {"raw_output": raw, "error": scan_res.stderr}
 
     finally:
         # Clean up temporary directory
@@ -853,14 +873,15 @@ async def scan_all_endpoint(
     if payload.modules:
         cmd.extend(["--modules"] + payload.modules)
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+    scan_res = await asyncio.to_thread(
+        subprocess.run,
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=300
     )
-    stdout, stderr = await proc.communicate()
 
-    raw = stdout.decode("utf-8", errors="ignore")
+    raw = scan_res.stdout
     json_start = raw.find("{")
     if json_start != -1:
         try:
@@ -868,7 +889,7 @@ async def scan_all_endpoint(
         except json.JSONDecodeError:
             pass
 
-    return {"raw_output": raw, "error": stderr.decode("utf-8", errors="ignore")}
+    return {"raw_output": raw, "error": scan_res.stderr}
 
 
 @app.post("/api/v1/scan/remediate", tags=["Remediation"])

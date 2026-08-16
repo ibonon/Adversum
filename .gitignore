@@ -38,6 +38,9 @@ dist/
 
 # Project Specific
 adversum.db
+adversum_local.db
+*.db
 tmp_repos/
 *.pyd
 *.log
+

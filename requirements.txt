@@ -49,3 +49,4 @@ python-dotenv>=1.0.0
 click>=8.1.0
 rich>=13.7.0
 PyYAML>=6.0.0
+aiosqlite>=0.20.0

@@ -59,6 +59,12 @@ def detect_targets(paths: list[str]) -> dict:
     CRYPTO_EXT    = {".py", ".js", ".ts", ".java"}
     IAC_PATTERNS  = {"Dockerfile", "docker-compose", ".tf", ".yaml", ".yml", ".env"}
 
+    IGNORE_DIRS = {
+        ".git", "node_modules", "venv", ".venv", "dist", "build", "target", 
+        "vendor", "third_party", "deps", ".cache", ".next", ".out", "out", 
+        "coverage", ".tox", "site-packages", ".idea", ".vscode"
+    }
+
     for path_str in paths:
         p = Path(path_str)
         if p.is_file():
@@ -72,10 +78,25 @@ def detect_targets(paths: list[str]) -> dict:
                 targets["iac"].append(str(p))
         elif p.is_dir():
             for f in p.rglob("*"):
+                # Skip heavy/third-party/generated directories
+                if any(ignored in f.parts for ignored in IGNORE_DIRS):
+                    continue
                 if not f.is_file():
                     continue
+                # Skip files larger than 1MB (minified assets, big dumps)
+                try:
+                    if f.stat().st_size > 1_000_000:
+                        continue
+                except OSError:
+                    continue
+
                 ext = f.suffix.lower()
                 name = f.name
+
+                # Skip TypeScript declaration files, minified bundles, sourcemaps
+                if name.endswith(".d.ts") or name.endswith(".min.js") or name.endswith(".bundle.js") or name.endswith(".map"):
+                    continue
+
                 if ext in SOLIDITY_EXT:
                     targets["solidity"].append(str(f))
                 elif ext in CRYPTO_EXT:
@@ -89,6 +110,21 @@ def detect_targets(paths: list[str]) -> dict:
     return targets
 
 
+from concurrent.futures import ThreadPoolExecutor
+
+def _scan_files_parallel(scanner, files: list[str]) -> list:
+    """Scanne une liste de fichiers en parallèle en utilisant un pool de threads."""
+    if not files:
+        return []
+    max_workers = min(32, (os.cpu_count() or 4) * 4)
+    all_findings = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = executor.map(scanner.scan_file, files)
+        for res in results:
+            if res:
+                all_findings.extend(res)
+    return all_findings
+
 def run_solidity(target_files: list[str]) -> list[dict]:
     """Lance le scanner Solidity et retourne les findings normalisés."""
     if not target_files:
@@ -99,9 +135,7 @@ def run_solidity(target_files: list[str]) -> list[dict]:
         import rules as solidity_rules
         kb_path = os.path.join(MODULES_DIR, "solidity", "kb", "vulnerabilities.json")
         scanner = SolidityScanner(rules_package=solidity_rules, kb_path=kb_path)
-        findings = []
-        for f in target_files:
-            findings.extend(scanner.scan_file(f))
+        findings = _scan_files_parallel(scanner, target_files)
         return [_normalize(f, "solidity") for f in findings]
     except ImportError as e:
         print(f"{YELLOW}[WARN] Solidity module not available: {e}{RESET}", file=sys.stderr)
@@ -117,9 +151,7 @@ def run_crypto(target_files: list[str]) -> list[dict]:
         sys.path.insert(0, str(MODULES_DIR / "crypto_misuse"))
         from scanner import CryptoMisuseScanner  # type: ignore
         scanner = CryptoMisuseScanner()
-        findings = []
-        for f in target_files:
-            findings.extend(scanner.scan_file(f))
+        findings = _scan_files_parallel(scanner, target_files)
         return [_normalize(f, "crypto") for f in findings]
     except ImportError as e:
         print(f"{YELLOW}[WARN] Crypto module not available: {e}{RESET}", file=sys.stderr)
@@ -135,9 +167,7 @@ def run_iac(target_files: list[str]) -> list[dict]:
         sys.path.insert(0, str(MODULES_DIR / "iac_scan"))
         from scanner import IaCScanner  # type: ignore
         scanner = IaCScanner()
-        findings = []
-        for f in target_files:
-            findings.extend(scanner.scan_file(f))
+        findings = _scan_files_parallel(scanner, target_files)
         return [_normalize(f, "iac") for f in findings]
     except ImportError as e:
         print(f"{YELLOW}[WARN] IaC module not available: {e}{RESET}", file=sys.stderr)

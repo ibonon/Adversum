@@ -6,7 +6,16 @@ import path from "path";
 export default defineConfig({
   server: {
     host: "::",
-    port: 8080,
+    port: 5173,
+    proxy: {
+      // Proxy all /api calls to the FastAPI backend with 15-minute timeout
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        timeout: 900000,
+        proxyTimeout: 900000,
+      },
+    },
   },
   plugins: [react()],
   resolve: {

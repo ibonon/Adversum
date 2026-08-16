@@ -1,9 +1,11 @@
 import { useRef, useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, Clock, TrendingUp, Download, FileCode, Wrench } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, TrendingUp, Download, FileCode, Wrench, Loader2 } from 'lucide-react';
 
 const DashboardPreview = () => {
   const sectionRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<any>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -22,12 +24,152 @@ const DashboardPreview = () => {
     return () => observer.disconnect();
   }, []);
 
-  const vulnerabilities = [
-    { severity: 'critical', name: 'Reentrancy', file: 'contracts/Vault.sol', module: 'Solidity', status: 'analyzing' },
-    { severity: 'high', name: 'Hardcoded JWT Key', file: 'api/auth.py', module: 'Crypto', status: 'pending' },
-    { severity: 'high', name: 'Root User in Docker', file: 'infra/Dockerfile', module: 'IaC', status: 'fixed' },
-    { severity: 'medium', name: 'Tainted Data Flow', file: 'core/parser.js', module: 'Taint Core', status: 'analyzing' },
+  const handleScan = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const repoUrl = (e.currentTarget.elements.namedItem('repoUrl') as HTMLInputElement)?.value;
+    if (!repoUrl) return;
+
+    setIsScanning(true);
+    setScanResult(null);
+
+    try {
+      const res = await fetch('/api/v1/scan/clone-and-scan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': 'adv-dev-key-123'
+        },
+        body: JSON.stringify({
+          repo_url: repoUrl,
+          all_modules: true
+        })
+      });
+
+      // Read raw text first — avoids crash on empty or non-JSON body
+      const rawText = await res.text();
+
+      if (!rawText || rawText.trim() === '') {
+        alert(`L'API a répondu avec un corps vide (HTTP ${res.status}). Vérifie les logs du serveur uvicorn.`);
+        return;
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        alert(`L'API a répondu mais pas en JSON (HTTP ${res.status}):\n\n${rawText.slice(0, 400)}`);
+        return;
+      }
+
+      if (!res.ok) {
+        alert(`Erreur API (${res.status}) : ${data.detail || JSON.stringify(data)}`);
+      } else {
+        setScanResult(data);
+        if (data.findings?.length === 0) {
+          alert(`✅ Scan terminé sur ${repoUrl}\nAucune vulnérabilité détectée avec les modules actifs.`);
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      // Network-level failure (CORS, no server, etc.)
+      alert(
+        `❌ Impossible de joindre l'API (http://localhost:8080).\n\n` +
+        `Vérifie que :\n1. Le serveur uvicorn tourne bien\n2. Le port 8080 n'est pas bloqué\n\n` +
+        `Détail : ${err?.message || err}`
+      );
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // Helper to trigger file download in browser
+  const downloadFile = (content: string, filename: string, type: string) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportSarif = () => {
+    if (!scanResult) {
+      alert("Aucun résultat de scan disponible à exporter. Lancez d'abord une analyse.");
+      return;
+    }
+    const sarif = {
+      $schema: "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+      version: "2.1.0",
+      runs: [{
+        tool: { driver: { name: "Adversum Unified SAST", version: "1.0.0" } },
+        results: (scanResult.findings || []).map((f: any) => ({
+          ruleId: f.rule_id || "UNKNOWN",
+          level: f.severity === "CRITICAL" || f.severity === "HIGH" ? "error" : "warning",
+          message: { text: f.description || f.title || f.rule_id },
+          locations: [{
+            physicalLocation: {
+              artifactLocation: { uri: f.file_path || f.file || "unknown" },
+              region: { startLine: f.line || 1 }
+            }
+          }]
+        }))
+      }]
+    };
+    downloadFile(JSON.stringify(sarif, null, 2), "adversum_audit.sarif", "application/json");
+  };
+
+  const handleExportMarkdown = () => {
+    if (!scanResult) {
+      alert("Aucun résultat de scan disponible à exporter. Lancez d'abord une analyse.");
+      return;
+    }
+    const findings = scanResult.findings || [];
+    let md = `# 🛡️ Adversum Security Audit Report\n\n`;
+    md += `**Repository:** ${scanResult.repo_url || scanResult.target || 'Local Target'}\n`;
+    md += `**Date:** ${new Date().toLocaleString()}\n`;
+    md += `**Total Findings:** ${findings.length}\n\n`;
+    md += `## Summary by Severity\n\n`;
+    md += `| Severity | Count |\n| --- | --- |\n`;
+    md += `| CRITICAL | ${findings.filter((f: any) => f.severity === 'CRITICAL' || f.severity === 'critical').length} |\n`;
+    md += `| HIGH | ${findings.filter((f: any) => f.severity === 'HIGH' || f.severity === 'high').length} |\n`;
+    md += `| MEDIUM | ${findings.filter((f: any) => f.severity === 'MEDIUM' || f.severity === 'medium').length} |\n`;
+    md += `| LOW | ${findings.filter((f: any) => f.severity === 'LOW' || f.severity === 'low').length} |\n\n`;
+    md += `## Detailed Findings\n\n`;
+    findings.forEach((f: any, idx: number) => {
+      md += `### ${idx + 1}. [${f.severity}] ${f.rule_id || f.title || 'Finding'}\n`;
+      md += `- **File:** \`${f.file_path || f.file}\` (Line ${f.line || 1})\n`;
+      md += `- **Module:** \`${f.module || 'SAST'}\` | **CWE:** \`${f.cwe || 'N/A'}\`\n\n`;
+      if (f.snippet) md += `\`\`\`\n${f.snippet}\n\`\`\`\n\n`;
+      if (f.recommendation) md += `**Recommendation:** ${f.recommendation}\n\n`;
+      md += `---\n\n`;
+    });
+    downloadFile(md, "adversum_report.md", "text/markdown");
+  };
+
+  const defaultVulnerabilities = [
+    { severity: 'critical', name: 'Reentrancy', file: 'contracts/Vault.sol', module: 'Solidity', status: 'analyzing', snippet: 'msg.sender.call{value: amount}("")' },
+    { severity: 'high', name: 'Hardcoded JWT Key', file: 'api/auth.py', module: 'Crypto', status: 'pending', snippet: 'JWT_SECRET = "supersecret123"' },
+    { severity: 'high', name: 'Root User in Docker', file: 'infra/Dockerfile', module: 'IaC', status: 'fixed', snippet: 'USER root' },
+    { severity: 'medium', name: 'Tainted Data Flow', file: 'core/parser.js', module: 'Taint Core', status: 'analyzing', snippet: 'eval(req.query.cmd)' },
   ];
+
+  // Use dynamic vulnerabilities if scan succeeded
+  const vulnerabilities = scanResult && scanResult.findings ? scanResult.findings.map((f: any) => ({
+    severity: (f.severity || 'medium').toLowerCase(),
+    name: f.rule_id || f.title || 'Vuln',
+    file: f.file_path || f.file,
+    module: f.module || 'Scanner',
+    status: 'pending',
+    snippet: f.snippet || '',
+    recommendation: f.recommendation || ''
+  })) : defaultVulnerabilities;
+
+  const totalCount = scanResult?.summary?.total_findings ?? vulnerabilities.length;
+  const criticalCount = scanResult?.findings ? scanResult.findings.filter((f: any) => (f.severity || '').toUpperCase() === 'CRITICAL').length : 1;
+  const highCount = scanResult?.findings ? scanResult.findings.filter((f: any) => (f.severity || '').toUpperCase() === 'HIGH').length : 2;
 
   return (
     <section ref={sectionRef} className="relative py-32 overflow-hidden">
@@ -78,16 +220,7 @@ const DashboardPreview = () => {
             <div className="p-8 bg-background/30">
               {/* Git Repo Scan Bar */}
               <div className="mb-8 p-4 rounded-2xl bg-card/60 border border-border/40 backdrop-blur-md">
-                <form 
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const input = (e.currentTarget.elements.namedItem('repoUrl') as HTMLInputElement)?.value;
-                    if (input) {
-                      alert(`Scan en cours de : ${input}\n\nL'API clone le dépôt et exécute les modules Adversum (Solidity, Crypto, IaC, Taint).`);
-                    }
-                  }} 
-                  className="flex items-center gap-3"
-                >
+                <form onSubmit={handleScan} className="flex items-center gap-3">
                   <div className="relative flex-1">
                     <input 
                       type="url"
@@ -95,13 +228,19 @@ const DashboardPreview = () => {
                       placeholder="https://github.com/votre-user/votre-repo..."
                       className="w-full px-4 py-2.5 rounded-xl bg-background/80 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground/60"
                       required
+                      disabled={isScanning}
                     />
                   </div>
                   <button 
                     type="submit"
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/25 shrink-0"
+                    disabled={isScanning}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/25 shrink-0 disabled:opacity-50"
                   >
-                    🚀 Analyser ce Dépôt
+                    {isScanning ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Analyse en cours...</>
+                    ) : (
+                      <>🚀 Analyser ce Dépôt</>
+                    )}
                   </button>
                 </form>
               </div>
@@ -109,10 +248,10 @@ const DashboardPreview = () => {
               {/* Stats Row */}
               <div className="grid grid-cols-4 gap-4 mb-8">
                 {[
-                  { label: 'Vulnérabilités', value: '12', icon: AlertTriangle, color: 'text-destructive' },
-                  { label: 'Corrigées', value: '8', icon: CheckCircle, color: 'text-success' },
-                  { label: 'En cours', value: '3', icon: Clock, color: 'text-warning' },
-                  { label: 'Score', value: '87%', icon: TrendingUp, color: 'text-primary' },
+                  { label: 'Vulnérabilités', value: String(totalCount), icon: AlertTriangle, color: 'text-destructive' },
+                  { label: 'Critiques', value: String(criticalCount), icon: AlertTriangle, color: 'text-destructive' },
+                  { label: 'Élevées (High)', value: String(highCount), icon: Clock, color: 'text-warning' },
+                  { label: 'Score Sécurité', value: totalCount === 0 ? '100%' : `${Math.max(10, 100 - totalCount * 12)}%`, icon: TrendingUp, color: 'text-primary' },
                 ].map((stat, i) => (
                   <div 
                     key={i} 
@@ -132,19 +271,25 @@ const DashboardPreview = () => {
               <div className="rounded-2xl bg-card/30 border border-border/30 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                    Vulnérabilités récentes (Multi-Modules)
+                    {scanResult ? `Résultats du Scan (${vulnerabilities.length} trouvées)` : 'Vulnérabilités démo (Multi-Modules)'}
                   </h3>
                   <div className="flex gap-2">
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors">
+                    <button 
+                      onClick={handleExportSarif}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors"
+                    >
                       <FileCode className="w-3.5 h-3.5" /> Export SARIF 2.1
                     </button>
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors">
+                    <button 
+                      onClick={handleExportMarkdown}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors"
+                    >
                       <Download className="w-3.5 h-3.5" /> Export Markdown
                     </button>
                   </div>
                 </div>
                 <div className="space-y-3">
-                  {vulnerabilities.map((vuln, i) => (
+                  {vulnerabilities.map((vuln: any, i: number) => (
                     <div
                       key={i}
                       className={`flex items-center justify-between p-4 rounded-xl bg-background/50 border border-border/20 transition-all duration-500 ${
@@ -154,7 +299,7 @@ const DashboardPreview = () => {
                     >
                       <div className="flex items-center gap-4">
                         <div
-                          className={`w-2 h-2 rounded-full ${
+                          className={`w-2.5 h-2.5 rounded-full ${
                             vuln.severity === 'critical'
                               ? 'bg-destructive'
                               : vuln.severity === 'high'
@@ -164,8 +309,8 @@ const DashboardPreview = () => {
                         />
                         <div>
                           <div className="flex items-center gap-2">
-                            <div className="text-sm font-medium">{vuln.name}</div>
-                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-muted/50 border border-border/50 text-muted-foreground">
+                            <div className="text-sm font-semibold text-foreground">{vuln.name}</div>
+                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-muted/50 border border-border/50 text-muted-foreground font-mono">
                               {vuln.module}
                             </span>
                           </div>
@@ -174,19 +319,22 @@ const DashboardPreview = () => {
                       </div>
                       <div className="flex items-center gap-4">
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            vuln.status === 'fixed'
-                              ? 'bg-success/10 text-success'
-                              : vuln.status === 'pending'
-                              ? 'bg-warning/10 text-warning'
-                              : 'bg-primary/10 text-primary'
+                          className={`px-3 py-1 rounded-full text-xs font-medium uppercase tracking-wider ${
+                            vuln.severity === 'critical'
+                              ? 'bg-destructive/15 text-destructive border border-destructive/30'
+                              : vuln.severity === 'high'
+                              ? 'bg-warning/15 text-warning border border-warning/30'
+                              : 'bg-primary/15 text-primary border border-primary/30'
                           }`}
                         >
-                          {vuln.status === 'fixed' ? 'Corrigé' : vuln.status === 'pending' ? 'En attente' : 'Analyse...'}
+                          {vuln.severity}
                         </span>
                         
-                        <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
-                          <Wrench className="w-3.5 h-3.5" /> Auto-Fix / Apply Patch
+                        <button 
+                          onClick={() => alert(`Patch de correction pour ${vuln.name} (${vuln.file}):\n\nCode impacté : ${vuln.snippet || 'N/A'}\n\nRecommandation : ${vuln.recommendation || 'Appliquer la mise à jour de sécurité'}`)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors shadow-sm"
+                        >
+                          <Wrench className="w-3.5 h-3.5" /> Voir Patch / Fix
                         </button>
                       </div>
                     </div>
