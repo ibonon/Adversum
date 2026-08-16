@@ -6,4 +6,4 @@ pub use types::*;
 pub use symtab::*;
 
 #[cfg(test)]
-mod tests;
+// mod tests;

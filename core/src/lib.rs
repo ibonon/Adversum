@@ -1,42 +1,56 @@
-#[path = "../context.rs"] pub mod context;
-#[path = "../ast/mod.rs"] pub mod ast;
-#[path = "../ir/mod.rs"] pub mod ir;
-#[path = "../cfg/mod.rs"] pub mod cfg;
-#[path = "../dataflow/mod.rs"] pub mod dataflow;
-#[path = "../interner/mod.rs"] pub mod interner;
-#[path = "../callgraph/mod.rs"] pub mod callgraph;
 pub mod adversarial;
-pub mod safety;
+#[path = "../ast/mod.rs"]
+pub mod ast;
+#[path = "../attack_graph/mod.rs"]
+pub mod attack_graph;
+#[path = "../callgraph/mod.rs"]
+pub mod callgraph;
+#[path = "../cfg/mod.rs"]
+pub mod cfg;
+#[path = "../context.rs"]
+pub mod context;
+#[path = "../dataflow/mod.rs"]
+pub mod dataflow;
+#[path = "../interner/mod.rs"]
+pub mod interner;
+#[path = "../ir/mod.rs"]
+pub mod ir;
+#[path = "../kb/mod.rs"]
+pub mod kb;
 pub mod learning;
-#[path = "../rules/mod.rs"] pub mod rules;
-#[path = "../attack_graph/mod.rs"] pub mod attack_graph;
-#[path = "../kb/mod.rs"] pub mod kb;
-#[path = "../scoring/mod.rs"] pub mod scoring;
-#[path = "../sarif/mod.rs"] pub mod sarif;
+#[path = "../rules/mod.rs"]
+pub mod rules;
+pub mod safety;
+#[path = "../sarif/mod.rs"]
+pub mod sarif;
+#[path = "../scoring/mod.rs"]
+pub mod scoring;
+#[path = "../smt/mod.rs"]
+pub mod smt;
 #[macro_use]
 extern crate serde;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::context::{Quotas, Tracer, PipelineError, NoOpTracer};
-use crate::adversarial::{AdversarialRequest, AdversarialResult, OracleConfig, attacks};
-use crate::ast::python::PythonParser;
-use crate::ast::javascript::JavaScriptParser;
+use crate::adversarial::{attacks, AdversarialRequest, AdversarialResult, OracleConfig};
 use crate::ast::java::JavaParser;
-use crate::ir::lower::LoweringContext;
+use crate::ast::javascript::JavaScriptParser;
+use crate::ast::python::PythonParser;
 use crate::cfg::build::CfgBuilder;
+use crate::context::{NoOpTracer, PipelineError, Quotas, Tracer};
 use crate::dataflow::analysis::{TaintAnalysis, TaintConfig};
+use crate::ir::lower::LoweringContext;
 
+use memmap2::Mmap;
+use once_cell::sync::Lazy;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use pythonize::pythonize;
-use tree_sitter::{Parser, Language, Query, QueryCursor};
 use rayon::prelude::*;
-use walkdir::WalkDir;
-use std::path::Path;
 use std::fs;
-use memmap2::Mmap;
+use std::path::Path;
+use tree_sitter::{Language, Parser, Query, QueryCursor};
+use walkdir::WalkDir;
 use xxhash_rust::xxh3::xxh3_64;
-use once_cell::sync::Lazy;
 
 // --- Performance Optimization: Pre-compiled Queries ---
 // Reusing queries across threads avoids expensive re-parsing of query strings.
@@ -72,7 +86,11 @@ impl LightFinding {
     #[new]
     #[pyo3(signature = (rule_id, line, file_path=None))]
     fn new(rule_id: u32, line: usize, file_path: Option<String>) -> Self {
-        LightFinding { rule_id, line, file_path }
+        LightFinding {
+            rule_id,
+            line,
+            file_path,
+        }
     }
 }
 
@@ -90,9 +108,9 @@ pub fn finding_to_report(f: &Finding, instr_idx: usize) -> crate::rules::types::
     use crate::rules::types::Severity;
     let severity = match f.severity.as_str() {
         "CRITICAL" => Severity::Critical,
-        "HIGH"     => Severity::High,
-        "MEDIUM"   => Severity::Medium,
-        _          => Severity::Low,
+        "HIGH" => Severity::High,
+        "MEDIUM" => Severity::Medium,
+        _ => Severity::Low,
     };
     crate::rules::types::Report {
         rule_id: f.id.clone(),
@@ -208,67 +226,93 @@ impl<'a> Pipeline<'a> {
             AnalysisLanguage::JavaScript => tree_sitter_javascript::language(),
             AnalysisLanguage::Java => tree_sitter_java::language(),
         };
-        Self { 
-            quotas, 
+        Self {
+            quotas,
             tracer,
             language,
-            analysis_language
+            analysis_language,
         }
     }
 
-    pub fn analyze_auto(&self, source_code: &[u8], file_path: &str) -> Result<Vec<Finding>, PipelineError> {
-        let ext = std::path::Path::new(file_path).extension().and_then(|e| e.to_str()).unwrap_or("");
+    pub fn analyze_auto(
+        &self,
+        source_code: &[u8],
+        file_path: &str,
+    ) -> Result<Vec<Finding>, PipelineError> {
+        let ext = std::path::Path::new(file_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
         let lang = AnalysisLanguage::from_extension(ext).unwrap_or(self.analysis_language);
         let pipeline = Pipeline::new(self.quotas.clone(), self.tracer, Some(lang));
         pipeline.analyze(source_code, Some(file_path), None)
     }
 
-    pub fn analyze(&self, source_code: &[u8], file_path: Option<&str>, ranges: Option<&[(usize, usize)]>) -> Result<Vec<Finding>, PipelineError> {
+    pub fn analyze(
+        &self,
+        source_code: &[u8],
+        file_path: Option<&str>,
+        ranges: Option<&[(usize, usize)]>,
+    ) -> Result<Vec<Finding>, PipelineError> {
         let mut parser = Parser::new();
-        parser.set_language(&self.language).map_err(|e| PipelineError::StageFailed(format!("Failed to set language: {}", e)))?;
-        
-        let tree = parser.parse(source_code, None).ok_or(PipelineError::StageFailed("Failed to parse source".into()))?;
+        parser
+            .set_language(&self.language)
+            .map_err(|e| PipelineError::StageFailed(format!("Failed to set language: {}", e)))?;
+
+        let tree = parser
+            .parse(source_code, None)
+            .ok_or(PipelineError::StageFailed("Failed to parse source".into()))?;
         let root_node = tree.root_node();
-        
+
         let mut findings = Vec::new();
         let mut cursor = QueryCursor::new();
-        
+
         // --- Deterministic Analysis Phase ---
         // 1. AST to IR Lowering (Placeholder/Simplified for this demo, usually we'd parse with our ast module)
         // For now, we still use tree-sitter for sink detection but we'll simulate the "G-ASR" proof
         // by actually checking the node structure instead of hardcoding strings.
-        
+
         // --- Semantic Analysis Phase (DEEP FLOW) ---
         // 1. Lower tree-sitter tree to custom AST
         let mut ast_stmts = Vec::new();
         let mut cursor = root_node.walk();
-        
+
         match self.analysis_language {
             AnalysisLanguage::Python => {
                 let parser = PythonParser::new(source_code);
                 for child in root_node.children(&mut cursor) {
-                    if let Some(s) = parser.parse_stmt(child) { ast_stmts.push(s); }
+                    if let Some(s) = parser.parse_stmt(child) {
+                        ast_stmts.push(s);
+                    }
                 }
-            },
+            }
             AnalysisLanguage::JavaScript => {
                 let parser = JavaScriptParser::new(source_code);
                 for child in root_node.children(&mut cursor) {
-                    if let Some(s) = parser.parse_stmt(child) { ast_stmts.push(s); }
+                    if let Some(s) = parser.parse_stmt(child) {
+                        ast_stmts.push(s);
+                    }
                 }
-            },
+            }
             AnalysisLanguage::Java => {
                 let parser = JavaParser::new(source_code);
                 for child in root_node.children(&mut cursor) {
-                    if let Some(s) = parser.parse_stmt(child) { ast_stmts.push(s); }
+                    if let Some(s) = parser.parse_stmt(child) {
+                        ast_stmts.push(s);
+                    }
                 }
             }
         }
-        let ast_program = crate::ast::Program { statements: ast_stmts };
+        let ast_program = crate::ast::Program {
+            statements: ast_stmts,
+        };
 
         // 2. Lower AST to IR  (now receives source bytes for line-number mapping)
         let mut lowering = LoweringContext::new(source_code);
         let (ir_program, mut interner, instr_lines) = lowering.build(&ast_program);
-        let module = crate::ir::types::Module { program: ir_program };
+        let module = crate::ir::types::Module {
+            program: ir_program,
+        };
 
         // 3. Configure Taint Analysis
         let mut config = TaintConfig::default();
@@ -277,11 +321,11 @@ impl<'a> Pipeline<'a> {
             AnalysisLanguage::JavaScript => crate::kb::get_js_kb(),
             AnalysisLanguage::Java => crate::kb::get_java_kb(),
         };
-        
+
         for src in &kb.sources {
             config.sources.push(interner.intern(src));
         }
-        
+
         for sink in kb.sink_names() {
             config.sinks.push(interner.intern(&sink));
         }
@@ -294,50 +338,97 @@ impl<'a> Pipeline<'a> {
         // 5. Build Findings using RuleEngine
         let mut engine = crate::rules::RuleEngine::new();
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_001_DANGEROUS_EVAL", "Dangerous Eval", "Use of eval with tainted input",
-            crate::rules::Severity::Critical, vec!["eval"]
+            "RUST_CORE_001_DANGEROUS_EVAL",
+            "Dangerous Eval",
+            "Use of eval with tainted input",
+            crate::rules::Severity::Critical,
+            vec!["eval"],
         ));
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_002_OS_SYSTEM", "OS Command Injection", "Use of os.system with tainted input",
-            crate::rules::Severity::Critical, vec!["system", "os.system", "os.popen", "os.execv"]
+            "RUST_CORE_002_OS_SYSTEM",
+            "OS Command Injection",
+            "Use of os.system with tainted input",
+            crate::rules::Severity::Critical,
+            vec!["system", "os.system", "os.popen", "os.execv"],
         ));
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_003_SUBPROCESS_POPEN", "Subprocess Injection", "Use of subprocess with tainted input",
-            crate::rules::Severity::Critical, vec!["Popen", "subprocess.Popen", "run", "subprocess.run", "call", "subprocess.call", "subprocess.check_output"]
+            "RUST_CORE_003_SUBPROCESS_POPEN",
+            "Subprocess Injection",
+            "Use of subprocess with tainted input",
+            crate::rules::Severity::Critical,
+            vec![
+                "Popen",
+                "subprocess.Popen",
+                "run",
+                "subprocess.run",
+                "call",
+                "subprocess.call",
+                "subprocess.check_output",
+            ],
         ));
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_004_PATH_TRAVERSAL", "Path Traversal", "File open with tainted input",
-            crate::rules::Severity::High, vec!["open"]
+            "RUST_CORE_004_PATH_TRAVERSAL",
+            "Path Traversal",
+            "File open with tainted input",
+            crate::rules::Severity::High,
+            vec!["open"],
         ));
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_005_SQL_INJECTION", "SQL Injection", "SQL query execution with tainted input",
-            crate::rules::Severity::High, vec!["execute", "executemany", "cursor.execute", "db.execute", "conn.execute"]
+            "RUST_CORE_005_SQL_INJECTION",
+            "SQL Injection",
+            "SQL query execution with tainted input",
+            crate::rules::Severity::High,
+            vec![
+                "execute",
+                "executemany",
+                "cursor.execute",
+                "db.execute",
+                "conn.execute",
+            ],
         ));
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_006_SMB_VULN", "SMB Vulnerability", "Insecure SMB Connection",
-            crate::rules::Severity::Critical, vec!["SMBConnection"]
+            "RUST_CORE_006_SMB_VULN",
+            "SMB Vulnerability",
+            "Insecure SMB Connection",
+            crate::rules::Severity::Critical,
+            vec!["SMBConnection"],
         ));
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_007_TEMPLATE_INJECTION", "Template Injection", "SSTI with tainted input",
-            crate::rules::Severity::Critical, vec!["render", "render_template_string", "flask.render_template_string", "jinja2.Template"]
+            "RUST_CORE_007_TEMPLATE_INJECTION",
+            "Template Injection",
+            "SSTI with tainted input",
+            crate::rules::Severity::Critical,
+            vec![
+                "render",
+                "render_template_string",
+                "flask.render_template_string",
+                "jinja2.Template",
+            ],
         ));
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_008_INSECURE_DESERIALIZATION", "Insecure Deserialization", "Unsafe pickle loads",
-            crate::rules::Severity::Critical, vec!["pickle.loads"]
+            "RUST_CORE_008_INSECURE_DESERIALIZATION",
+            "Insecure Deserialization",
+            "Unsafe pickle loads",
+            crate::rules::Severity::Critical,
+            vec!["pickle.loads"],
         ));
         engine.add_rule(crate::rules::GenericTaintRule::new(
-            "RUST_CORE_009_INSECURE_YAML", "Insecure YAML", "Unsafe yaml load",
-            crate::rules::Severity::Critical, vec!["yaml.load"]
+            "RUST_CORE_009_INSECURE_YAML",
+            "Insecure YAML",
+            "Unsafe yaml load",
+            crate::rules::Severity::Critical,
+            vec!["yaml.load"],
         ));
 
         let mut engine_reports = Vec::new();
 
         // Evaluate top-level
         let top_cfg = CfgBuilder::new(&module.program).build();
-        let mut top_analysis = TaintAnalysis::new(&module.program, &top_cfg, config.clone(), &summaries)
-            .with_line_map(instr_lines.clone());
+        let mut top_analysis =
+            TaintAnalysis::new(&module.program, &top_cfg, config.clone(), &summaries)
+                .with_line_map(instr_lines.clone());
         top_analysis.run(crate::dataflow::taint::TaintState::new());
-        
+
         let match_ctx = crate::rules::MatchContext {
             program: &module.program,
             cfg: &top_cfg,
@@ -353,8 +444,9 @@ impl<'a> Pipeline<'a> {
                 functions: std::collections::HashMap::new(),
             };
             let func_cfg = CfgBuilder::new(&func_program).build();
-            let mut func_analysis = TaintAnalysis::new(&func_program, &func_cfg, config.clone(), &summaries)
-                .with_line_map(instr_lines.clone());
+            let mut func_analysis =
+                TaintAnalysis::new(&func_program, &func_cfg, config.clone(), &summaries)
+                    .with_line_map(instr_lines.clone());
             func_analysis.run(crate::dataflow::taint::TaintState::new());
 
             let func_ctx = crate::rules::MatchContext {
@@ -368,7 +460,7 @@ impl<'a> Pipeline<'a> {
 
         for report in engine_reports {
             let line = report.line.unwrap_or(report.instr_idx);
-            
+
             // Range Filtering
             if let Some(r) = ranges {
                 if !r.iter().any(|(start, end)| line >= *start && line <= *end) {
@@ -397,15 +489,19 @@ impl<'a> Pipeline<'a> {
                 immune_context: None,
             });
         }
-        
+
         // We can keep the tree-sitter findings for UI precision too, if we want to "high-light" them.
         // For now, let's prioritize the semantic findings.
-        
+
         Ok(findings)
     }
 }
 
-pub fn analyze_default(source: &[u8], file_path: Option<&str>, ranges: Option<&[(usize, usize)]>) -> Result<Vec<Finding>, PipelineError> {
+pub fn analyze_default(
+    source: &[u8],
+    file_path: Option<&str>,
+    ranges: Option<&[(usize, usize)]>,
+) -> Result<Vec<Finding>, PipelineError> {
     let tracer = NoOpTracer;
     let pipeline = Pipeline::new(Quotas::default(), &tracer, None);
     pipeline.analyze(source, file_path, ranges)
@@ -417,25 +513,33 @@ pub fn analyze_default(source: &[u8], file_path: Option<&str>, ranges: Option<&[
 pub fn analyze_sarif(_py: Python<'_>, source: String, file_path: String) -> PyResult<String> {
     if let Ok(findings) = analyze_default(source.as_bytes(), Some(&file_path), None) {
         let sarif_log = sarif::emit_sarif(&findings, &file_path);
-        let json_str = serde_json::to_string_pretty(&sarif_log)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to serialize SARIF: {}", e)))?;
+        let json_str = serde_json::to_string_pretty(&sarif_log).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to serialize SARIF: {}",
+                e
+            ))
+        })?;
         Ok(json_str)
     } else {
-        Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Pipeline error".to_string()))
+        Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Pipeline error".to_string(),
+        ))
     }
 }
 
 #[pyfunction]
 fn inspect_code(_py: Python<'_>, source: String) -> PyResult<AnalysisResult> {
-        if let Ok(findings) = analyze_default(source.as_bytes(), None, None) {
-            Ok(AnalysisResult { 
-                findings: findings.into_iter().map(map_finding_to_light).collect(), 
-                file_hashes: std::collections::HashMap::new(),
-                robustness_score: 1.0 // Default for single file
-            })
-        } else {
-            Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Pipeline error".to_string()))
-        }
+    if let Ok(findings) = analyze_default(source.as_bytes(), None, None) {
+        Ok(AnalysisResult {
+            findings: findings.into_iter().map(map_finding_to_light).collect(),
+            file_hashes: std::collections::HashMap::new(),
+            robustness_score: 1.0, // Default for single file
+        })
+    } else {
+        Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Pipeline error".to_string(),
+        ))
+    }
 }
 
 #[pyfunction]
@@ -444,19 +548,28 @@ fn analyze_auto_py(_py: Python<'_>, source: String, file_path: String) -> PyResu
     let pipeline = Pipeline::new(Quotas::default(), &tracer, None);
     match pipeline.analyze_auto(source.as_bytes(), &file_path) {
         Ok(findings) => Ok(findings),
-        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Pipeline error: {:?}", e)))
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Pipeline error: {:?}",
+            e
+        ))),
     }
 }
 
 #[pyfunction]
-fn compute_hashes(_py: Python<'_>, paths: Vec<String>) -> PyResult<std::collections::HashMap<String, String>> {
-    let hashes: std::collections::HashMap<String, String> = paths.par_iter().filter_map(|path_str| {
-        let path = Path::new(path_str);
-        let file = fs::File::open(path).ok()?;
-        let mmap = unsafe { Mmap::map(&file).ok()? };
-        let hash = xxh3_64(&mmap);
-        Some((path_str.clone(), format!("{:x}", hash)))
-    }).collect();
+fn compute_hashes(
+    _py: Python<'_>,
+    paths: Vec<String>,
+) -> PyResult<std::collections::HashMap<String, String>> {
+    let hashes: std::collections::HashMap<String, String> = paths
+        .par_iter()
+        .filter_map(|path_str| {
+            let path = Path::new(path_str);
+            let file = fs::File::open(path).ok()?;
+            let mmap = unsafe { Mmap::map(&file).ok()? };
+            let hash = xxh3_64(&mmap);
+            Some((path_str.clone(), format!("{:x}", hash)))
+        })
+        .collect();
 
     Ok(hashes)
 }
@@ -464,17 +577,21 @@ fn compute_hashes(_py: Python<'_>, paths: Vec<String>) -> PyResult<std::collecti
 #[pyfunction]
 fn inspect_files(_py: Python<'_>, paths: Vec<String>) -> PyResult<AnalysisResult> {
     let mut file_hashes = std::collections::HashMap::new();
-    
-    let findings: Vec<Finding> = paths.par_iter().filter_map(|path_str| {
-        let path = Path::new(path_str);
-        let file = fs::File::open(path).ok()?;
-        let mmap = unsafe { Mmap::map(&file).ok()? };
-        
-        match analyze_default(&mmap, Some(path_str), None) {
-            Ok(res) => Some(res),
-            Err(_) => None,
-        }
-    }).flatten().collect();
+
+    let findings: Vec<Finding> = paths
+        .par_iter()
+        .filter_map(|path_str| {
+            let path = Path::new(path_str);
+            let file = fs::File::open(path).ok()?;
+            let mmap = unsafe { Mmap::map(&file).ok()? };
+
+            match analyze_default(&mmap, Some(path_str), None) {
+                Ok(res) => Some(res),
+                Err(_) => None,
+            }
+        })
+        .flatten()
+        .collect();
 
     for path_str in paths {
         if let Ok(file) = fs::File::open(&path_str) {
@@ -484,27 +601,34 @@ fn inspect_files(_py: Python<'_>, paths: Vec<String>) -> PyResult<AnalysisResult
         }
     }
 
-    Ok(AnalysisResult { 
-        findings: findings.into_iter().map(map_finding_to_light).collect(), 
+    Ok(AnalysisResult {
+        findings: findings.into_iter().map(map_finding_to_light).collect(),
         file_hashes,
-        robustness_score: 0.85
+        robustness_score: 0.85,
     })
 }
 
 #[pyfunction]
-fn inspect_targeted(_py: Python<'_>, targets: std::collections::HashMap<String, Vec<(usize, usize)>>) -> PyResult<AnalysisResult> {
+fn inspect_targeted(
+    _py: Python<'_>,
+    targets: std::collections::HashMap<String, Vec<(usize, usize)>>,
+) -> PyResult<AnalysisResult> {
     let mut file_hashes = std::collections::HashMap::new();
-    
-    let findings: Vec<Finding> = targets.par_iter().filter_map(|(path_str, ranges)| {
-        let path = Path::new(path_str);
-        let file = fs::File::open(path).ok()?;
-        let mmap = unsafe { Mmap::map(&file).ok()? };
-        
-        match analyze_default(&mmap, Some(path_str), Some(ranges)) {
-            Ok(res) => Some(res),
-            Err(_) => None,
-        }
-    }).flatten().collect();
+
+    let findings: Vec<Finding> = targets
+        .par_iter()
+        .filter_map(|(path_str, ranges)| {
+            let path = Path::new(path_str);
+            let file = fs::File::open(path).ok()?;
+            let mmap = unsafe { Mmap::map(&file).ok()? };
+
+            match analyze_default(&mmap, Some(path_str), Some(ranges)) {
+                Ok(res) => Some(res),
+                Err(_) => None,
+            }
+        })
+        .flatten()
+        .collect();
 
     for path_str in targets.keys() {
         if let Ok(file) = fs::File::open(&path_str) {
@@ -514,10 +638,10 @@ fn inspect_targeted(_py: Python<'_>, targets: std::collections::HashMap<String, 
         }
     }
 
-    Ok(AnalysisResult { 
-        findings: findings.into_iter().map(map_finding_to_light).collect(), 
+    Ok(AnalysisResult {
+        findings: findings.into_iter().map(map_finding_to_light).collect(),
         file_hashes,
-        robustness_score: 1.0
+        robustness_score: 1.0,
     })
 }
 
@@ -543,29 +667,40 @@ fn run_adversarial(_py: Python<'_>, req: &AdversarialRequest) -> PyResult<Advers
         "HSJ" | "HOPSKIPJUMP" | "STEALTHY_HSJ" => attacks::hop_skip_jump(&req)?,
         "TRANSFER" | "ACTIVE_TRANSFER" => attacks::transfer_attack(&req)?,
         "LLM_PROBE" | "JAILBREAK" | "INJECTION" => attacks::llm_probe(&req)?,
-        _ => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Unknown algorithm: {}", req.algorithm))),
+        _ => {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Unknown algorithm: {}",
+                req.algorithm
+            )))
+        }
     };
 
     Ok(result)
 }
 
 #[pyfunction]
-fn check_stability(_py: Python<'_>, config: &learning::theory::ModelConfig) -> PyResult<learning::theory::StabilityAnalysis> {
+fn check_stability(
+    _py: Python<'_>,
+    config: &learning::theory::ModelConfig,
+) -> PyResult<learning::theory::StabilityAnalysis> {
     let analysis = learning::theory::BastounisVerifier::analyze(&config);
     Ok(analysis)
 }
 
 #[pyfunction]
-fn validate_findings(_py: Python<'_>, findings: Vec<PyRef<Finding>>) -> PyResult<Vec<ValidatedFinding>> {
+fn validate_findings(
+    _py: Python<'_>,
+    findings: Vec<PyRef<Finding>>,
+) -> PyResult<Vec<ValidatedFinding>> {
     // Initialize validator (this is cheap due to Lazy static regex compilation)
     let validator = DeterministicValidator::new();
-    
+
     // Map PyRef to cloned Finding for parallel processing
     let findings_cloned: Vec<Finding> = findings.iter().map(|f| (**f).clone()).collect();
-    
+
     // Run parallel validation
     let validated_results = validator.validate_parallel(findings_cloned);
-    
+
     Ok(validated_results)
 }
 
@@ -636,7 +771,6 @@ fn build_attack_graph(_py: Python<'_>, findings: Vec<PyRef<Finding>>) -> PyResul
     Ok(PyAttackGraph { nodes, edges })
 }
 
-
 #[pymodule]
 fn adversum_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<AnalysisResult>()?;
@@ -653,7 +787,8 @@ fn adversum_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyAttackGraph>()?;
     m.add_class::<PyAttackNode>()?;
     m.add_class::<PyAttackEdge>()?;
-    
+    m.add_class::<smt::SmtProofResult>()?;
+
     m.add_function(wrap_pyfunction!(inspect_code, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_sarif, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_auto_py, m)?)?;
@@ -665,7 +800,6 @@ fn adversum_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(check_stability, m)?)?;
     m.add_function(wrap_pyfunction!(validate_findings, m)?)?;
     m.add_function(wrap_pyfunction!(build_attack_graph, m)?)?;
+    m.add_function(wrap_pyfunction!(smt::verify_invariant_smt, m)?)?;
     Ok(())
 }
-
-

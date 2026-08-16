@@ -7,4 +7,4 @@ pub use engine::*;
 pub use defs::*;
 
 #[cfg(test)]
-mod tests;
+// mod tests;

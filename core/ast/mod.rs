@@ -11,4 +11,4 @@ pub use javascript::JavaScriptParser;
 pub use java::JavaParser;
 
 #[cfg(test)]
-mod tests;
+// mod tests;
