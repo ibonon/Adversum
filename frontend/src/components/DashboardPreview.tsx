@@ -46,8 +46,10 @@ const DashboardPreview = () => {
       return;
     }
 
-    const isLocal = url.startsWith('.') || url.startsWith('/') || url.includes(':\\') || url.includes(':/');
-    if (!isLocal && !url.startsWith('http://') && !url.startsWith('https://')) {
+    const isRemote = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('git@') || url.includes('github.com') || url.includes('gitlab.com');
+    const isLocal = !isRemote && (url.startsWith('.') || url.startsWith('/') || /^[a-zA-Z]:[/\\]/.test(url));
+    
+    if (isRemote && !url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
     }
 

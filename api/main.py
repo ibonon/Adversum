@@ -796,9 +796,11 @@ async def clone_and_scan_endpoint(
     import subprocess
 
     target_input = payload.repo_url.strip()
+    print(f"\n\033[96m[+] [ADVERSUM API] Nouvelle demande de scan reçue pour : {target_input}\033[0m", flush=True)
 
     # If the user supplied a local path directly, skip git clone and scan instantly!
     if os.path.exists(target_input):
+        print(f"\033[93m[*] Cible détectée : Dossier Local ({target_input}). Analyse immédiate en cours...\033[0m", flush=True)
         script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
         cmd = [sys.executable, script_path, "--format", "json", "--target", target_input]
         if payload.all_modules:
@@ -810,6 +812,7 @@ async def clone_and_scan_endpoint(
             text=True,
             timeout=900
         )
+        print(f"\033[92m[✓] Analyse locale terminée avec succès !\033[0m", flush=True)
         raw = scan_res.stdout
         json_start = raw.find("{")
         if json_start != -1:
@@ -823,6 +826,7 @@ async def clone_and_scan_endpoint(
 
     temp_dir = tempfile.mkdtemp(prefix="adversum_scan_")
     try:
+        print(f"\033[93m[*] Cible détectée : Dépôt distant. Téléchargement depuis GitHub en cours...\033[0m", flush=True)
         # Clone repository with optimized shallow flags
         clone_env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
         try:
@@ -845,16 +849,20 @@ async def clone_and_scan_endpoint(
                 env=clone_env
             )
         except subprocess.TimeoutExpired:
+            print(f"\033[91m[!] Délai dépassé lors du clonage de {payload.repo_url}\033[0m", flush=True)
             raise HTTPException(
                 status_code=504,
                 detail=f"Délai d'attente dépassé lors du clonage du dépôt ({payload.repo_url}). Vérifiez la connexion ou l'accès au dépôt."
             )
 
         if clone_res.returncode != 0:
+            print(f"\033[91m[!] Échec du clonage : {clone_res.stderr}\033[0m", flush=True)
             raise HTTPException(
                 status_code=400,
                 detail=f"Échec du clonage du dépôt : {clone_res.stderr.strip() or clone_res.stdout.strip()}"
             )
+
+        print(f"\033[92m[✓] Téléchargement Git réussi. Lancement de l'analyse SAST multi-modules...\033[0m", flush=True)
 
         # Build scan command
         script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
