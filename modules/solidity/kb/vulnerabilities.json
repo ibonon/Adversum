@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "last_updated": "2026-08-15",
-  "context": "CEX smart contract audit \u2014 AlphaNex Exchange",
+  "context": "Smart Contract & Web3 Protocol Security Audit",
   "vulnerabilities": [
     {
       "id": "SOL-001",

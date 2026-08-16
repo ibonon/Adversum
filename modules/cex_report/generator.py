@@ -127,7 +127,7 @@ class CEXReportGenerator:
                 md.append("---")
 
         # Architectural Recommendations
-        md.append("## 📋 5. Strategic Hardening Recommendations for AlphaNex")
+        md.append(f"## 📋 5. Strategic Hardening & Custody Recommendations ({project_name})")
         md.append("1. **Zero-Trust Hot Wallet Architecture:** Enforce that the automated hot wallet contains strictly `< 5%` of total exchange reserves, with automated threshold sweep contracts.")
         md.append("2. **Hardware Security Module (HSM) Quorum:** Ensure all withdrawal transactions require a minimum 2-of-3 MPC threshold signature involving independent operational nodes.")
         md.append("3. **Continuous SMT Invariant CI/CD:** Integrate Adversum SMT formal verification in the CI/CD pipeline to mathematically block arithmetic overflows and unatomic balance manipulations before production deployment.\n")

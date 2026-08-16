@@ -780,7 +780,10 @@ class CloneAndScanRequest(BaseModel):
     all_modules: bool = True
     cex_audit: bool = True
     format: str = "json"
+    modules: Optional[List[str]] = None
+    poc: bool = False
     poc_output_dir: Optional[str] = None  # If set, generate Foundry PoC .t.sol files in this dir
+    project_name: Optional[str] = "Digital Asset Platform"
 
 class RemediateRequest(BaseModel):
     findings: List[Dict[str, Any]]
@@ -801,17 +804,27 @@ async def clone_and_scan_endpoint(
     target_input = payload.repo_url.strip()
     print(f"\n\033[96m[+] [ADVERSUM API] Nouvelle demande de scan reçue pour : {target_input}\033[0m", flush=True)
 
-    # If the user supplied a local path directly, skip git clone and scan instantly!
-    if os.path.exists(target_input):
-        print(f"\033[93m[*] Cible détectée : Dossier Local ({target_input}). Analyse immédiate en cours...\033[0m", flush=True)
+    def _build_scan_command(target_dir: str) -> List[str]:
         script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
-        cmd = [sys.executable, script_path, "--format", payload.format, "--target", target_input]
+        cmd = [sys.executable, script_path, "--format", payload.format, "--target", target_dir]
+        if payload.project_name:
+            cmd.extend(["--project-name", payload.project_name])
         if payload.all_modules:
             cmd.append("--all")
+        elif payload.modules:
+            cmd.extend(["--modules"] + payload.modules)
         if payload.cex_audit:
             cmd.append("--cex-audit")
         if payload.poc_output_dir:
             cmd.extend(["--poc", payload.poc_output_dir])
+        elif payload.poc:
+            cmd.append("--poc")
+        return cmd
+
+    # If the user supplied a local path directly, skip git clone and scan instantly!
+    if os.path.exists(target_input):
+        print(f"\033[93m[*] Cible détectée : Dossier Local ({target_input}). Analyse immédiate en cours...\033[0m", flush=True)
+        cmd = _build_scan_command(target_input)
         scan_res = await asyncio.to_thread(
             subprocess.run,
             cmd,
@@ -874,12 +887,7 @@ async def clone_and_scan_endpoint(
         print(f"\033[92m[✓] Téléchargement Git réussi. Lancement de l'analyse SAST multi-modules...\033[0m", flush=True)
 
         # Build scan command
-        script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
-        cmd = [sys.executable, script_path, "--format", payload.format, "--target", temp_dir]
-        if payload.all_modules:
-            cmd.append("--all")
-        if payload.cex_audit:
-            cmd.append("--cex-audit")
+        cmd = _build_scan_command(temp_dir)
 
         # Run scan via background thread to avoid Windows asyncio subprocess transport issues
         try:

@@ -2,7 +2,7 @@
 """
 Adversum Security Modules — Unified Scanner
 ============================================
-Contexte : Audit sécurité CEX/Exchange (AlphaNex Exchange)
+Contexte : Audit sécurité plateformes CEX / Web3 Institutional
 
 Modules disponibles :
   - solidity    : Smart contracts (Solidity/Vyper) — reentrancy, delegatecall, oracle...
@@ -444,8 +444,10 @@ def main():
                         help="Automatically apply fixes to vulnerable files")
     parser.add_argument("--diff", action="store_true",
                         help="Show recommended diffs for vulnerable files")
-    parser.add_argument("--poc", metavar="DIR",
+    parser.add_argument("--poc", metavar="DIR", nargs="?", const="default_pocs",
                         help="Generate executable Foundry Exploit PoC tests (.t.sol) into DIR for all CRITICAL/HIGH findings")
+    parser.add_argument("--project-name", default="Digital Asset Platform",
+                        help="Project name for institutional audit report header")
     args = parser.parse_args()
 
     # Détection des cibles
@@ -453,7 +455,10 @@ def main():
 
     # Lancement des scanners
     all_findings: list[dict] = []
-    active_modules = args.modules or [k for k, v in targets_map.items() if v]
+    if args.all:
+        active_modules = ["solidity", "crypto", "iac", "cex_api"]
+    else:
+        active_modules = args.modules or [k for k, v in targets_map.items() if v]
 
 
     if "solidity" in active_modules and targets_map.get("solidity"):
@@ -487,20 +492,33 @@ def main():
     sev_filter = SEVERITY_ORDER.get(args.min_severity, 4)
     all_findings = [f for f in all_findings if SEVERITY_ORDER.get(f["severity"], 4) <= sev_filter]
 
+    # Attach Foundry PoC for Smart Contract findings
+    try:
+        from poc_generator.generator import FoundryPoCGenerator
+        poc_gen = FoundryPoCGenerator()
+        for f in all_findings:
+            if f.get("module") == "solidity" or str(f.get("rule_id", "")).startswith("SOL-"):
+                poc_sol = poc_gen.generate_poc(f)
+                if poc_sol:
+                    f["poc_code"] = poc_sol
+    except Exception:
+        pass
+
     # Statistiques
     stats: dict[str, int] = {"total": len(all_findings)}
     for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
         stats[sev] = sum(1 for f in all_findings if f["severity"] == sev)
 
-    # Foundry PoC Generation
-    if args.poc:
+    # Foundry PoC Export to directory if requested
+    if args.poc and args.poc != "none":
         print(f"{CYAN}[*] Generating Foundry Exploit PoC files...{RESET}", file=sys.stderr)
         try:
             from poc_generator.generator import FoundryPoCGenerator
             poc_gen = FoundryPoCGenerator()
-            generated = poc_gen.export_pocs_for_findings(all_findings, output_dir=args.poc)
+            poc_dir = args.poc if args.poc != "default_pocs" else "foundry_pocs"
+            generated = poc_gen.export_pocs_for_findings(all_findings, output_dir=poc_dir)
             if generated:
-                print(f"{GREEN}[+] Generated {len(generated)} PoC test file(s) in '{args.poc}':{RESET}", file=sys.stderr)
+                print(f"{GREEN}[+] Generated {len(generated)} PoC test file(s) in '{poc_dir}':{RESET}", file=sys.stderr)
                 for gf in generated:
                     fname = Path(gf).name
                     print(f"    {GREEN}✓{RESET} {fname}  {DIM}→ forge test --match-contract {Path(fname).stem}Test -vvvv{RESET}", file=sys.stderr)
@@ -561,11 +579,20 @@ def main():
             threat_report = run_threat_model(target_root)
         from cex_report.generator import CEXReportGenerator
         gen = CEXReportGenerator()
-        output_text = gen.generate_markdown("AlphaNex Exchange", target_root, all_findings, ccss_report, threat_report)
+        output_text = gen.generate_markdown(args.project_name, target_root, all_findings, ccss_report, threat_report)
     elif args.format == "json":
         from dataclasses import asdict, is_dataclass
         ccss_dict = asdict(ccss_report) if (ccss_report and is_dataclass(ccss_report)) else None
         threat_dict = asdict(threat_report) if (threat_report and is_dataclass(threat_report)) else None
+
+        md_report = None
+        if args.cex_audit or ccss_report:
+            try:
+                from cex_report.generator import CEXReportGenerator
+                gen = CEXReportGenerator()
+                md_report = gen.generate_markdown(args.project_name, target_root, all_findings, ccss_report, threat_report)
+            except Exception:
+                pass
 
         output_text = json.dumps({
             "version": "5.0",
@@ -574,6 +601,7 @@ def main():
             "stats": stats,
             "ccss_compliance": ccss_dict,
             "threat_model": threat_dict,
+            "markdown_report": md_report,
             "findings": all_findings,
         }, indent=2)
 

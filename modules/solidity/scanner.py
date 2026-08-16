@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Adversum Solidity Scanner — Smart Contract Security Analysis
-Contexte : Audit sécurité plateforme CEX (AlphaNex Exchange)
+Contexte : Audit de sécurité Smart Contracts & Protocoles Web3
 """
 import os
 import json
