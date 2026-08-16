@@ -26,11 +26,13 @@ def analyze(content: str) -> list:
         # Does NOT match:  payable(to).transfer(amount)  or  address(this).transfer(...)
         # Does NOT match:  bool success = token.transfer(...)
         # Does NOT match:  require(token.transfer(...))
+        # Does NOT match:  assert token.transfer(...)   — in Vyper, assert IS the check
+        # Does NOT match:  assert extcall token.transfer(...)  — Vyper >= 0.4 explicit extcall
         if '.transfer(' in stripped:
             # Skip native ETH transfers (payable / address target)
             if re.search(r'(?:payable|address)\s*\(', stripped):
                 pass
-            # Skip safe usages: return value assigned or required
+            # Skip safe usages: return value assigned or required (Solidity patterns)
             elif re.search(r'(?:bool\s+\w+\s*=|require\s*\()', stripped):
                 pass
             # Skip safeTransfer
@@ -39,12 +41,21 @@ def analyze(content: str) -> list:
             # Skip internal transfers or transfers from this contract
             elif re.search(r'this\.transfer\s*\(', stripped):
                 pass
+            # ── Vyper: assert token.transfer(...) IS the return value check ──
+            # Both `assert token.transfer(...)` and `assert extcall token.transfer(...)`
+            # are semantically equivalent to require() in Solidity — the return value
+            # is checked and the transaction reverts on False.
+            elif re.search(r'\bassert\b.*\.transfer\s*\(', stripped):
+                pass
+            elif re.search(r'\bextcall\b.*\.transfer\s*\(', stripped):
+                pass
             else:
                 findings.append({
                     'rule_id': 'SOL-007',
                     'line': i + 1,
                     'snippet': stripped[:120],
                 })
+
 
         # ── SOL-009: approve() front-running ────────────────────────────────
         # Matches: token.approve(spender, amount)  or  IERC20(x).approve(...)
