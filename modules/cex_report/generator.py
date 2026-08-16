@@ -111,6 +111,19 @@ class CEXReportGenerator:
                     md.append("```\n")
                 md.append(f"**🛠️ Remediation Guidance:**")
                 md.append(f"{rec}\n")
+
+                # Attach automated Foundry PoC test harness for Solidity findings
+                if f.get('module') == 'solidity' or rule_id.startswith('SOL-'):
+                    try:
+                        from poc_generator.generator import FoundryPoCGenerator
+                        poc_gen = FoundryPoCGenerator()
+                        poc_code = poc_gen.generate_poc(f)
+                        if poc_code:
+                            md.append(f"<details><summary><b>🧪 Executable Foundry Exploit PoC (<code>Exploit_{rule_id}.t.sol</code>)</b></summary>\n")
+                            md.append(f"```solidity\n{poc_code.strip()}\n```\n</details>\n")
+                    except Exception:
+                        pass
+
                 md.append("---")
 
         # Architectural Recommendations

@@ -780,6 +780,7 @@ class CloneAndScanRequest(BaseModel):
     all_modules: bool = True
     cex_audit: bool = True
     format: str = "json"
+    poc_output_dir: Optional[str] = None  # If set, generate Foundry PoC .t.sol files in this dir
 
 class RemediateRequest(BaseModel):
     findings: List[Dict[str, Any]]
@@ -809,6 +810,8 @@ async def clone_and_scan_endpoint(
             cmd.append("--all")
         if payload.cex_audit:
             cmd.append("--cex-audit")
+        if payload.poc_output_dir:
+            cmd.extend(["--poc", payload.poc_output_dir])
         scan_res = await asyncio.to_thread(
             subprocess.run,
             cmd,

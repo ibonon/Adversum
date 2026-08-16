@@ -444,6 +444,8 @@ def main():
                         help="Automatically apply fixes to vulnerable files")
     parser.add_argument("--diff", action="store_true",
                         help="Show recommended diffs for vulnerable files")
+    parser.add_argument("--poc", metavar="DIR",
+                        help="Generate executable Foundry Exploit PoC tests (.t.sol) into DIR for all CRITICAL/HIGH findings")
     args = parser.parse_args()
 
     # Détection des cibles
@@ -489,6 +491,23 @@ def main():
     stats: dict[str, int] = {"total": len(all_findings)}
     for sev in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
         stats[sev] = sum(1 for f in all_findings if f["severity"] == sev)
+
+    # Foundry PoC Generation
+    if args.poc:
+        print(f"{CYAN}[*] Generating Foundry Exploit PoC files...{RESET}", file=sys.stderr)
+        try:
+            from poc_generator.generator import FoundryPoCGenerator
+            poc_gen = FoundryPoCGenerator()
+            generated = poc_gen.export_pocs_for_findings(all_findings, output_dir=args.poc)
+            if generated:
+                print(f"{GREEN}[+] Generated {len(generated)} PoC test file(s) in '{args.poc}':{RESET}", file=sys.stderr)
+                for gf in generated:
+                    fname = Path(gf).name
+                    print(f"    {GREEN}✓{RESET} {fname}  {DIM}→ forge test --match-contract {Path(fname).stem}Test -vvvv{RESET}", file=sys.stderr)
+            else:
+                print(f"{YELLOW}[!] No exploitable findings matched a PoC template.{RESET}", file=sys.stderr)
+        except Exception as e:
+            print(f"{YELLOW}[WARN] PoC generation failed: {e}{RESET}", file=sys.stderr)
 
     # Remediation (Auto-Fix & Diff)
     if args.fix or args.diff:
