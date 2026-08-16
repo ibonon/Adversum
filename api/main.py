@@ -801,7 +801,7 @@ async def clone_and_scan_endpoint(
         clone_env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
         try:
             clone_res = subprocess.run(
-                ["git", "clone", "--depth", "1", "--single-branch", "--no-tags", "--filter=blob:none", payload.repo_url, temp_dir],
+                ["git", "clone", "--depth", "1", "--single-branch", "--no-tags", payload.repo_url, temp_dir],
                 capture_output=True,
                 text=True,
                 timeout=900,

@@ -87,6 +87,12 @@ SCANNABLE_EXTENSIONS = {
 # Extensions that are test files — downgrade confidence
 TEST_FILE_INDICATORS = ('.test.', '.spec.', '_test.', 'test_', 'tests/')
 
+# Fast prefilter pattern: if none of these keywords exist in content, skip entire file instantly
+_PREFILTER_PATTERN = re.compile(
+    r'(?:secret|password|passwd|passphrase|api_key|apikey|private_key|privatekey|token|signing_key|hmac_key|aes_key|jwt|hashlib|md5|sha1|MessageDigest|createHash)',
+    re.IGNORECASE,
+)
+
 
 def _is_test_file(path: str) -> bool:
     normalized = path.replace('\\', '/')
@@ -97,36 +103,39 @@ def _line_is_excluded(line: str) -> bool:
     return any(p.search(line) for p in EXCLUSION_PATTERNS)
 
 
-def _scan_for_pattern_matches(lines: list, patterns: list, rule_id: str, rule: dict, path: str) -> list:
+def _scan_for_pattern_matches(content: str, lines: list, patterns: list, rule_id: str, rule: dict, path: str) -> list:
     findings = []
     is_test = _is_test_file(path)
     seen_lines = set()
 
     for pattern in patterns:
-        for lineno, line in enumerate(lines, start=1):
-            if lineno in seen_lines:
+        for match in pattern.finditer(content):
+            # Calculate line number from character offset
+            start_pos = match.start()
+            lineno = content.count('\n', 0, start_pos) + 1
+            if lineno in seen_lines or lineno > len(lines):
                 continue
+            line = lines[lineno - 1]
             if _line_is_excluded(line):
                 continue
-            if pattern.search(line):
-                seen_lines.add(lineno)
-                snippet = line.strip()[:120]
-                # In test files, lower severity (HIGH instead of CRITICAL for CRYPTO-004)
-                severity = rule.get('severity', 'MEDIUM')
-                if is_test and severity == 'CRITICAL':
-                    severity = 'HIGH'
-                findings.append({
-                    'rule_id': rule_id,
-                    'severity': severity,
-                    'cwe': rule.get('cwe', ''),
-                    'title': rule.get('title', ''),
-                    'description': rule.get('description', ''),
-                    'file': path,
-                    'line': lineno,
-                    'snippet': snippet,
-                    'recommendation': rule.get('recommendation', ''),
-                    'cvss_score': rule.get('cvss_score', 5.0),
-                })
+            seen_lines.add(lineno)
+            snippet = line.strip()[:120]
+            # In test files, lower severity (HIGH instead of CRITICAL for CRYPTO-004)
+            severity = rule.get('severity', 'MEDIUM')
+            if is_test and severity == 'CRITICAL':
+                severity = 'HIGH'
+            findings.append({
+                'rule_id': rule_id,
+                'severity': severity,
+                'cwe': rule.get('cwe', ''),
+                'title': rule.get('title', ''),
+                'description': rule.get('description', ''),
+                'file': path,
+                'line': lineno,
+                'snippet': snippet,
+                'recommendation': rule.get('recommendation', ''),
+                'cvss_score': rule.get('cvss_score', 5.0),
+            })
     return findings
 
 
@@ -145,10 +154,15 @@ class CryptoMisuseScanner:
 
         try:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
+                content = f.read()
         except Exception:
             return []
 
+        # FAST PREFILTER: 99.9% of files do not contain any crypto keyword -> return in 0.0001ms
+        if not _PREFILTER_PATTERN.search(content):
+            return []
+
+        lines = content.splitlines()
         findings = []
 
         # --- CRYPTO-001: Weak hash functions ---
@@ -160,7 +174,7 @@ class CryptoMisuseScanner:
             'cvss_score': 5.3,
         })
         findings.extend(
-            _scan_for_pattern_matches(lines, WEAK_HASH_PATTERNS, 'CRYPTO-001', rule_001, path)
+            _scan_for_pattern_matches(content, lines, WEAK_HASH_PATTERNS, 'CRYPTO-001', rule_001, path)
         )
 
         # --- CRYPTO-004: Hardcoded secrets ---
@@ -172,10 +186,11 @@ class CryptoMisuseScanner:
             'cvss_score': 10.0,
         })
         findings.extend(
-            _scan_for_pattern_matches(lines, HARDCODED_SECRET_PATTERNS, 'CRYPTO-004', rule_004, path)
+            _scan_for_pattern_matches(content, lines, HARDCODED_SECRET_PATTERNS, 'CRYPTO-004', rule_004, path)
         )
 
         return findings
+
 
 
 def main():

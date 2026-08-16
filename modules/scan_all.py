@@ -77,35 +77,34 @@ def detect_targets(paths: list[str]) -> dict:
             elif ext in {".tf", ".yaml", ".yml"} or any(pat in name for pat in IAC_PATTERNS):
                 targets["iac"].append(str(p))
         elif p.is_dir():
-            for f in p.rglob("*"):
-                # Skip heavy/third-party/generated directories
-                if any(ignored in f.parts for ignored in IGNORE_DIRS):
-                    continue
-                if not f.is_file():
-                    continue
-                # Skip files larger than 1MB (minified assets, big dumps)
-                try:
-                    if f.stat().st_size > 1_000_000:
+            for root, dirs, files in os.walk(path_str):
+                # Prune heavy/third-party/generated directories in-place (avoids walking .git / node_modules)
+                dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith('.git')]
+                
+                for filename in files:
+                    ext = os.path.splitext(filename)[1].lower()
+                    
+                    # Skip minified, bundle, sourcemaps, declaration files
+                    if (filename.endswith((".d.ts", ".min.js", ".bundle.js", ".map"))
+                            or filename.endswith(".lock")):
                         continue
-                except OSError:
-                    continue
 
-                ext = f.suffix.lower()
-                name = f.name
+                    full_path = os.path.join(root, filename)
+                    try:
+                        if os.path.getsize(full_path) > 1_000_000:
+                            continue
+                    except OSError:
+                        continue
 
-                # Skip TypeScript declaration files, minified bundles, sourcemaps
-                if name.endswith(".d.ts") or name.endswith(".min.js") or name.endswith(".bundle.js") or name.endswith(".map"):
-                    continue
-
-                if ext in SOLIDITY_EXT:
-                    targets["solidity"].append(str(f))
-                elif ext in CRYPTO_EXT:
-                    targets["crypto"].append(str(f))
-                elif (ext in {".tf", ".yaml", ".yml"}
-                      or name == "Dockerfile"
-                      or "docker-compose" in name
-                      or name == ".env"):
-                    targets["iac"].append(str(f))
+                    if ext in SOLIDITY_EXT:
+                        targets["solidity"].append(full_path)
+                    elif ext in CRYPTO_EXT:
+                        targets["crypto"].append(full_path)
+                    elif (ext in {".tf", ".yaml", ".yml"}
+                          or filename == "Dockerfile"
+                          or "docker-compose" in filename
+                          or filename == ".env"):
+                        targets["iac"].append(full_path)
 
     return targets
 
