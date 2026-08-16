@@ -115,7 +115,7 @@ impl AdversarialRequest {
 }
 
 #[pyclass(get_all)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdversarialResult {
     pub algorithm: String,
     pub perturbed_data: Vec<f32>,
@@ -130,6 +130,3 @@ pub struct AdversarialResult {
     pub adversarial_prompt: Option<String>,
     pub robustness_score: f32, // 0.0 - 1.0 (Higher is better)
 }
-
-#[cfg(test)]
-// mod tests;
