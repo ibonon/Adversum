@@ -132,38 +132,44 @@ class IaCScanner:
         findings = []
         lines = content.splitlines()
 
-        # IaC-DF-001: Running as root (no USER instruction found anywhere)
-        # Only flag if there is actually a RUN / ENTRYPOINT / CMD present (real active image)
-        has_from = any(l.strip().upper().startswith('FROM') for l in lines)
-        has_user = any(re.match(r'^\s*USER\s+', l, re.IGNORECASE) for l in lines)
-        has_cmd  = any(re.match(r'^\s*(CMD|ENTRYPOINT|RUN)\s+', l, re.IGNORECASE) for l in lines)
+        # IaC-DF-001: Running as root (no USER in FINAL stage of multi-stage build)
+        # Find all FROM indices
+        from_indices = [i for i, l in enumerate(lines) if l.strip().upper().startswith('FROM')]
+        if from_indices:
+            last_from_idx = from_indices[-1]
+            final_stage_lines = lines[last_from_idx:]
+            
+            has_user = any(re.match(r'^\s*USER\s+', l, re.IGNORECASE) for l in final_stage_lines)
+            has_cmd  = any(re.match(r'^\s*(CMD|ENTRYPOINT|RUN)\s+', l, re.IGNORECASE) for l in final_stage_lines)
+            is_scratch = 'scratch' in lines[last_from_idx].lower()
 
-        if has_from and has_cmd and not has_user:
-            # Find the first FROM line to point to
-            from_line = next((i+1 for i, l in enumerate(lines)
-                              if l.strip().upper().startswith('FROM')), 1)
-            from_snippet = lines[from_line - 1].strip()[:120]
-            findings.append(_make_finding(
-                "IaC-DF-001", "HIGH", "CWE-250",
-                "Container running as root",
-                "No USER instruction found. Container will execute as root by default.",
-                path, from_line, from_snippet,
-                "Add a 'USER <uid>' instruction before CMD/ENTRYPOINT.",
-                7.8,
-            ))
+            if has_cmd and not has_user and not is_scratch:
+                from_line = last_from_idx + 1
+                from_snippet = lines[last_from_idx].strip()[:120]
+                findings.append(_make_finding(
+                    "IaC-DF-001", "HIGH", "CWE-250",
+                    "Container running as root in final stage",
+                    "No USER instruction found in the final image stage. Container will execute as root by default.",
+                    path, from_line, from_snippet,
+                    "Add a 'USER <uid>' instruction before CMD/ENTRYPOINT in the final image.",
+                    7.8,
+                ))
 
         # IaC-DF-002: Secrets hardcoded in ENV
+        MOCK_VALUES = ('test', 'dummy', 'example', 'your-', 'changeme', 'placeholder', 'insert', 'replace', 'local', 'dev')
         for m in _DOCKERFILE_ENV_ASSIGN.finditer(content):
             key = m.group('key')
-            val = m.group('val').strip()
+            val = m.group('val').strip().strip('"\'')
             # Only flag if the variable name contains a known secret keyword
             if not _SECRET_KEYWORD.search(key):
                 continue
             # Skip env-var references: ${VAR}, $VAR
             if val.startswith('$') or '${' in val:
                 continue
-            # Skip placeholders and empty-looking values
-            if len(val) < 4 or val.upper() in ('TRUE', 'FALSE', 'NULL', 'NONE', '""', "''"):
+            # Skip placeholders and empty/mock-looking values
+            if len(val) < 8 or val.upper() in ('TRUE', 'FALSE', 'NULL', 'NONE', '0', '1', '""', "''"):
+                continue
+            if any(mock in val.lower() for mock in MOCK_VALUES):
                 continue
             lineno = _find_line(content, m.start())
             snippet = content.splitlines()[lineno - 1].strip()[:120]
@@ -236,6 +242,7 @@ class IaCScanner:
 
     def _scan_terraform(self, path: str, content: str) -> list:
         findings = []
+        lines = content.splitlines()
 
         tf_checks = [
             (_TF_PUBLIC_READ, "IaC-TF-001", "CRITICAL", "CWE-732",
@@ -248,11 +255,6 @@ class IaCScanner:
              "ACL 'public-read-write' allows anyone to read and write objects.",
              "Remove public ACL immediately.",
              9.8),
-            (_TF_OPEN_CIDR, "IaC-TF-003", "HIGH", "CWE-284",
-             "Security group open to 0.0.0.0/0",
-             "Ingress rule allows traffic from any IP address.",
-             "Restrict cidr_blocks to specific trusted IP ranges.",
-             8.6),
         ]
 
         for pattern, rule_id, severity, cwe, title, description, recommendation, cvss in tf_checks:
@@ -260,6 +262,31 @@ class IaCScanner:
                 findings.append(_make_finding(
                     rule_id, severity, cwe, title, description,
                     path, lineno, snippet, recommendation, cvss,
+                ))
+
+        # IaC-TF-003: Security group open to 0.0.0.0/0 (Port-aware filtering)
+        # Only flag if open to sensitive ports (SSH, RDP, DBs) or all ports (-1/0)
+        # Skip if explicitly for web ports 80 / 443
+        for m in _TF_OPEN_CIDR.finditer(content):
+            lineno = _find_line(content, m.start())
+            start_idx = max(0, lineno - 8)
+            end_idx = min(len(lines), lineno + 8)
+            context = "\n".join(lines[start_idx:end_idx])
+
+            # If the block is clearly an egress rule or public web server (80 / 443), skip
+            is_egress = 'type = "egress"' in context or 'egress {' in context
+            is_public_web = ('from_port = 80' in context and 'to_port = 80' in context) or \
+                            ('from_port = 443' in context and 'to_port = 443' in context)
+
+            if not is_egress and not is_public_web:
+                snippet = lines[lineno - 1].strip()[:120]
+                findings.append(_make_finding(
+                    "IaC-TF-003", "HIGH", "CWE-284",
+                    "Security group open to 0.0.0.0/0 on sensitive port",
+                    "Ingress rule allows untrusted traffic from any IP address to a non-HTTP/HTTPS service.",
+                    path, lineno, snippet,
+                    "Restrict cidr_blocks to specific trusted IP ranges or VPN gateways.",
+                    8.6,
                 ))
 
         return findings
