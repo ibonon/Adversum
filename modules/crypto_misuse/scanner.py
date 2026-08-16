@@ -22,24 +22,23 @@ WEAK_HASH_PATTERNS = [
     re.compile(r'createHash\s*\(\s*["\']sha1["\']', re.IGNORECASE),
 ]
 
-# ---------------------------------------------------------------------------
+import bisect
+
 # Patterns for CRYPTO-004 — Hardcoded secrets / cryptographic keys
-# We require a concrete value assignment, not just the word 'secret'.
-# ---------------------------------------------------------------------------
 HARDCODED_SECRET_PATTERNS = [
     # Python: AES_KEY = b"..."  /  secret = "..."  /  password = '...'
     re.compile(
-        r'(?:AES_KEY|SECRET_?KEY|PRIVATE_?KEY|API_?SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|HMAC_?KEY|SIGNING_?KEY)\s*=\s*[bBfF]?["\'][^"\']{6,}["\']',
+        r'(?:AES_KEY|SECRET_?KEY|PRIVATE_?KEY|API_?SECRET|PASSWORD|PASSWD|PASSPHRASE|HMAC_?KEY|SIGNING_?KEY|AUTH_?TOKEN)\s*=\s*[bBfF]?["\'][^"\']{6,}["\']',
         re.IGNORECASE,
     ),
     # JS/TS const / let / var: const secret = "value"
     re.compile(
-        r'(?:const|let|var)\s+(?:secret|apiSecret|privateKey|aesKey|hmacKey|signingKey|password|passwd|token)\s*=\s*[`"\'][^`"\']{6,}[`"\']',
+        r'(?:const|let|var)\s+(?:secret|apiSecret|privateKey|aesKey|hmacKey|signingKey|password|passwd|authToken|accessToken|secretKey)\s*=\s*[`"\'][^`"\']{6,}[`"\']',
         re.IGNORECASE,
     ),
     # Generic: secret_key = "..." in any language
     re.compile(
-        r'\b(?:secret_key|secretkey|secret|api_key|apikey|access_token|auth_token)\s*=\s*["\'][^"\']{8,}["\']',
+        r'\b(?:secret_key|secretkey|api_key|apikey|access_token|auth_token)\s*=\s*["\'][^"\']{8,}["\']',
         re.IGNORECASE,
     ),
     # Solidity / env: hardcoded hex 32-byte keys
@@ -89,7 +88,7 @@ TEST_FILE_INDICATORS = ('.test.', '.spec.', '_test.', 'test_', 'tests/')
 
 # Fast prefilter pattern: if none of these keywords exist in content, skip entire file instantly
 _PREFILTER_PATTERN = re.compile(
-    r'(?:secret|password|passwd|passphrase|api_key|apikey|private_key|privatekey|token|signing_key|hmac_key|aes_key|jwt|hashlib|md5|sha1|MessageDigest|createHash)',
+    r'(?:secret_key|secretkey|api_key|apikey|private_key|privatekey|signing_key|hmac_key|aes_key|password|passwd|passphrase|auth_token|access_token|jwt|hashlib|md5|sha1|MessageDigest|createHash)',
     re.IGNORECASE,
 )
 
@@ -108,11 +107,16 @@ def _scan_for_pattern_matches(content: str, lines: list, patterns: list, rule_id
     is_test = _is_test_file(path)
     seen_lines = set()
 
+    # Precalculate newline offsets for fast binary search line lookup
+    line_offsets = [0]
+    for idx, c in enumerate(content):
+        if c == '\n':
+            line_offsets.append(idx + 1)
+
     for pattern in patterns:
         for match in pattern.finditer(content):
-            # Calculate line number from character offset
             start_pos = match.start()
-            lineno = content.count('\n', 0, start_pos) + 1
+            lineno = bisect.bisect_right(line_offsets, start_pos)
             if lineno in seen_lines or lineno > len(lines):
                 continue
             line = lines[lineno - 1]
@@ -137,6 +141,7 @@ def _scan_for_pattern_matches(content: str, lines: list, patterns: list, rule_id
                 'cvss_score': rule.get('cvss_score', 5.0),
             })
     return findings
+
 
 
 class CryptoMisuseScanner:
