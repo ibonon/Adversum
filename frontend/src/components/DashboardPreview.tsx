@@ -6,6 +6,7 @@ const DashboardPreview = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<any>(null);
+  const [repoUrl, setRepoUrl] = useState('');
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -26,11 +27,15 @@ const DashboardPreview = () => {
 
   const handleScan = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const repoUrl = (e.currentTarget.elements.namedItem('repoUrl') as HTMLInputElement)?.value;
-    if (!repoUrl) return;
+    const url = repoUrl.trim();
+    if (!url) {
+      alert("Veuillez saisir l'URL d'un dépôt GitHub valide.");
+      return;
+    }
 
     setIsScanning(true);
     setScanResult(null);
+    console.log("Submitting scan to API for:", url);
 
     try {
       const res = await fetch('/api/v1/scan/clone-and-scan', {
@@ -40,7 +45,7 @@ const DashboardPreview = () => {
           'X-API-Key': 'adv-dev-key-123'
         },
         body: JSON.stringify({
-          repo_url: repoUrl,
+          repo_url: url,
           all_modules: true
         })
       });
@@ -225,6 +230,8 @@ const DashboardPreview = () => {
                     <input 
                       type="url"
                       name="repoUrl"
+                      value={repoUrl}
+                      onChange={(e) => setRepoUrl(e.target.value)}
                       placeholder="https://github.com/votre-user/votre-repo..."
                       className="w-full px-4 py-2.5 rounded-xl bg-background/80 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground/60"
                       required

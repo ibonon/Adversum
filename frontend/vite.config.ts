@@ -10,7 +10,7 @@ export default defineConfig({
     proxy: {
       // Proxy all /api calls to the FastAPI backend with 15-minute timeout
       "/api": {
-        target: "http://localhost:8080",
+        target: "http://127.0.0.1:8080",
         changeOrigin: true,
         timeout: 900000,
         proxyTimeout: 900000,
