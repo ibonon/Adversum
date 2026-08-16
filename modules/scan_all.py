@@ -65,7 +65,8 @@ def detect_targets(paths: list[str]) -> dict:
         "coverage", ".tox", "site-packages", ".idea", ".vscode",
         ".yarn", ".turbo", ".pnpm-store", "locales", "translations", 
         "docs", "website", "bench", "benchmark", "benchmarks", 
-        "fixtures", "e2e", "test-results", "artifacts", "public", "assets", "static", "tmp", "temp"
+        "fixtures", "e2e", "test-results", "artifacts", "public", "assets", "static", "tmp", "temp",
+        "__tests__", "__mocks__", "mock", "mocks", "test-fixtures"
     }
 
 
