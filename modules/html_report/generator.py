@@ -22,7 +22,8 @@ class HTMLReportGenerator:
         findings: List[Dict[str, Any]],
         ccss_report: Any = None,
         threat_report: Any = None,
-        por_summary: Optional[Dict[str, Any]] = None
+        por_summary: Optional[Dict[str, Any]] = None,
+        intelligence_data: Optional[Dict[str, Any]] = None
     ) -> str:
         date_str = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
@@ -310,6 +311,10 @@ class HTMLReportGenerator:
     <!-- Navigation Tabs -->
     <div class="nav-tabs">
       <button class="tab-btn active" onclick="switchTab('findings')">🔍 Vulnérabilités &amp; PoC ({total_count})</button>
+      <button class="tab-btn" onclick="switchTab('chains')">🔗 Kill-Chains d'Attaque</button>
+      <button class="tab-btn" onclick="switchTab('invariants')">🎯 Invariants &amp; Fuzzing Foundry</button>
+      <button class="tab-btn" onclick="switchTab('flows')">👑 Rôles &amp; Flux Économiques</button>
+      <button class="tab-btn" onclick="switchTab('patches')">🧬 Patchs Validés SMT</button>
       <button class="tab-btn" onclick="switchTab('ccss')">🏛️ Conformité CCSS v3.0</button>
       <button class="tab-btn" onclick="switchTab('threat')">🎯 Menaces STRIDE &amp; DREAD</button>
       <button class="tab-btn" onclick="switchTab('por')">🌳 Proof of Reserves (Merkle)</button>
@@ -575,6 +580,236 @@ class HTMLReportGenerator:
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- TAB 6: EXPLOIT KILL-CHAINS -->
+    <div id="tab-chains" class="tab-content">
+      <div class="card">
+        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;">🔗 Exploit Chaining &amp; Graphes de Kill-Chain Multi-Étapes</h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+          Synthèse autonome des vecteurs d'attaque composites corrélant plusieurs failles pour reproduire des scénarios d'exploitation réels de bout-en-bout.
+        </p>
+"""
+        chains_list = (intelligence_data or {}).get("exploit_chains", [])
+        if chains_list:
+            for ch in chains_list:
+                ch_title = html.escape(str(ch.get("title", "Exploit Chain")))
+                ch_sev = html.escape(str(ch.get("composite_severity", "CRITICAL")))
+                ch_loss = html.escape(str(ch.get("estimated_financial_loss", "Significant")))
+                ch_sub = html.escape(str(ch.get("target_subsystem", "DeFi Subsystem")))
+                ch_narrative = html.escape(str(ch.get("narrative", "")))
+                ch_mitigation = html.escape(str(ch.get("mitigation_strategy", "")))
+                ch_mermaid = html.escape(str(ch.get("mermaid_diagram", "")))
+
+                html_content += f"""
+        <div class="card" style="background: rgba(0,0,0,0.3); margin-bottom: 1.25rem; border-left: 4px solid var(--crit);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+            <div>
+              <div style="font-weight: 700; font-size: 1rem; color: #f87171;">{ch_title}</div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">Cible : {ch_sub} &bull; Perte Potentielle Estimée : <strong style="color: #fca5a5;">{ch_loss}</strong></div>
+            </div>
+            <span class="badge badge-critical">{ch_sev}</span>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">{ch_narrative}</p>
+          
+          <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.4rem;">Étapes d'Exploitation Successives :</div>
+"""
+                for st in ch.get("steps", []):
+                    st_num = st.get("step_number", 1)
+                    st_phase = html.escape(str(st.get("phase_name", "")))
+                    st_act = html.escape(str(st.get("action_description", "")))
+                    st_asset = html.escape(str(st.get("target_asset", "")))
+                    html_content += f"""
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 0.6rem 0.9rem; border-radius: 6px; margin-bottom: 0.4rem; font-size: 0.8rem;">
+            <strong style="color: var(--primary);">Étape {st_num} — {st_phase}:</strong> {st_act} <span style="color: var(--text-muted);">({st_asset})</span>
+          </div>
+"""
+                html_content += f"""
+          <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); padding: 0.6rem 0.9rem; border-radius: 6px; font-size: 0.8rem; margin-top: 0.75rem;">
+            <strong style="color: var(--success);">🛡️ Remédiation Recommandée :</strong> {ch_mitigation}
+          </div>
+        </div>
+"""
+        else:
+            html_content += """<div style="text-align: center; color: var(--text-muted); padding: 2rem;">Aucune chaîne d'attaque composite n'a pu être combinée sur ce périmètre.</div>"""
+
+        html_content += """
+      </div>
+    </div>
+
+    <!-- TAB 7: INVARIANTS & FUZZING FOUNDRY -->
+    <div id="tab-invariants" class="tab-content">
+      <div class="card">
+        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;">🎯 Invariants Extraits &amp; Suite de Fuzzing d'Invariants Foundry</h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+          Extraction automatique des lois de conservation mathématiques et génération de suites de tests de fuzzing Foundry (<code>InvariantTest.t.sol</code> + <code>Handler.sol</code>) prêtes à exécuter.
+        </p>
+"""
+        harnesses_list = (intelligence_data or {}).get("invariant_harnesses", [])
+        if harnesses_list:
+            for hn in harnesses_list:
+                cname = html.escape(str(hn.get("contract_name", "TargetContract")))
+                test_code = html.escape(str(hn.get("test_sol_code", "")))
+                handler_code = html.escape(str(hn.get("handler_sol_code", "")))
+
+                html_content += f"""
+        <div class="card" style="background: rgba(0,0,0,0.3); margin-bottom: 1.25rem;">
+          <div style="font-weight: 700; font-size: 1rem; color: var(--accent); margin-bottom: 0.5rem;">Harness de Fuzzing pour {cname}</div>
+          <table>
+            <thead>
+              <tr>
+                <th>ID Invariant</th>
+                <th>Catégorie</th>
+                <th>Propriété Formelle Mathématique</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+"""
+                for inv in hn.get("invariants", []):
+                    invid = html.escape(str(inv.get("invariant_id", "")))
+                    invcat = html.escape(str(inv.get("category", "")))
+                    invexpr = html.escape(str(inv.get("formal_expression", "")))
+                    invdesc = html.escape(str(inv.get("description", "")))
+                    html_content += f"""
+              <tr>
+                <td style="font-family: monospace; font-weight: 700; color: var(--primary);">{invid}</td>
+                <td><span class="badge badge-medium">{invcat}</span></td>
+                <td style="font-family: monospace; font-size: 0.8rem; color: #a7f3d0;">{invexpr}</td>
+                <td style="color: var(--text-muted);">{invdesc}</td>
+              </tr>
+"""
+                html_content += f"""
+            </tbody>
+          </table>
+          <div class="poc-box" style="margin-top: 1rem;">
+            <div class="poc-header">
+              <span style="font-weight: 700; font-size: 0.85rem; color: #c4b5fd;">🧪 Test Suite Foundry (<code>{cname}InvariantTest.t.sol</code>)</span>
+              <button class="btn" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="copyCode(this, `{test_code}`)">📋 Copier Invariant Test</button>
+            </div>
+            <pre style="max-height: 200px;"><code>{test_code}</code></pre>
+          </div>
+          <div class="poc-box" style="margin-top: 0.75rem;">
+            <div class="poc-header">
+              <span style="font-weight: 700; font-size: 0.85rem; color: #c4b5fd;">⚙️ State Handler (<code>{cname}Handler.sol</code>)</span>
+              <button class="btn" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="copyCode(this, `{handler_code}`)">📋 Copier Handler</button>
+            </div>
+            <pre style="max-height: 200px;"><code>{handler_code}</code></pre>
+          </div>
+        </div>
+"""
+        else:
+            html_content += """<div style="text-align: center; color: var(--text-muted); padding: 2rem;">Aucun contrat analysé pour l'extraction d'invariants.</div>"""
+
+        html_content += """
+      </div>
+    </div>
+
+    <!-- TAB 8: ROLES & ECONOMIC FLOWS -->
+    <div id="tab-flows" class="tab-content">
+      <div class="card">
+        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;">👑 Cartographie des Rôles &amp; Modélisation des Flux Économiques</h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+          Identification des privilèges d'acteurs (Admin, Relayer, Utilisateur) et analyse des asymétries de flux financiers (fuites de liquidité).
+        </p>
+"""
+        flows_list = (intelligence_data or {}).get("economic_flows", [])
+        if flows_list:
+            for fl in flows_list:
+                fl_tname = html.escape(str(fl.get("target_name", "Target")))
+                fl_asym = fl.get("has_economic_asymmetry", False)
+                fl_sum = html.escape(str(fl.get("asymmetry_summary", "")))
+                status_color = "var(--crit)" if fl_asym else "var(--success)"
+
+                html_content += f"""
+        <div class="card" style="background: rgba(0,0,0,0.3); margin-bottom: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div style="font-weight: 700; font-size: 1rem; color: var(--primary);">Modèle Économique : {fl_tname}</div>
+            <span class="badge" style="color: {status_color}; border: 1px solid {status_color};">
+              {'⚠️ Asymétrie Détectée' if fl_asym else '✅ Flux Symétriques'}
+            </span>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">{fl_sum}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Type de Flux</th>
+                <th>Fonction Déclencheuse</th>
+                <th>Actif Manipulé</th>
+                <th>Source &rarr; Destination</th>
+                <th>Évaluation du Risque</th>
+              </tr>
+            </thead>
+            <tbody>
+"""
+                for ef in fl.get("flows", []):
+                    ftype = html.escape(str(ef.get("flow_type", "")))
+                    ffunc = html.escape(str(ef.get("function_trigger", "")))
+                    fasset = html.escape(str(ef.get("asset", "")))
+                    fsrc = html.escape(str(ef.get("source_actor", "")))
+                    fdest = html.escape(str(ef.get("destination", "")))
+                    frisk = html.escape(str(ef.get("risk_description", "")))
+                    is_leak = ef.get("is_asymmetric_leak", False)
+                    row_bg = "background: rgba(239, 68, 68, 0.08);" if is_leak else ""
+
+                    html_content += f"""
+              <tr style="{row_bg}">
+                <td style="font-weight: 700; font-family: monospace;">{ftype}</td>
+                <td><code>{ffunc}</code></td>
+                <td>{fasset}</td>
+                <td>{fsrc} &rarr; {fdest}</td>
+                <td style="color: {'#f87171' if is_leak else 'var(--text-muted)'};">{frisk}</td>
+              </tr>
+"""
+                html_content += """
+            </tbody>
+          </table>
+        </div>
+"""
+        else:
+            html_content += """<div style="text-align: center; color: var(--text-muted); padding: 2rem;">Aucun flux économique analysé.</div>"""
+
+        html_content += """
+      </div>
+    </div>
+
+    <!-- TAB 9: SMT VALIDATED PATCHES -->
+    <div id="tab-patches" class="tab-content">
+      <div class="card">
+        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;">🧬 Correctifs AST Validés par Preuve Formelle SMT</h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+          Synthèse automatique de patchs de code validés syntaxiquement et formellement prouvés contre les régressions par le solveur SMT.
+        </p>
+"""
+        patches_list = (intelligence_data or {}).get("validated_patches", [])
+        if patches_list:
+            for pt in patches_list:
+                pid = html.escape(str(pt.get("patch_id", "")))
+                pfile = html.escape(str(pt.get("file", "")))
+                pline = pt.get("line", 1)
+                pdiff = html.escape(str(pt.get("diff", "")))
+                pproof = html.escape(str(pt.get("verification_proof", "")))
+
+                html_content += f"""
+        <div class="card" style="background: rgba(0,0,0,0.3); margin-bottom: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <div style="font-weight: 700; font-size: 0.95rem; color: var(--success);">
+              {pid} &bull; <span style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">{pfile}:{pline}</span>
+            </div>
+            <span class="badge" style="color: var(--success); border: 1px solid var(--success);">100% SMT Verified</span>
+          </div>
+          <div style="font-size: 0.8rem; color: #a7f3d0; margin-bottom: 0.75rem;">
+            {pproof}
+          </div>
+          <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted);">Diff Unifié Validé :</div>
+          <pre><code>{pdiff}</code></pre>
+        </div>
+"""
+        else:
+            html_content += """<div style="text-align: center; color: var(--text-muted); padding: 2rem;">Aucun patch synthétisé pour ce rapport.</div>"""
+
+        html_content += """
       </div>
     </div>
   </div>

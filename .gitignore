@@ -43,4 +43,6 @@ adversum_local.db
 tmp_repos/
 *.pyd
 *.log
+foundry_pocs/
+default_pocs/
 

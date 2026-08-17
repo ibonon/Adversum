@@ -322,6 +322,58 @@ def run_threat_model(target_dir: str):
         return None
 
 
+def run_intelligence(target_root: str, all_findings: list[dict], targets_map: dict) -> dict:
+    """Lance le moteur d'intelligence avancée (Exploit Chaining, Invariant Mining, Economic Flows, SMT Patches)."""
+    try:
+        from dataclasses import asdict, is_dataclass
+        from intelligence import ExploitChainer, InvariantMiner, RoleEconomicFlowAnalyzer, SmartPatchValidator  # type: ignore
+
+        chainer = ExploitChainer()
+        chains = [asdict(c) if is_dataclass(c) else c.__dict__ for c in chainer.synthesize_chains(all_findings)]
+        
+        miner = InvariantMiner()
+        harnesses = []
+        for sol_f in (targets_map.get("solidity", []) + targets_map.get("cross_chain", []))[:5]:
+            try:
+                with open(sol_f, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                h = miner.generate_foundry_suite(content, Path(sol_f).stem)
+                harnesses.append(asdict(h))
+            except Exception:
+                pass
+
+        flow_analyzer = RoleEconomicFlowAnalyzer()
+        flows = []
+        for fpath in (targets_map.get("solidity", []) + targets_map.get("cex_api", []))[:5]:
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                rep = flow_analyzer.analyze(content, Path(fpath).stem)
+                flows.append(asdict(rep))
+            except Exception:
+                pass
+
+        validator = SmartPatchValidator()
+        validated_patches = []
+        for finding in all_findings[:10]:
+            try:
+                vp = validator.generate_and_verify_patch(finding)
+                if vp:
+                    validated_patches.append(asdict(vp))
+            except Exception:
+                pass
+
+        return {
+            "exploit_chains": chains,
+            "invariant_harnesses": harnesses,
+            "economic_flows": flows,
+            "validated_patches": validated_patches
+        }
+    except Exception as e:
+        print(f"{YELLOW}[WARN] Intelligence engine error: {e}{RESET}", file=sys.stderr)
+        return {}
+
+
 
 def _normalize(finding, module: str) -> dict:
     """Normalise un finding quelconque en dict unifié."""
@@ -725,6 +777,11 @@ def main():
         except ImportError as e:
             print(f"{YELLOW}[WARN] Remediation module not available: {e}{RESET}", file=sys.stderr)
 
+    # Intelligence Engine (Kill Chains, Invariant Mining, Economic Flows, SMT Patches)
+    intel_data = None
+    if args.cex_audit or args.format in ("html", "cex_report", "json"):
+        intel_data = run_intelligence(target_root, all_findings, targets_map)
+
     # Génération de l'output
     output_text: str = ""
     if args.format == "text":
@@ -741,7 +798,7 @@ def main():
             threat_report = run_threat_model(target_root)
         from html_report.generator import HTMLReportGenerator
         html_gen = HTMLReportGenerator()
-        output_text = html_gen.generate(args.project_name, target_root, all_findings, ccss_report, threat_report)
+        output_text = html_gen.generate(args.project_name, target_root, all_findings, ccss_report, threat_report, intelligence_data=intel_data)
     elif args.format == "cex_report":
         if not ccss_report:
             ccss_report = run_ccss_audit(target_root)
@@ -767,7 +824,7 @@ def main():
             try:
                 from html_report.generator import HTMLReportGenerator
                 html_gen = HTMLReportGenerator()
-                html_report = html_gen.generate(args.project_name, target_root, all_findings, ccss_report, threat_report)
+                html_report = html_gen.generate(args.project_name, target_root, all_findings, ccss_report, threat_report, intelligence_data=intel_data)
             except Exception:
                 pass
 
@@ -778,6 +835,7 @@ def main():
             "stats": stats,
             "ccss_compliance": ccss_dict,
             "threat_model": threat_dict,
+            "intelligence": intel_data,
             "markdown_report": md_report,
             "html_report": html_report,
             "findings": all_findings,
