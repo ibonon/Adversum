@@ -35,9 +35,17 @@ class ProofOfReservesScanner:
 
             lines = content.splitlines()
 
-            # Rule 1: Missing Negative Balance Exclusion in Liability Query / Generator
+            # Context check: Only analyze files that are relevant to Proof of Reserves, Solvency, Custody or Balance Aggregation
+            file_lower = file_path.lower()
+            is_por_context = any(kw in file_lower for kw in ('por', 'reserve', 'solvency', 'liabilit', 'merkle', 'sum_tree', 'custod', 'snapshot', 'balance_agg')) or \
+                             any(kw in content.lower() for kw in ('proof_of_reserves', 'merkle_sum_tree', 'totalsupply', 'liabilities', 'solvency', 'reserve_audit'))
+
+            if not is_por_context:
+                return findings
+
+            # Rule 1: Missing Negative Balance Exclusion in Liability Aggregator / Merkle Sum Tree
             liability_query_matches = re.finditer(
-                r'(?:SELECT|find|query|aggregate).*(?:sum|balance|liability|user_balance)',
+                r'(?:SELECT|find|query|aggregate).*(?:sum\s*\(\s*(?:balance|user_balance|amount)|SUM\(|GROUP\s+BY.*balance|total_liabilit)',
                 content,
                 re.IGNORECASE
             )
@@ -48,7 +56,7 @@ class ProofOfReservesScanner:
                 context_end = min(len(lines), line_no + 15)
                 context_text = "\n".join(lines[context_start:context_end])
 
-                if "balance" in context_text.lower() and not re.search(r'(?:balance\s*>=\s*0|balance\s*>\s*0|WHERE.*balance|assert.*balance\s*>=)', context_text, re.IGNORECASE):
+                if not re.search(r'(?:balance\s*>=\s*0|balance\s*>\s*0|WHERE.*balance|assert.*balance\s*>=|require.*balance\s*>=)', context_text, re.IGNORECASE):
                     findings.append(PoRFinding(
                         rule_id="POR-001",
                         severity="CRITICAL",
@@ -71,18 +79,24 @@ class ProofOfReservesScanner:
             for match in unsalted_leaf_matches:
                 start_pos = match.start()
                 line_no = content[:start_pos].count('\n') + 1
-                findings.append(PoRFinding(
-                    rule_id="POR-002",
-                    severity="HIGH",
-                    cwe="CWE-359",
-                    title="Unsalted Merkle Leaf Hash (Customer Balance Deanonymization)",
-                    description="Merkle tree leaf construction hashes user identifiers with balance without a unique user salt, allowing rainbow-table deanonymization of customer account balances.",
-                    file=file_path,
-                    line=line_no,
-                    snippet=lines[line_no - 1].strip() if line_no <= len(lines) else match.group(0),
-                    recommendation="Incorporate a high-entropy per-user cryptographic salt: hash(userId + ':' + balance + ':' + userSalt).",
-                    cvss_score=7.8
-                ))
+                context_start = max(0, line_no - 5)
+                context_end = min(len(lines), line_no + 5)
+                context_text = "\n".join(lines[context_start:context_end])
+
+                # Skip if salt / nonce is clearly incorporated
+                if not re.search(r'(?:salt|nonce|user_salt|secret)', context_text, re.IGNORECASE):
+                    findings.append(PoRFinding(
+                        rule_id="POR-002",
+                        severity="HIGH",
+                        cwe="CWE-359",
+                        title="Unsalted Merkle Leaf Hash (Customer Balance Deanonymization)",
+                        description="Merkle tree leaf construction hashes user identifiers with balance without a unique user salt, allowing rainbow-table deanonymization of customer account balances.",
+                        file=file_path,
+                        line=line_no,
+                        snippet=lines[line_no - 1].strip() if line_no <= len(lines) else match.group(0),
+                        recommendation="Incorporate a high-entropy per-user cryptographic salt: hash(userId + ':' + balance + ':' + userSalt).",
+                        cvss_score=7.8
+                    ))
 
             # Rule 3: Missing On-Chain Timelock / Multi-Sig on PoR Root Publisher
             por_publish_matches = re.finditer(

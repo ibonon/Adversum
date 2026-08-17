@@ -26,11 +26,21 @@ class CEXApiFinding:
     recommendation: str
     cvss_score: float
 
+TEST_FILE_PATTERNS = re.compile(
+    r'(?:\.test\.|\.spec\.|\.e2e\.|_test\.|/test/|/tests/|/__tests__/|/test-helpers?/|'
+    r'test-support|\.fixture\.|/fixture|/mock|/fake|/stub|/harness|/sandbox)',
+    re.IGNORECASE,
+)
+
 class CEXApiScanner:
     def __init__(self):
         pass
 
     def scan_file(self, path: str) -> List[CEXApiFinding]:
+        normalized = path.replace('\\', '/')
+        if TEST_FILE_PATTERNS.search(normalized):
+            return []
+
         ext = os.path.splitext(path)[1].lower()
         if ext not in ('.py', '.ts', '.js', '.go', '.rs', '.java'):
             return []
@@ -46,18 +56,17 @@ class CEXApiScanner:
 
         # ── CEX-API-001: Race Condition on Balance Check (Double Spend) ──
         # Detects balance queries followed by withdrawal/order without row locking
-        # e.g., user.balance >= amount followed by balance -= amount without SELECT FOR UPDATE
         for i, line in enumerate(lines):
             stripped = line.strip()
             if stripped.startswith('#') or stripped.startswith('//'):
                 continue
 
             # Look for non-atomic balance decrement
-            if re.search(r'(?:balance|funds|wallet_balance)\s*=\s*(?:balance|funds|wallet_balance)\s*-\s*', stripped):
+            if re.search(r'(?:^|[^\w.])(?:balance|funds|wallet_balance|user_balance)\s*=\s*(?:balance|funds|wallet_balance|user_balance)\s*-\s*', stripped):
                 # Inspect preceding 15 lines for database locking (FOR UPDATE, transaction atomic)
                 start_idx = max(0, i - 15)
                 context = "\n".join(lines[start_idx:i+1])
-                if not re.search(r'(?:FOR\s+UPDATE|select_for_update|transaction\.atomic|isolated|SERIALIZABLE|mutex|lock\()', context, re.IGNORECASE):
+                if not re.search(r'(?:FOR\s+UPDATE|select_for_update|transaction\.atomic|isolated|SERIALIZABLE|mutex|lock\(|threading\.Lock)', context, re.IGNORECASE):
                     findings.append(CEXApiFinding(
                         rule_id="CEX-API-001",
                         severity="CRITICAL",
@@ -72,11 +81,15 @@ class CEXApiScanner:
                     ))
 
             # ── CEX-API-002: Missing Timestamp & recvWindow Anti-Replay ──
-            # Endpoint handling trade orders or withdrawals without timestamp tolerance
-            if re.search(r'(?:def|function|async def|func)\s+(?:create_order|place_order|withdraw|request_withdrawal)\s*\(', stripped):
+            # Only flag on server route handlers (decorated with @app, @router, router.post, or having req/res parameters)
+            if re.search(r'(?:def|function|async def|func)\s+(?:create_order|place_order|withdraw|request_withdrawal|execute_trade)\s*\(', stripped):
+                # Check if this is an API handler (not an outgoing client SDK call)
+                prev_context = "\n".join(lines[max(0, i-5):i])
+                is_server_handler = bool(re.search(r'(?:@router|@app|\.post\(|\.put\(|\.route\(|http\.Handler|Request|req\s*,\s*res)', prev_context, re.IGNORECASE))
+                
                 # Inspect the next 25 lines
                 context = "\n".join(lines[i:min(i+25, len(lines))])
-                if not re.search(r'(?:recvWindow|timestamp|time\.time|Date\.now|nonce)', context, re.IGNORECASE):
+                if is_server_handler and not re.search(r'(?:recvWindow|timestamp|time\.time|Date\.now|nonce|signature)', context, re.IGNORECASE):
                     findings.append(CEXApiFinding(
                         rule_id="CEX-API-002",
                         severity="HIGH",
@@ -87,7 +100,6 @@ class CEXApiScanner:
                         line=i + 1,
                         snippet=stripped[:120],
                         recommendation="Enforce mandatory 'timestamp' and 'recvWindow' parameters. Reject requests where abs(server_time - timestamp) > recvWindow (max 5000ms).",
-                        cvss_score=8.5
                     ))
 
             # ── CEX-API-003: Timing Attack on HMAC Signature Verification ──

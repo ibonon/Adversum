@@ -32,8 +32,14 @@ class ReplayVulnerabilityRule:
             context_end = min(len(lines), line_no + 25)
             context_text = "\n".join(lines[context_start:context_end])
 
-            has_chain_id = bool(re.search(r'(?:block\.chainid|chainId|_chainId|DOMAIN_SEPARATOR|EIP712)', context_text, re.IGNORECASE))
-            has_replay_check = bool(re.search(r'(?:executed|processed|consumed|usedNonces|nullifiers|seenMessages)\s*\[', context_text, re.IGNORECASE))
+            has_chain_id = bool(re.search(
+                r'(?:block\.chainid|chainId|_chainId|DOMAIN_SEPARATOR|_domainSeparatorV4|_hashTypedDataV4|EIP712|EIP712Upgradeable|ERC2612|permit)',
+                context_text, re.IGNORECASE
+            ))
+            has_replay_check = bool(re.search(
+                r'(?:executed|processed|consumed|usedNonces|nullifiers|seenMessages|nonces\[|_useNonce|_nonces)\s*\[|\b_useNonce\b|\bnonces\b',
+                context_text, re.IGNORECASE
+            ))
 
             if not has_chain_id:
                 findings.append({
