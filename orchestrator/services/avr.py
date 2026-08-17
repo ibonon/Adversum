@@ -165,7 +165,7 @@ class AVREngine:
             import hashlib
 
             clean_snippet = "".join(old_snippet.split())
-            proof_anchor = hashlib.md5(
+            proof_anchor = hashlib.sha256(
                 f"{file_path}:{clean_snippet}".encode()
             ).hexdigest()
 

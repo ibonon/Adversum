@@ -3,9 +3,9 @@ import time
 import json
 import os
 
-API_URL = "http://localhost:8000"
-API_KEY = "adv-dev-key-123"
-TARGET_PATH = r"f:\Adversum\adversum"
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
+API_KEY = os.environ.get("API_KEY", "adv-dev-key-123")
+TARGET_PATH = os.environ.get("TARGET_PATH", r"f:\Adversum\adversum")
 
 headers = {"X-API-Key": API_KEY}
 

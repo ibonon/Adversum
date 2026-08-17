@@ -57,13 +57,13 @@ class FallbackEngine:
         findings = []
         hashes = {}
         for file_path in files:
-            hash_md5 = hashlib.md5()
+            hash_sha256 = hashlib.sha256()
             try:
                 with open(file_path, 'rb') as f:
                     content_bytes = f.read()
-                    hash_md5.update(content_bytes)
+                    hash_sha256.update(content_bytes)
                 
-                hashes[file_path] = hash_md5.hexdigest()
+                hashes[file_path] = hash_sha256.hexdigest()
                 
                 content_str = content_bytes.decode('utf-8', errors='replace')
                 tree = ast.parse(content_str)

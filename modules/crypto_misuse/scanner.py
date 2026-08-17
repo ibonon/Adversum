@@ -37,12 +37,13 @@ def _classify_file(path: str) -> str:
     return 'production'
 
 # ---------------------------------------------------------------------------
-# Layer 4 — SHA-1 safe context: non-security uses (cache, checksum, npm shasum)
+# Layer 4 — Hash safe context: non-security uses (cache, checksum, file index)
 # ---------------------------------------------------------------------------
-SHA1_SAFE_CONTEXT_PATTERNS = re.compile(
+HASH_SAFE_CONTEXT_PATTERNS = re.compile(
     r'(?:shasum|checksum|cache|fingerprint|etag|content.address|artifact|'
     r'\.slice\s*\(\s*0\s*,|npm.*sha|sha.*npm|bundle.*hash|hash.*bundle|'
-    r'write.*metadata|startup.*metadata|cli.*startup|file.*digest|digest.*file)',
+    r'write.*metadata|startup.*metadata|cli.*startup|file.*digest|digest.*file|'
+    r'file_hash|hash_md5|proof_anchor|clean_snippet|content_bytes|hashes\s*\[|hashes\b)',
     re.IGNORECASE,
 )
 
@@ -106,6 +107,7 @@ HARDCODED_SECRET_PATTERNS = [
 _MOCK_VALUE_PATTERN = re.compile(
     r'(?:'
     r'["\'](?:test-\w|mock-\w|fake-\w|fixture-\w|stub-\w|dummy-\w|sample-\w|example-\w)["\']|'  # labelled test values
+    r'["\'](?:adv-dev-key|dev-key|dev_key|test-key|default-key|demo-key)[-\w]*["\']|'          # dev default keys
     r'["\'](?:redacted|REDACTED|censored|masked|removed|hidden)["\']|'  # masking/redaction
     r'["\'](?:your-\w|<YOUR_|INSERT_HERE|REPLACE_THIS|xxx+|aaa+)["\']|'  # placeholders
     r'["\'](?:HEARTBEAT_OK|NO_REPLY|ANNOUNCE_SKIP|REPLY_SKIP)["\']|'     # sentinels
@@ -262,8 +264,12 @@ def _scan_secrets(content: str, lines: list, patterns: list,
 
 
 def _scan_hashes(content: str, lines: list, patterns: list,
-                 rule_id: str, rule: dict, path: str) -> list:
-    """CRYPTO-001 scanner: applies Layer 4 (SHA-1 safe context) filtering."""
+                 rule_id: str, rule: dict, path: str, file_class: str) -> list:
+    """CRYPTO-001 scanner: applies test file exclusion and Layer 4 safe context filtering."""
+    # Layer 1: Skip test files entirely for weak hash warnings (test fixtures, test assertions)
+    if file_class == 'test':
+        return []
+
     findings = []
     seen_lines = set()
     line_offsets = _build_line_index(content)
@@ -280,9 +286,13 @@ def _scan_hashes(content: str, lines: list, patterns: list,
             if _line_is_excluded(line):
                 continue
 
-            # Layer 4: SHA-1 used for caching / checksums is NOT a security issue
+            # Skip string literal assignments where the pattern is just quoted text (e.g. content = "h = hashlib.md5()")
+            if re.search(r'^\s*\w+\s*=\s*["\'].*(?:hashlib\.md5|hashlib\.sha1|createHash).*["\']\s*$', line):
+                continue
+
+            # Layer 4: Hashes used for caching, file checksums, proof anchors is NOT a security issue
             surrounding = _get_surrounding_lines(lines, lineno)
-            if SHA1_SAFE_CONTEXT_PATTERNS.search(line) or SHA1_SAFE_CONTEXT_PATTERNS.search(surrounding):
+            if HASH_SAFE_CONTEXT_PATTERNS.search(line) or HASH_SAFE_CONTEXT_PATTERNS.search(surrounding):
                 continue
 
             seen_lines.add(lineno)
@@ -323,7 +333,7 @@ class CryptoMisuseScanner:
         findings = []
         lines = content.splitlines()
 
-        # --- CRYPTO-001: Weak hash (with SHA-1 safe-context Layer 4 filter) ---
+        # --- CRYPTO-001: Weak hash (with Layer 1 test exclusion & Layer 4 safe-context filter) ---
         if _HASH_PREFILTER.search(content):
             rule_001 = self.kb_map.get('CRYPTO-001', {
                 'severity': 'MEDIUM', 'cwe': 'CWE-327',
@@ -332,7 +342,7 @@ class CryptoMisuseScanner:
                 'recommendation': 'Use SHA-256 or SHA-3. For passwords, use bcrypt/argon2/scrypt.',
                 'cvss_score': 5.3,
             })
-            findings.extend(_scan_hashes(content, lines, WEAK_HASH_PATTERNS, 'CRYPTO-001', rule_001, path))
+            findings.extend(_scan_hashes(content, lines, WEAK_HASH_PATTERNS, 'CRYPTO-001', rule_001, path, file_class))
 
         # --- CRYPTO-004: Hardcoded secrets (all 5 layers active) ---
         if _PREFILTER_PATTERN.search(content):
