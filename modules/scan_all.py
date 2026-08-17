@@ -53,13 +53,18 @@ def detect_targets(paths: list[str]) -> dict:
     Détecte automatiquement quels modules lancer selon les types de fichiers trouvés.
     Retourne un dict {module: [paths]}.
     """
-    targets = {"solidity": [], "crypto": [], "iac": [], "cex_api": [], "cross_chain": [], "por": [], "semgrep": []}
+    targets = {"solidity": [], "crypto": [], "iac": [], "cex_api": [], "cross_chain": [], "por": [], "semgrep": [], "trivy": []}
 
     SOLIDITY_EXT  = {".sol", ".vy"}
     CRYPTO_EXT    = {".py", ".js", ".ts", ".java"}
     POR_EXT       = {".py", ".ts", ".js", ".sql", ".sol", ".go"}
     SEMGREP_EXT   = {".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".go", ".java", ".rs", ".rb", ".php"}
     IAC_PATTERNS  = {"Dockerfile", "docker-compose", ".tf", ".yaml", ".yml", ".env"}
+    PACKAGE_PATTERNS = {
+        "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+        "requirements.txt", "Pipfile", "Pipfile.lock", "poetry.lock", "pyproject.toml",
+        "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "pom.xml", "build.gradle", "Gemfile", "Gemfile.lock"
+    }
 
     IGNORE_DIRS = {
         ".git", "node_modules", "venv", ".venv", "dist", "build", "target", 
@@ -89,6 +94,8 @@ def detect_targets(paths: list[str]) -> dict:
                 targets["semgrep"].append(str(p))
             if ext in {".tf", ".yaml", ".yml"} or any(pat in name for pat in IAC_PATTERNS):
                 targets["iac"].append(str(p))
+            if name in PACKAGE_PATTERNS or any(pat in name for pat in IAC_PATTERNS):
+                targets["trivy"].append(str(p))
         elif p.is_dir():
             for root, dirs, files in os.walk(path_str):
                 dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith('.git')]
@@ -97,7 +104,7 @@ def detect_targets(paths: list[str]) -> dict:
                     ext = os.path.splitext(filename)[1].lower()
                     
                     if (filename.endswith((".d.ts", ".min.js", ".bundle.js", ".map"))
-                            or filename.endswith(".lock")):
+                            or filename.endswith(".lock") and filename not in PACKAGE_PATTERNS):
                         continue
 
                     full_path = os.path.join(root, filename)
@@ -117,11 +124,14 @@ def detect_targets(paths: list[str]) -> dict:
                         targets["por"].append(full_path)
                     if ext in SEMGREP_EXT:
                         targets["semgrep"].append(full_path)
+                    if filename in PACKAGE_PATTERNS:
+                        targets["trivy"].append(full_path)
                     if (ext in {".tf", ".yaml", ".yml"}
                           or filename == "Dockerfile"
                           or "docker-compose" in filename
-                          or filename == ".env"):
+                          or filename.endswith(".dockerfile")):
                         targets["iac"].append(full_path)
+                        targets["trivy"].append(full_path)
 
     return targets
 
@@ -266,6 +276,27 @@ def run_semgrep(
         return [_normalize(f, "semgrep") for f in findings]
     except Exception as e:
         print(f"{YELLOW}[WARN] Semgrep runner not available: {e}{RESET}", file=sys.stderr)
+        return []
+
+
+def run_trivy(
+    target_path: str,
+    trivy_bin: str = None,
+    scanners: str = "vuln,misconfig,secret",
+    timeout: int = 300
+) -> list[dict]:
+    """Lance le scanner Trivy pour les dépendances (SCA/CVEs), l'IaC et les secrets."""
+    if not target_path:
+        return []
+    try:
+        from trivy_runner.scanner import TrivyScanner  # type: ignore
+        scanner = TrivyScanner(executable_path=trivy_bin)
+        if not scanner.is_available():
+            return []
+        findings = scanner.scan(target_path, scanners=scanners, timeout=timeout)
+        return [_normalize(f, "trivy") for f in findings]
+    except Exception as e:
+        print(f"{YELLOW}[WARN] Trivy runner not available: {e}{RESET}", file=sys.stderr)
         return []
 
 
@@ -512,9 +543,9 @@ def main():
     parser.add_argument("--output", metavar="FILE",
                         help="Write output to file (default: stdout)")
     parser.add_argument("--modules", nargs="+",
-                        choices=["solidity", "crypto", "iac", "cex_api", "cross_chain", "por", "semgrep"],
+                        choices=["solidity", "crypto", "iac", "cex_api", "cross_chain", "por", "semgrep", "trivy"],
                         help="Force specific modules (default: auto-detect)")
-    parser.add_argument("--cex-audit", action="store_true", help="Run comprehensive institutional CEX audit suite (CCSS, API, SMT, Threat Model, Cross-Chain, PoR, Semgrep)")
+    parser.add_argument("--cex-audit", action="store_true", help="Run comprehensive institutional CEX audit suite (CCSS, API, SMT, Threat Model, Cross-Chain, PoR, Semgrep, Trivy)")
     parser.add_argument("--all", action="store_true",
                         help="Run all modules regardless of file types")
     parser.add_argument("--min-severity", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
@@ -541,6 +572,12 @@ def main():
                         help="Custom executable path to semgrep")
     parser.add_argument("--semgrep-config", metavar="CONFIG",
                         help="Custom Semgrep rule configuration path or registry ruleset (e.g. p/security-audit)")
+    parser.add_argument("--no-trivy", action="store_true",
+                        help="Disable external Trivy SCA & IaC analysis engine")
+    parser.add_argument("--trivy-bin", metavar="PATH",
+                        help="Custom executable path to trivy")
+    parser.add_argument("--trivy-scanners", default="vuln,misconfig,secret", metavar="SCANNERS",
+                        help="Comma-separated Trivy scanners to run (default: vuln,misconfig,secret)")
     args = parser.parse_args()
 
     # Détection des cibles
@@ -550,7 +587,7 @@ def main():
     # Lancement des scanners
     all_findings: list[dict] = []
     if args.all:
-        active_modules = ["solidity", "crypto", "iac", "cex_api", "cross_chain", "por", "semgrep"]
+        active_modules = ["solidity", "crypto", "iac", "cex_api", "cross_chain", "por", "semgrep", "trivy"]
     else:
         active_modules = args.modules or [k for k, v in targets_map.items() if v]
 
@@ -592,6 +629,14 @@ def main():
             target_root if os.path.isdir(target_root) else targets_map["semgrep"][0],
             config=args.semgrep_config,
             semgrep_bin=args.semgrep_bin
+        ))
+
+    if ("trivy" in active_modules or args.cex_audit) and not args.no_trivy and targets_map.get("trivy"):
+        print(f"{CYAN}[*] Running Trivy SCA & IaC dependency scanner...{RESET}", file=sys.stderr)
+        all_findings.extend(run_trivy(
+            target_root if os.path.isdir(target_root) else targets_map["trivy"][0],
+            trivy_bin=args.trivy_bin,
+            scanners=args.trivy_scanners
         ))
 
     # CCSS & Threat Modeling for CEX
