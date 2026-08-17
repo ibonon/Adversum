@@ -1,0 +1,38 @@
+rules:
+  - id: sol-tx-origin-auth
+    languages: [solidity]
+    severity: ERROR
+    message: "Using tx.origin for authentication is vulnerable to phishing attacks where an attacker tricks the owner into calling a malicious contract."
+    metadata:
+      cwe: "CWE-284"
+      swc: "SWC-115"
+      cvss: 8.5
+      rule_id: "SEMGREP-SOL-001"
+      title: "tx.origin Used for Authorization"
+      recommendation: "Use msg.sender instead of tx.origin for access control."
+    patterns:
+      - pattern-either:
+          - pattern: "require(tx.origin == $OWNER, ...)"
+          - pattern: "assert(tx.origin == $OWNER)"
+          - pattern: "if (tx.origin == $OWNER) { ... }"
+
+  - id: sol-unprotected-selfdestruct
+    languages: [solidity]
+    severity: ERROR
+    message: "selfdestruct / suicide call without access control allows anyone to destroy the contract and burn or steal remaining Ether."
+    metadata:
+      cwe: "CWE-284"
+      swc: "SWC-106"
+      cvss: 9.8
+      rule_id: "SEMGREP-SOL-002"
+      title: "Unprotected selfdestruct Instruction"
+      recommendation: "Protect selfdestruct behind onlyOwner / multi-sig guards or remove selfdestruct altogether."
+    patterns:
+      - pattern-either:
+          - pattern: "selfdestruct($RECIPIENT);"
+          - pattern: "suicide($RECIPIENT);"
+      - pattern-not-inside:
+          - pattern: |
+              function $FUNC(...) ... onlyOwner ... { ... }
+          - pattern: |
+              function $FUNC(...) ... onlyRole(...) ... { ... }

@@ -53,11 +53,12 @@ def detect_targets(paths: list[str]) -> dict:
     Détecte automatiquement quels modules lancer selon les types de fichiers trouvés.
     Retourne un dict {module: [paths]}.
     """
-    targets = {"solidity": [], "crypto": [], "iac": [], "cex_api": [], "cross_chain": [], "por": []}
+    targets = {"solidity": [], "crypto": [], "iac": [], "cex_api": [], "cross_chain": [], "por": [], "semgrep": []}
 
     SOLIDITY_EXT  = {".sol", ".vy"}
     CRYPTO_EXT    = {".py", ".js", ".ts", ".java"}
     POR_EXT       = {".py", ".ts", ".js", ".sql", ".sol", ".go"}
+    SEMGREP_EXT   = {".py", ".js", ".ts", ".jsx", ".tsx", ".sol", ".go", ".java", ".rs", ".rb", ".php"}
     IAC_PATTERNS  = {"Dockerfile", "docker-compose", ".tf", ".yaml", ".yml", ".env"}
 
     IGNORE_DIRS = {
@@ -84,6 +85,8 @@ def detect_targets(paths: list[str]) -> dict:
                 targets["cex_api"].append(str(p))
             if ext in POR_EXT:
                 targets["por"].append(str(p))
+            if ext in SEMGREP_EXT:
+                targets["semgrep"].append(str(p))
             if ext in {".tf", ".yaml", ".yml"} or any(pat in name for pat in IAC_PATTERNS):
                 targets["iac"].append(str(p))
         elif p.is_dir():
@@ -112,6 +115,8 @@ def detect_targets(paths: list[str]) -> dict:
                         targets["cex_api"].append(full_path)
                     if ext in POR_EXT:
                         targets["por"].append(full_path)
+                    if ext in SEMGREP_EXT:
+                        targets["semgrep"].append(full_path)
                     if (ext in {".tf", ".yaml", ".yml"}
                           or filename == "Dockerfile"
                           or "docker-compose" in filename
@@ -240,6 +245,27 @@ def run_proof_of_reserves(target_files: list[str]) -> list[dict]:
         return [_normalize(f, "proof_of_reserves") for f in findings]
     except Exception as e:
         print(f"{YELLOW}[WARN] Proof of Reserves module not available: {e}{RESET}", file=sys.stderr)
+        return []
+
+
+def run_semgrep(
+    target_path: str,
+    config: str = None,
+    semgrep_bin: str = None,
+    timeout: int = 300
+) -> list[dict]:
+    """Lance le scanner sémantique universel Semgrep OSS avec les règles institutionnelles."""
+    if not target_path:
+        return []
+    try:
+        from semgrep_runner.scanner import SemgrepScanner  # type: ignore
+        scanner = SemgrepScanner(executable_path=semgrep_bin, default_config=config)
+        if not scanner.is_available():
+            return []
+        findings = scanner.scan(target_path, config=config, timeout=timeout)
+        return [_normalize(f, "semgrep") for f in findings]
+    except Exception as e:
+        print(f"{YELLOW}[WARN] Semgrep runner not available: {e}{RESET}", file=sys.stderr)
         return []
 
 
@@ -486,9 +512,9 @@ def main():
     parser.add_argument("--output", metavar="FILE",
                         help="Write output to file (default: stdout)")
     parser.add_argument("--modules", nargs="+",
-                        choices=["solidity", "crypto", "iac", "cex_api", "cross_chain", "por"],
+                        choices=["solidity", "crypto", "iac", "cex_api", "cross_chain", "por", "semgrep"],
                         help="Force specific modules (default: auto-detect)")
-    parser.add_argument("--cex-audit", action="store_true", help="Run comprehensive institutional CEX audit suite (CCSS, API, SMT, Threat Model, Cross-Chain, PoR)")
+    parser.add_argument("--cex-audit", action="store_true", help="Run comprehensive institutional CEX audit suite (CCSS, API, SMT, Threat Model, Cross-Chain, PoR, Semgrep)")
     parser.add_argument("--all", action="store_true",
                         help="Run all modules regardless of file types")
     parser.add_argument("--min-severity", choices=["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
@@ -509,6 +535,12 @@ def main():
                         help="Custom executable path to slither")
     parser.add_argument("--aderyn-bin", metavar="PATH",
                         help="Custom executable path to aderyn")
+    parser.add_argument("--no-semgrep", action="store_true",
+                        help="Disable external Semgrep semantic analysis engine")
+    parser.add_argument("--semgrep-bin", metavar="PATH",
+                        help="Custom executable path to semgrep")
+    parser.add_argument("--semgrep-config", metavar="CONFIG",
+                        help="Custom Semgrep rule configuration path or registry ruleset (e.g. p/security-audit)")
     args = parser.parse_args()
 
     # Détection des cibles
@@ -518,7 +550,7 @@ def main():
     # Lancement des scanners
     all_findings: list[dict] = []
     if args.all:
-        active_modules = ["solidity", "crypto", "iac", "cex_api", "cross_chain", "por"]
+        active_modules = ["solidity", "crypto", "iac", "cex_api", "cross_chain", "por", "semgrep"]
     else:
         active_modules = args.modules or [k for k, v in targets_map.items() if v]
 
@@ -553,6 +585,14 @@ def main():
     if ("por" in active_modules or args.cex_audit) and targets_map.get("por"):
         print(f"{CYAN}[*] Running Proof of Reserves (PoR) scanner...{RESET}", file=sys.stderr)
         all_findings.extend(run_proof_of_reserves(targets_map["por"]))
+
+    if ("semgrep" in active_modules or args.cex_audit) and not args.no_semgrep and targets_map.get("semgrep"):
+        print(f"{CYAN}[*] Running Universal Semgrep OSS semantic scanner...{RESET}", file=sys.stderr)
+        all_findings.extend(run_semgrep(
+            target_root if os.path.isdir(target_root) else targets_map["semgrep"][0],
+            config=args.semgrep_config,
+            semgrep_bin=args.semgrep_bin
+        ))
 
     # CCSS & Threat Modeling for CEX
     ccss_report = None

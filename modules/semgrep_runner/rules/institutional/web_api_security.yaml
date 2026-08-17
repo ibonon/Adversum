@@ -1,0 +1,51 @@
+rules:
+  - id: web-insecure-deserialization-pickle
+    languages: [python]
+    severity: ERROR
+    message: "Deserialization of untrusted data via pickle.loads or yaml.unsafe_load enables Remote Code Execution (RCE)."
+    metadata:
+      cwe: "CWE-502"
+      cvss: 9.8
+      rule_id: "SEMGREP-WEB-001"
+      title: "Insecure Object Deserialization (RCE)"
+      recommendation: "Use secure serialization formats like JSON, Protobuf, or safe yaml loader (yaml.safe_load)."
+    patterns:
+      - pattern-either:
+          - pattern: "pickle.loads($DATA)"
+          - pattern: "_pickle.loads($DATA)"
+          - pattern: "yaml.load($DATA, Loader=yaml.Loader)"
+          - pattern: "yaml.unsafe_load($DATA)"
+
+  - id: web-command-injection
+    languages: [python, javascript, typescript]
+    severity: ERROR
+    message: "Dynamic command execution with unsanitized parameters allows OS Command Injection."
+    metadata:
+      cwe: "CWE-78"
+      cvss: 9.8
+      rule_id: "SEMGREP-WEB-002"
+      title: "OS Command Injection"
+      recommendation: "Avoid shell execution; pass argument lists to subprocess.run([cmd, arg1, arg2], shell=False)."
+    patterns:
+      - pattern-either:
+          - pattern: "os.system($CMD)"
+          - pattern: "subprocess.Popen($CMD, shell=True, ...)"
+          - pattern: "subprocess.run($CMD, shell=True, ...)"
+          - pattern: "child_process.exec($CMD, ...)"
+
+  - id: web-ssrf-unvalidated-url
+    languages: [python, javascript, typescript]
+    severity: WARNING
+    message: "HTTP request to user-supplied URL without allowlist validation can lead to Server-Side Request Forgery (SSRF) and metadata service compromise."
+    metadata:
+      cwe: "CWE-918"
+      cvss: 8.6
+      rule_id: "SEMGREP-WEB-003"
+      title: "Server-Side Request Forgery (SSRF)"
+      recommendation: "Validate requested URLs against an explicit allowlist and block internal private IP ranges (127.0.0.1, 10.0.0.0/8, 169.254.169.254)."
+    patterns:
+      - pattern-either:
+          - pattern: "requests.get(request.args.get(...), ...)"
+          - pattern: "urllib.request.urlopen(request.json[...])"
+          - pattern: "fetch(req.query.url)"
+          - pattern: "axios.get(req.body.url)"

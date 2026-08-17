@@ -1,0 +1,65 @@
+rules:
+  - id: crypto-weak-cipher-ecb
+    languages: [python, javascript, typescript, java]
+    severity: ERROR
+    message: "Electronic Codebook (ECB) mode encryption leaks plaintext patterns across blocks and does not provide cryptographic integrity."
+    metadata:
+      cwe: "CWE-327"
+      cvss: 7.5
+      rule_id: "SEMGREP-CRYPTO-001"
+      title: "Use of Weak ECB Cipher Mode"
+      recommendation: "Use authenticated encryption such as AES-256-GCM or ChaCha20-Poly1305."
+    patterns:
+      - pattern-either:
+          - pattern: "AES.new(..., AES.MODE_ECB, ...)"
+          - pattern: "Cipher.getInstance(\".../ECB/...\")"
+          - pattern: "crypto.createCipheriv(\"aes-...-ecb\", ...)"
+
+  - id: crypto-jwt-none-algorithm
+    languages: [python, javascript, typescript]
+    severity: ERROR
+    message: "JWT configured with algorithm 'none' allows attackers to forge unsigned tokens with arbitrary administrative claims."
+    metadata:
+      cwe: "CWE-347"
+      cvss: 9.8
+      rule_id: "SEMGREP-CRYPTO-002"
+      title: "JWT Algorithm None Token Forgery"
+      recommendation: "Reject the 'none' algorithm explicitly in token validation logic and enforce asymmetric RS256/EdDSA or HMAC-SHA256."
+    patterns:
+      - pattern-either:
+          - pattern: "jwt.decode(..., algorithms=[\"none\"], ...)"
+          - pattern: "jwt.verify(..., {algorithms: [\"none\"]}, ...)"
+          - pattern: "jwt.decode(..., options={\"verify_signature\": False}, ...)"
+
+  - id: crypto-tls-verify-disabled
+    languages: [python, javascript, typescript, go]
+    severity: ERROR
+    message: "TLS certificate verification is disabled, allowing Man-in-the-Middle (MitM) attackers to intercept and modify traffic."
+    metadata:
+      cwe: "CWE-295"
+      cvss: 8.5
+      rule_id: "SEMGREP-CRYPTO-003"
+      title: "Disabled TLS Certificate Verification"
+      recommendation: "Enable TLS certificate and hostname verification in production environments (verify=True)."
+    patterns:
+      - pattern-either:
+          - pattern: "requests.get(..., verify=False, ...)"
+          - pattern: "requests.post(..., verify=False, ...)"
+          - pattern: "http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}"
+          - pattern: "rejectUnauthorized: false"
+          - pattern: "process.env.NODE_TLS_REJECT_UNAUTHORIZED = \"0\""
+
+  - id: crypto-hardcoded-private-key
+    languages: [python, javascript, typescript, go, java, solidity]
+    severity: ERROR
+    message: "Cryptographic private key or mnemonic seed phrase is hardcoded in source code."
+    metadata:
+      cwe: "CWE-798"
+      cvss: 9.8
+      rule_id: "SEMGREP-CRYPTO-004"
+      title: "Hardcoded Cryptographic Private Key / Secret"
+      recommendation: "Load private keys and API secrets exclusively from secure key vaults (AWS KMS, HashiCorp Vault) or environment variables."
+    patterns:
+      - pattern-either:
+          - pattern-regex: "(?:private_key|privateKey|signing_key|signingKey|jwt_secret|jwtSecret)\\s*=\\s*[\"'][0-9a-fA-F]{64}[\"']"
+          - pattern-regex: "(?:mnemonic|seed_phrase)\\s*=\\s*[\"'][a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+[\"']"

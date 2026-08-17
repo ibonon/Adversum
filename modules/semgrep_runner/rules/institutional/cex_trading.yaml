@@ -1,0 +1,62 @@
+rules:
+  - id: cex-unatomic-balance-deduction
+    languages: [python, javascript, typescript, go]
+    severity: ERROR
+    message: "User balance is deducted without atomic CAS operation or database row locking (SELECT ... FOR UPDATE), risking concurrent race conditions and double-spending."
+    metadata:
+      cwe: "CWE-362"
+      cvss: 9.8
+      rule_id: "SEMGREP-CEX-001"
+      title: "Unatomic Balance Deduction / Race Condition"
+      recommendation: "Use database row-level locking (SELECT FOR UPDATE) or execute deductions in an atomic transactional sequence."
+    patterns:
+      - pattern-either:
+          - pattern: "$USER.balance = $USER.balance - $AMOUNT"
+          - pattern: "$USER.funds -= $AMOUNT"
+          - pattern: "$ACCOUNT.wallet_balance -= $AMOUNT"
+      - pattern-not-inside:
+          - pattern: |
+              with transaction.atomic():
+                  ...
+          - pattern: |
+              with db.transaction():
+                  ...
+
+  - id: cex-timing-attack-hmac
+    languages: [python, javascript, typescript]
+    severity: WARNING
+    message: "Cryptographic HMAC API signature is compared using standard string equality (==) which leaks execution timing information."
+    metadata:
+      cwe: "CWE-208"
+      cvss: 5.9
+      rule_id: "SEMGREP-CEX-002"
+      title: "HMAC Signature Timing Attack"
+      recommendation: "Use constant-time comparison functions: hmac.compare_digest() in Python or crypto.timingSafeEqual() in Node.js."
+    patterns:
+      - pattern-either:
+          - pattern: "$SIGNATURE == $COMPUTED_SIG"
+          - pattern: "$REQ_SIG == $EXPECTED_SIG"
+          - pattern: "$USER_SIG == $VALID_SIG"
+      - metavariable-regex:
+          metavariable: "$SIGNATURE"
+          regex: ".*(?:sig|signature|hmac).*"
+
+  - id: cex-missing-recvwindow-tolerance
+    languages: [python, javascript, typescript]
+    severity: ERROR
+    message: "Financial order placement or withdrawal endpoint handler does not enforce a bounded recvWindow timestamp check."
+    metadata:
+      cwe: "CWE-294"
+      cvss: 8.5
+      rule_id: "SEMGREP-CEX-003"
+      title: "Missing recvWindow Replay Protection"
+      recommendation: "Require a 'timestamp' and 'recvWindow' parameter and reject requests where abs(server_time - timestamp) > recvWindow."
+    patterns:
+      - pattern-either:
+          - pattern: |
+              def create_order($REQ, ...):
+                  ...
+          - pattern: |
+              def execute_withdrawal($REQ, ...):
+                  ...
+      - pattern-not-regex: ".*(?:recvWindow|timestamp|time\\.time|Date\\.now).*"
