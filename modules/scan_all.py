@@ -137,16 +137,36 @@ def _scan_files_parallel(scanner, files: list[str]) -> list:
                 all_findings.extend(res)
     return all_findings
 
-def run_solidity(target_files: list[str]) -> list[dict]:
-    """Lance le scanner Solidity et retourne les findings normalisés."""
+def run_solidity(
+    target_files: list[str],
+    target_dir: str = None,
+    enable_slither: bool = True,
+    enable_aderyn: bool = True,
+    slither_bin: str = None,
+    aderyn_bin: str = None
+) -> list[dict]:
+    """Lance le scanner Solidity multi-moteurs (Natif + Slither + Aderyn) et retourne les findings normalisés."""
     if not target_files:
         return []
     try:
         from solidity.scanner import SolidityScanner  # type: ignore
         import solidity.rules as solidity_rules
         kb_path = os.path.join(MODULES_DIR, "solidity", "kb", "vulnerabilities.json")
-        scanner = SolidityScanner(rules_package=solidity_rules, kb_path=kb_path)
-        findings = _scan_files_parallel(scanner, target_files)
+        scanner = SolidityScanner(
+            rules_package=solidity_rules,
+            kb_path=kb_path,
+            enable_slither=enable_slither,
+            enable_aderyn=enable_aderyn,
+            slither_bin=slither_bin,
+            aderyn_bin=aderyn_bin
+        )
+        
+        # If target_dir is available and external engines are active, run project-level analysis
+        if target_dir and os.path.isdir(target_dir) and scanner.orchestrator and (scanner.orchestrator.slither_adapter or scanner.orchestrator.aderyn_adapter):
+            findings = scanner.scan_directory(target_dir)
+        else:
+            findings = _scan_files_parallel(scanner, target_files)
+
         return [_normalize(f, "solidity") for f in findings]
     except Exception as e:
         print(f"{YELLOW}[WARN] Solidity module not available: {e}{RESET}", file=sys.stderr)
@@ -481,10 +501,19 @@ def main():
                         help="Generate executable Foundry Exploit PoC tests (.t.sol) into DIR for all CRITICAL/HIGH findings")
     parser.add_argument("--project-name", default="Digital Asset Platform",
                         help="Project name for institutional audit report header")
+    parser.add_argument("--no-slither", action="store_true",
+                        help="Disable external Slither analysis engine")
+    parser.add_argument("--no-aderyn", action="store_true",
+                        help="Disable external Aderyn analysis engine")
+    parser.add_argument("--slither-bin", metavar="PATH",
+                        help="Custom executable path to slither")
+    parser.add_argument("--aderyn-bin", metavar="PATH",
+                        help="Custom executable path to aderyn")
     args = parser.parse_args()
 
     # Détection des cibles
     targets_map = detect_targets(args.target)
+    target_root = args.target[0] if args.target else "."
 
     # Lancement des scanners
     all_findings: list[dict] = []
@@ -495,8 +524,15 @@ def main():
 
 
     if "solidity" in active_modules and targets_map.get("solidity"):
-        print(f"{CYAN}[*] Running Solidity scanner...{RESET}", file=sys.stderr)
-        all_findings.extend(run_solidity(targets_map["solidity"]))
+        print(f"{CYAN}[*] Running Solidity multi-engine scanner (Native + Slither + Aderyn)...{RESET}", file=sys.stderr)
+        all_findings.extend(run_solidity(
+            targets_map["solidity"],
+            target_dir=target_root if os.path.isdir(target_root) else None,
+            enable_slither=not args.no_slither,
+            enable_aderyn=not args.no_aderyn,
+            slither_bin=args.slither_bin,
+            aderyn_bin=args.aderyn_bin
+        ))
 
     if "crypto" in active_modules and targets_map.get("crypto"):
         print(f"{CYAN}[*] Running Crypto Misuse scanner...{RESET}", file=sys.stderr)

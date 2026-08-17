@@ -27,22 +27,21 @@ class FoundryPoCGenerator:
 
         # Sanitize contract identifier
         contract_name = re.sub(r'[^a-zA-Z0-9_]', '', contract_name)
-        if not contract_name or contract_name[0].isdigit():
-            contract_name = f"Contract_{contract_name}"
+        cwe = finding.get("cwe", "").upper()
 
-        if rule_id in ("SOL-001", "REENTRANCY"):
+        if rule_id in ("SOL-001", "REENTRANCY") or "REENTRANCY" in rule_id or cwe == "CWE-841":
             return self._poc_reentrancy(contract_name, finding)
-        elif rule_id in ("SOL-002", "TX_ORIGIN"):
+        elif rule_id in ("SOL-002", "TX_ORIGIN") or "TX_ORIGIN" in rule_id or "TX-ORIGIN" in rule_id:
             return self._poc_tx_origin(contract_name, finding)
-        elif rule_id in ("SOL-004", "OVERFLOW", "UNDERFLOW"):
+        elif rule_id in ("SOL-004", "OVERFLOW", "UNDERFLOW") or "OVERFLOW" in rule_id or cwe == "CWE-190":
             return self._poc_overflow(contract_name, finding)
-        elif rule_id in ("SOL-007", "UNCHECKED_ERC20", "UNCHECKED_RETURN"):
+        elif rule_id in ("SOL-007", "UNCHECKED_ERC20", "UNCHECKED_RETURN") or "UNCHECKED" in rule_id or "UNSAFE_ERC20" in rule_id:
             return self._poc_unchecked_return(contract_name, finding)
-        elif rule_id in ("SOL-009", "ORACLE_MANIPULATION", "SPOT_PRICE"):
+        elif rule_id in ("SOL-009", "ORACLE_MANIPULATION", "SPOT_PRICE") or "ORACLE" in rule_id:
             return self._poc_oracle_manipulation(contract_name, finding)
-        elif rule_id in ("SOL-015", "FLASH_LOAN_CALLBACK"):
+        elif rule_id in ("SOL-015", "FLASH_LOAN_CALLBACK") or "FLASH_LOAN" in rule_id:
             return self._poc_flash_loan_callback(contract_name, finding)
-        elif rule_id in ("SOL-005", "DELEGATECALL"):
+        elif rule_id in ("SOL-005", "DELEGATECALL") or "DELEGATECALL" in rule_id or cwe == "CWE-829":
             return self._poc_delegatecall(contract_name, finding)
         else:
             # Generic exploit harness
