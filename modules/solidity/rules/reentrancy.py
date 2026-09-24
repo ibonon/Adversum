@@ -59,10 +59,14 @@ def analyze(content: str) -> list:
 
     else:
         # ── Solidity path ───────────────────────────────────────────────────
+        # Strip comments first so explanatory comments (e.g. '// Missing ReentrancyGuard') don't suppress findings
+        content_no_comments = re.sub(r'//.*', '', content)
+        content_no_comments = re.sub(r'/\*.*?\*/', '', content_no_comments, flags=re.DOTALL)
+        
         has_protection = (
-            'nonReentrant' in content or
-            'ReentrancyGuard' in content or
-            'mutex' in content.lower()
+            'nonReentrant' in content_no_comments or
+            'ReentrancyGuard' in content_no_comments or
+            'mutex' in content_no_comments.lower()
         )
         if has_protection:
             return []

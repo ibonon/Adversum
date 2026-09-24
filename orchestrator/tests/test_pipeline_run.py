@@ -9,11 +9,12 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 # ─── Mock des dépendances lourdes avant tout import ───────────────────────────
 import sys
-for mod in ["sqlmodel", "sqlalchemy", "sqlalchemy.ext.asyncio", "redis", "arq", "asyncpg"]:
+for mod in ["redis", "arq", "asyncpg"]:
     sys.modules.setdefault(mod, MagicMock())
 
 from orchestrator.pipeline.analysis_pipeline import AnalysisPipeline  # noqa: E402
 from orchestrator.models.findings import RawFinding  # noqa: E402
+from orchestrator.services.db import create_db_and_tables  # noqa: E402
 
 
 def _make_raw_finding(path: str, line: int = 5, rule_id: str = "RULE_001") -> RawFinding:
@@ -33,9 +34,9 @@ def _make_raw_finding(path: str, line: int = 5, rule_id: str = "RULE_001") -> Ra
 
 @pytest.mark.asyncio
 @patch("orchestrator.core_bridge.core_wrapper.CoreWrapper.analyze")
-@patch("orchestrator.pipeline.analysis_pipeline.AnalysisPipeline._validate_with_ai", new_callable=AsyncMock)
-async def test_pipeline_detects_eval(mock_validate, mock_analyze):
+async def test_pipeline_detects_eval(mock_analyze):
     """Le pipeline doit détecter un eval() dans un fichier vulnérable."""
+    await create_db_and_tables()
     with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
         f.write("x = eval(user_input)\n")
         tmp_path = f.name
@@ -43,9 +44,10 @@ async def test_pipeline_detects_eval(mock_validate, mock_analyze):
     try:
         mock_raw = _make_raw_finding(tmp_path)
         mock_analyze.return_value = ([mock_raw], {tmp_path: "abc123"}, 0.6)
-        mock_validate.return_value = [MagicMock(raw=mock_raw, validation_status="CONFIRMED")]
 
         pipeline = AnalysisPipeline()
+        if pipeline.validator:
+            pipeline.validator.validate = AsyncMock(return_value=[MagicMock(raw=mock_raw, validation_status="CONFIRMED", ai_confidence=0.95, fix_code=None)])
         result = await pipeline.run(tmp_path)
 
         findings = result.get("findings", [])
@@ -56,21 +58,23 @@ async def test_pipeline_detects_eval(mock_validate, mock_analyze):
 
 @pytest.mark.asyncio
 @patch("orchestrator.core_bridge.core_wrapper.CoreWrapper.analyze")
-@patch("orchestrator.pipeline.analysis_pipeline.AnalysisPipeline._validate_with_ai", new_callable=AsyncMock)
-async def test_pipeline_clean_file(mock_validate, mock_analyze):
+async def test_pipeline_clean_file(mock_analyze):
     """Le pipeline doit retourner 0 finding sur un fichier sain."""
+    await create_db_and_tables()
     with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
         f.write("x = 1 + 1\nprint(x)\n")
         tmp_path = f.name
 
     try:
         mock_analyze.return_value = ([], {tmp_path: "def456"}, 1.0)
-        mock_validate.return_value = []
 
         pipeline = AnalysisPipeline()
+        if pipeline.validator:
+            pipeline.validator.validate = AsyncMock(return_value=[])
         result = await pipeline.run(tmp_path)
 
         findings = result.get("findings", [])
         assert len(findings) == 0, "Aucun finding attendu sur un fichier sain"
     finally:
         os.unlink(tmp_path)
+

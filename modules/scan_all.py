@@ -782,15 +782,41 @@ def main():
     if args.cex_audit or args.format in ("html", "cex_report", "json"):
         intel_data = run_intelligence(target_root, all_findings, targets_map)
 
+    # ── Correlation & Consensus Engine ────────────────────────────────────────
+    correlated_findings = all_findings
+    scorecard = None
+    try:
+        from correlation.engine import CorrelationEngine as _CE
+        _ce = _CE()
+        correlated_findings = _ce.correlate_findings(all_findings)
+        scorecard = _ce.compute_executive_scorecard(correlated_findings)
+        stats = scorecard["finding_counts"]
+        print(
+            f"{CYAN}[*] Correlation Engine: {len(all_findings)} raw → "
+            f"{len(correlated_findings)} deduplicated findings | "
+            f"Grade: {scorecard['security_grade']} | "
+            f"Score: {scorecard['security_score']}/100{RESET}",
+            file=sys.stderr
+        )
+    except Exception as _ce_err:
+        print(f"{YELLOW}[WARN] Correlation engine unavailable: {_ce_err}{RESET}", file=sys.stderr)
+
     # Génération de l'output
     output_text: str = ""
     if args.format == "text":
-        print_text(all_findings, stats)
+        print_text(correlated_findings, stats)
         return
     elif args.format == "sarif":
-        output_text = json.dumps(to_sarif(all_findings, args.target), indent=2)
+        try:
+            sys.path.insert(0, str(MODULES_DIR))
+            from reporting.sarif_exporter import SarifExporter
+            exporter = SarifExporter()
+            sarif_obj = exporter.export(correlated_findings, base_path=args.target, executive_scorecard=scorecard)
+            output_text = json.dumps(sarif_obj, indent=2)
+        except Exception:
+            output_text = json.dumps(to_sarif(correlated_findings, args.target), indent=2)
     elif args.format == "markdown":
-        output_text = to_markdown(all_findings, args.target, stats)
+        output_text = to_markdown(correlated_findings, args.target, stats)
     elif args.format == "html":
         if not ccss_report:
             ccss_report = run_ccss_audit(target_root)
@@ -798,7 +824,15 @@ def main():
             threat_report = run_threat_model(target_root)
         from html_report.generator import HTMLReportGenerator
         html_gen = HTMLReportGenerator()
-        output_text = html_gen.generate(args.project_name, target_root, all_findings, ccss_report, threat_report, intelligence_data=intel_data)
+        output_text = html_gen.generate(
+            args.project_name,
+            target_root,
+            correlated_findings,
+            ccss_report,
+            threat_report,
+            intelligence_data=intel_data,
+            executive_scorecard=scorecard,
+        )
     elif args.format == "cex_report":
         if not ccss_report:
             ccss_report = run_ccss_audit(target_root)
@@ -806,39 +840,21 @@ def main():
             threat_report = run_threat_model(target_root)
         from cex_report.generator import CEXReportGenerator
         gen = CEXReportGenerator()
-        output_text = gen.generate_markdown(args.project_name, target_root, all_findings, ccss_report, threat_report)
+        output_text = gen.generate_markdown(args.project_name, target_root, correlated_findings, ccss_report, threat_report)
     elif args.format == "json":
         from dataclasses import asdict, is_dataclass
-        ccss_dict = asdict(ccss_report) if (ccss_report and is_dataclass(ccss_report)) else None
-        threat_dict = asdict(threat_report) if (threat_report and is_dataclass(threat_report)) else None
-
-        md_report = None
-        html_report = None
-        if args.cex_audit or ccss_report:
-            try:
-                from cex_report.generator import CEXReportGenerator
-                gen = CEXReportGenerator()
-                md_report = gen.generate_markdown(args.project_name, target_root, all_findings, ccss_report, threat_report)
-            except Exception:
-                pass
-            try:
-                from html_report.generator import HTMLReportGenerator
-                html_gen = HTMLReportGenerator()
-                html_report = html_gen.generate(args.project_name, target_root, all_findings, ccss_report, threat_report, intelligence_data=intel_data)
-            except Exception:
-                pass
-
+        _ccss_dict = asdict(ccss_report) if (ccss_report and is_dataclass(ccss_report)) else None
+        _threat_dict = asdict(threat_report) if (threat_report and is_dataclass(threat_report)) else None
         output_text = json.dumps({
             "version": "5.0",
             "tool": "adversum",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "stats": stats,
-            "ccss_compliance": ccss_dict,
-            "threat_model": threat_dict,
+            "executive_scorecard": scorecard,
+            "ccss_compliance": _ccss_dict,
+            "threat_model": _threat_dict,
             "intelligence": intel_data,
-            "markdown_report": md_report,
-            "html_report": html_report,
-            "findings": all_findings,
+            "findings": correlated_findings,
         }, indent=2)
 
     if args.output:

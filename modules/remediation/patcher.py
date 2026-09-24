@@ -33,22 +33,25 @@ class RemediationPatcher:
         # Sélection du fixer selon le module et le fichier
         if module == "solidity" or file_path.endswith((".sol", ".vy")):
             fixed = fix_solidity(finding, file_content)
-        elif module == "crypto":
-            fixed = fix_crypto(finding, file_content)
         elif module == "iac" or file_path.endswith((".tf", ".yaml", ".yml")) or "Dockerfile" in file_path:
             fixed = fix_iac(finding, file_content)
+        elif module == "crypto" and not file_path.endswith(".py"):
+            fixed = fix_crypto(finding, file_content)
         else:
-            fixed = fix_python(finding, file_content)
+            # Python files can contain both crypto and standard python findings (eval, system, yaml)
+            fixed = fix_crypto(finding, file_content)
+            fixed = fix_python(finding, fixed)
 
         diff_text = self._generate_unified_diff(file_content, fixed, file_path)
         return fixed, diff_text
 
     def _generate_unified_diff(self, original: str, fixed: str, file_path: str = "") -> str:
+        filename = os.path.basename(file_path) if file_path else "file"
         diff_lines = list(difflib.unified_diff(
             original.splitlines(keepends=True),
             fixed.splitlines(keepends=True),
-            fromfile=f"a/{os.path.basename(file_path)}",
-            tofile=f"b/{os.path.basename(file_path)}",
+            fromfile=filename,
+            tofile=filename,
         ))
         return "".join(diff_lines)
 

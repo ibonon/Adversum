@@ -10,10 +10,13 @@ from typing import List
 from fastapi import HTTPException
 import os
 
+# Dynamic default root based on repository location
+DEFAULT_ROOT = str(Path(__file__).resolve().parent.parent)
+
 # Whitelist of allowed base directories for scanning
 # Can be configured via environment variable
 ALLOWED_BASES: List[Path] = [
-    Path(os.getenv("ALLOWED_SCAN_DIR", r"F:\Adversum\adversum")).resolve(),
+    Path(os.getenv("ALLOWED_SCAN_DIR", DEFAULT_ROOT)).resolve(),
     Path(".").resolve() / "temp_test_project",
     Path(".").resolve() / "tests",
 ]
@@ -30,7 +33,7 @@ def validate_scan_path(path_str: str) -> Path:
             # If relative, we assume it's relative to the first allowed base or CWD
             # but to be safe we enforce absolute paths from the client for now.
             # Actually, let's allow relative to Adversum root for convenience in dev.
-            base = Path(os.getenv("ADVERSUM_ROOT", r"F:\Adversum\adversum")).resolve()
+            base = Path(os.getenv("ADVERSUM_ROOT", DEFAULT_ROOT)).resolve()
             requested_path = (base / p).resolve()
         else:
             requested_path = p.resolve()
@@ -60,7 +63,7 @@ def validate_scan_path(path_str: str) -> Path:
     
     # We re-evaluate ALLOWED_BASES here to pick up env changes
     dynamic_bases = [
-        Path(os.getenv("ALLOWED_SCAN_DIR", r"F:\Adversum\adversum")).resolve(),
+        Path(os.getenv("ALLOWED_SCAN_DIR", DEFAULT_ROOT)).resolve(),
         Path(".").resolve() / "temp_test_project",
     ]
     

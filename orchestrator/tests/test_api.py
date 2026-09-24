@@ -6,17 +6,9 @@ import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
-# ─── Mock des dépendances lourdes avant tout import ───────────────────────────
-_mock_sqlmodel = MagicMock()
-_mock_sqlalchemy = MagicMock()
-
 import sys
-sys.modules.setdefault("sqlmodel", _mock_sqlmodel)
-sys.modules.setdefault("sqlalchemy", _mock_sqlalchemy)
-sys.modules.setdefault("sqlalchemy.ext.asyncio", _mock_sqlalchemy)
-sys.modules.setdefault("redis", MagicMock())
-sys.modules.setdefault("arq", MagicMock())
-sys.modules.setdefault("asyncpg", MagicMock())
+for mod in ["redis", "arq", "asyncpg"]:
+    sys.modules.setdefault(mod, MagicMock())
 
 # Import de l'app après les mocks
 from orchestrator.api.app import app  # noqa: E402

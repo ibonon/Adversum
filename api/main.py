@@ -161,7 +161,7 @@ class RemediateRequest(BaseModel):
 async def process_audit(job_id: int, target_path: str):
     # We need a new session for the background task
     from orchestrator.services.db import engine
-    async with AsyncSession(engine) as session:
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         job = await session.get(Job, job_id)
         if not job:
             return
@@ -196,17 +196,6 @@ async def process_audit(job_id: int, target_path: str):
             
             # Save Findings
             for f in result["findings"]:
-                # Extract fix info if available (hacky parsing from suggestion or direct attribution if we updated ValidatedFinding)
-                # Ideally ValidatedFinding should have dedicated fix fields. 
-                # For now, let's assume valid JSON structure in 'remediation_suggestion' if it's a fix? 
-                # No, I updated ValidatedFinding to just put it in formatted text. 
-                # I need to pass the raw fix_proposal through.
-                # Let's adjust ValidatedFinding in models/findings.py first? 
-                # Or just put it in a separate field in ValidatedFinding? 
-                # I'll stick to the current plan: update api/main.py but first I need to ensure ValidatedFinding carries the raw fix data.
-                # Actually, I missed updating `ValidatedFinding` model in `findings.py`.
-                # I will do that in the next step. For now, let's assume `f.fix_code` exists.
-                
                 db_finding = FindingModel(
                     job_id=job.id,
                     rule_id=f.raw.id,
@@ -246,11 +235,12 @@ async def process_audit(job_id: int, target_path: str):
             job.summary = f"ERROR: {str(e)}\n\nTraceback:\n{error_trace}"
             job.completed_at = datetime.utcnow()
         
+        is_completed = (job.status == JobStatus.COMPLETED)
         session.add(job)
         await session.commit()
         
         # Enqueue LLM Tasks after DB commit
-        if job.status == JobStatus.COMPLETED and os.getenv("USE_LLM_VALIDATOR", "false").lower() == "true":
+        if is_completed and os.getenv("USE_LLM_VALIDATOR", "false").lower() == "true":
             try:
                 from arq import create_pool
                 from orchestrator.workers.llm_worker import redis_settings

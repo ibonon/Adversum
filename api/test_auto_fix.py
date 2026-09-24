@@ -11,7 +11,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from orchestrator.services.db import create_db_and_tables
 from api.main import app
 
-client = TestClient(app, headers={"X-API-Key": "adv-dev-key-123"})
+API_KEY = os.getenv("API_KEY", "adv-dev-key-123")
+client = TestClient(app, headers={"X-API-Key": API_KEY})
 
 def test_auto_fix_workflow():
     print("Testing Auto-Remediation...")
@@ -39,14 +40,15 @@ def test_auto_fix_workflow():
 
     # 2. Submit Audit
     print("Submitting audit...")
-    resp = client.post("/audit", json={"target_path": test_dir}, headers={"X-API-Key": "adv-dev-key-123"})
+    resp = client.post("/audit", json={"target_path": test_dir}, headers={"X-API-Key": API_KEY})
+    assert resp.status_code == 200, f"Submit audit failed: {resp.text}"
     job_id = resp.json()["id"]
 
     # 3. Wait for Completion
     findings = []
     for _ in range(10):
         time.sleep(1)
-        resp = client.get(f"/audit/{job_id}", headers={"X-API-Key": "adv-dev-key-123"})
+        resp = client.get(f"/audit/{job_id}", headers={"X-API-Key": API_KEY})
         data = resp.json()
         print(f"DEBUG: Status={data['status']}, Result={data.get('result', 'N/A')}")
         if data["status"] in ["completed", "COMPLETED"]:  # Handle both cases

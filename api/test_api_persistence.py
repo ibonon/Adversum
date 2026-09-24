@@ -10,7 +10,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from api.main import app
 from orchestrator.services.db import create_db_and_tables
 
-client = TestClient(app, headers={"X-API-Key": "adv-dev-key-123"})
+API_KEY = os.getenv("API_KEY", "adv-dev-key-123")
+client = TestClient(app, headers={"X-API-Key": API_KEY})
 
 def test_persistence_workflow():
     print("Testing API Persistence...")

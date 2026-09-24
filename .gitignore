@@ -45,4 +45,6 @@ tmp_repos/
 *.log
 foundry_pocs/
 default_pocs/
+temp_test_project/
+ADVERSUM_HEAL_REPORT.md
 

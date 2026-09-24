@@ -53,11 +53,11 @@ class Settings:
     
     # Secrets MUST be loaded from environment variables
     # We provide a default for dev ONLY if strictly necessary, otherwise fail
-    API_KEY_SECRET: str = Field(default_factory=lambda: os.getenv("API_KEY_SECRET", "adv-dev-key-123"))
+    API_KEY_SECRET: str = os.getenv("API_KEY_SECRET", "adv-dev-key-123")
     
     # AES-256 Key
     # In production, this must be set via DATA_ENCRYPTION_KEY env var
-    DATA_ENCRYPTION_KEY: str = Field(default_factory=lambda: os.getenv("DATA_ENCRYPTION_KEY", "J1qK8_8f9L4n5P6q2R3s4T5u6V7w8X9y0Z1a2B3c4D5="))
+    DATA_ENCRYPTION_KEY: str = os.getenv("DATA_ENCRYPTION_KEY", "J1qK8_8f9L4n5P6q2R3s4T5u6V7w8X9y0Z1a2B3c4D5=")
 
     def __init__(self, **values):
         super().__init__(**values)

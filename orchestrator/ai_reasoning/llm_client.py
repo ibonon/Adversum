@@ -4,8 +4,15 @@ import asyncio
 import json
 from enum import Enum
 from typing import Dict, Any, Optional
-from anthropic import AsyncAnthropic
-from openai import AsyncOpenAI
+try:
+    from anthropic import AsyncAnthropic
+except (ImportError, Exception):
+    AsyncAnthropic = None
+
+try:
+    from openai import AsyncOpenAI
+except (ImportError, Exception):
+    AsyncOpenAI = None
 import httpx
 
 logger = logging.getLogger(__name__)

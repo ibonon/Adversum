@@ -182,18 +182,12 @@ class AVREngine:
                 [file_path], dirty_ranges=dirty_ranges
             )
 
-            if proof_anchor:
-                remaining = [
-                    f
-                    for f in new_findings
-                    if getattr(f, "proof_anchor", None) == proof_anchor
-                ]
-            else:
-                remaining = [
-                    f
-                    for f in new_findings
-                    if abs(getattr(f, "line", getattr(f, "line_number", 0)) - line_number) <= 5
-                ]
+            remaining = [
+                f
+                for f in new_findings
+                if (getattr(f, "proof_anchor", None) is not None and getattr(f, "proof_anchor", None) == proof_anchor)
+                or (getattr(f, "proof_anchor", None) is None and abs(getattr(f, "line", getattr(f, "line_number", 0)) - line_number) <= 5)
+            ]
 
             immune = any(
                 getattr(f, "immune_context", None) is not None

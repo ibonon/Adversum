@@ -64,8 +64,10 @@ def analyze(content: str) -> list:
         if '=' not in stripped:
             continue
 
-        # Must contain an arithmetic operator next to identifiers
-        if not (_UNSAFE_ADD.search(stripped) or _UNSAFE_SUB.search(stripped) or _UNSAFE_MUL.search(stripped)):
+        # Must contain an arithmetic operator next to identifiers or compound operator (+=, -=, *=)
+        is_compound = bool(re.search(r'(\+\=|\-\=|\*\=)', stripped))
+        is_arith = bool(_UNSAFE_ADD.search(stripped) or _UNSAFE_SUB.search(stripped) or _UNSAFE_MUL.search(stripped))
+        if not (is_compound or is_arith):
             continue
 
         # Skip if it's a comparison (==, !=, <=, >=)

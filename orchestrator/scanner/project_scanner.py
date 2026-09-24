@@ -26,6 +26,12 @@ class ProjectScanner:
             logger.error(f"Path does not exist: {self.root_path}")
             return []
 
+        if os.path.isfile(self.root_path):
+            _, ext = os.path.splitext(self.root_path)
+            if ext.lower() in self.SUPPORTED_EXTENSIONS:
+                return [os.path.abspath(self.root_path)]
+            return []
+
         source_files = []
         logger.info(f"Scanning project at: {self.root_path}")
 

@@ -1,3 +1,4 @@
+import os
 import logging
 from typing import List, Dict, Optional
 from collections import Counter
@@ -122,13 +123,14 @@ class ReportGenerator:
         
         for i, finding in enumerate(critical_findings[:10], 1):
             severity_str = str(finding.raw.severity.value if hasattr(finding.raw.severity, 'value') else finding.raw.severity)
+            conf = float(finding.ai_confidence) if isinstance(getattr(finding, 'ai_confidence', 0), (int, float)) else 0.0
             data += f"""
 ### {i}. {finding.raw.id} - {severity_str}
 - **Fichier**: {finding.raw.file_path}:{finding.raw.line}
 - **Description**: {finding.raw.message}
 - **Snippet**: `{finding.raw.snippet[:100] if finding.raw.snippet else ""}...`
-- **Confiance**: {finding.ai_confidence:.0%}
-- **Correctif disponible**: {'Oui' if finding.fix_code else 'Non'}
+- **Confiance**: {conf:.0%}
+- **Correctif disponible**: {'Oui' if getattr(finding, 'fix_code', None) else 'Non'}
 """
         
         data += """
