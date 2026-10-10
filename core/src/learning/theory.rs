@@ -1,4 +1,3 @@
-use super::Parameters;
 use serde::{Serialize, Deserialize};
 use pyo3::prelude::*;
 

@@ -233,15 +233,19 @@ impl<'a> PythonParser<'a> {
                 Some(Expr::Literal { value: Literal::String("<f-string>".into()), span })
             }
 
-            // ── Attribute access: obj.attr ───────────────────────────────────
-            // We flatten obj.attr into a single Identifier so the interner can
-            // match it as a taint sink (e.g. "subprocess.run", "conn.execute").
+            // ── Attribute access: obj.attr (including chained a.b.c) ─────────
+            // Recursively extract the full dotted path so the interner can match
+            // multi-segment sinks like "request.form.get", "conn.cursor().execute",
+            // "subprocess.run", etc.
             "attribute" => {
                 let obj_node  = node.child_by_field_name("object")?;
                 let attr_node = node.child_by_field_name("attribute")?;
-                let obj_text  = obj_node.utf8_text(self.source).ok()?.to_string();
                 let attr_text = attr_node.utf8_text(self.source).ok()?.to_string();
-                let name = format!("{}.{}", obj_text, attr_text);
+
+                // Recursively resolve the object — if it's another attribute access
+                // or a call, extract its canonical string representation.
+                let obj_name = self.extract_dotted_name(obj_node);
+                let name = format!("{}.{}", obj_name, attr_text);
                 Some(Expr::Identifier { name, span })
             }
 
@@ -255,7 +259,16 @@ impl<'a> PythonParser<'a> {
                     let mut cursor = args_node.walk();
                     for child in args_node.children(&mut cursor) {
                         match child.kind() {
-                            "(" | ")" | "," | "keyword_argument" => {}
+                            "(" | ")" | "," => {}
+                            // Keyword argument: shell=True, check=False, etc.
+                            // We parse the value so taint flows through kwargs.
+                            "keyword_argument" => {
+                                if let Some(val_node) = child.child_by_field_name("value") {
+                                    if let Some(e) = self.parse_expr(val_node) {
+                                        args.push(e);
+                                    }
+                                }
+                            }
                             _ => {
                                 if let Some(e) = self.parse_expr(child) {
                                     args.push(e);
@@ -266,6 +279,7 @@ impl<'a> PythonParser<'a> {
                 }
                 Some(Expr::Call { function, args, span })
             }
+
 
             // ── Binary operators ─────────────────────────────────────────────
             "binary_operator" => {
@@ -361,4 +375,44 @@ impl<'a> PythonParser<'a> {
         }
         stmts
     }
+
+    /// Recursively extract a canonical dotted-path string from an attribute-access
+    /// or call node. This handles:
+    /// * `a.b`           → "a.b"
+    /// * `a.b.c`         → "a.b.c"
+    /// * `a.b().c`       → "a.b().c"  (call nodes contribute their callee name + "()")
+    /// * `foo`           → "foo"
+    ///
+    /// Used by the `attribute` arm of `parse_expr` to produce fully-qualified
+    /// sink names that the KB can match (e.g. "request.form.get").
+    fn extract_dotted_name(&self, node: Node) -> String {
+        match node.kind() {
+            "identifier" => node.utf8_text(self.source).unwrap_or("?").to_string(),
+            "attribute" => {
+                let obj = node
+                    .child_by_field_name("object")
+                    .map(|n| self.extract_dotted_name(n))
+                    .unwrap_or_else(|| "?".into());
+                let attr = node
+                    .child_by_field_name("attribute")
+                    .and_then(|n| n.utf8_text(self.source).ok())
+                    .unwrap_or("?");
+                format!("{}.{}", obj, attr)
+            }
+            "call" => {
+                // For call nodes inside a chain, use the callee name followed by "()"
+                // so "conn.cursor().execute" becomes exactly that.
+                let callee = node
+                    .child_by_field_name("function")
+                    .map(|n| self.extract_dotted_name(n))
+                    .unwrap_or_else(|| "?".into());
+                format!("{}()", callee)
+            }
+            _ => {
+                // Fallback: use the raw source slice (covers subscripts, etc.).
+                node.utf8_text(self.source).unwrap_or("?").to_string()
+            }
+        }
+    }
 }
+

@@ -129,7 +129,7 @@ impl<'a> CfgBuilder<'a> {
             }
             
             // Update CFG
-            for &succ in &successors {
+            for &_succ in &successors {
                  // borrowing check: cannot mutate cfg.blocks[succ] while holding blocks[i]
                  // Do this in a separate pass or uses distinct indices.
             }

@@ -27,6 +27,9 @@ once_cell = "1.19"
 rand = "0.8"
 rand_distr = "0.4"
 pythonize = "0.23"
+aho-corasick = { version = "1.1", features = [] }
+ascent = "0.8"
+egg = "0.11"
 
 
 

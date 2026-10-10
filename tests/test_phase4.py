@@ -10,13 +10,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from orchestrator.pipeline.analysis_pipeline import AnalysisPipeline
 from orchestrator.models.sql_models import FileHash, CachedFinding
-from orchestrator.services.db import create_db_and_tables
+from orchestrator.services.db import create_db_and_tables, engine
 from sqlmodel import Session, select
-from orchestrator.db.engine import engine
 
 async def verify_phase4():
     print("--- Phase 4: Extreme Industrial Optimization Verification ---")
-    create_db_and_tables()
+    await create_db_and_tables()
     
     project_path = os.path.abspath("temp_test_project")
     os.makedirs(project_path, exist_ok=True)
@@ -64,10 +63,8 @@ async def verify_phase4():
     print(f"Incremental Scan Duration: {duration3:.4f}s")
     print(f"Findings: {len(result3['findings'])}")
     
-    # Cleanup
-    os.remove(file1)
-    os.remove(file2)
-    os.rmdir(project_path)
+    import shutil
+    shutil.rmtree(project_path, ignore_errors=True)
 
 if __name__ == "__main__":
     asyncio.run(verify_phase4())

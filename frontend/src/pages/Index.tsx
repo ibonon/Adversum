@@ -22,7 +22,9 @@ const Index = () => {
           <LiveSimulation />
         </ErrorBoundary>
         <HowItWorksSection />
-        <DashboardPreview />
+        <ErrorBoundary>
+          <DashboardPreview />
+        </ErrorBoundary>
         <PricingSection />
         <CTASection />
       </main>

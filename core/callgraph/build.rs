@@ -1,6 +1,5 @@
 use crate::ir::types::{Instr, Program};
 use crate::callgraph::types::{CallGraph, CallNode};
-use crate::interner::SymbolId;
 use std::collections::HashSet;
 
 pub struct CallGraphBuilder<'a> {

@@ -1,4 +1,4 @@
-use crate::ir::types::{Instr, Program, Operand};
+use crate::ir::types::{Instr, Program};
 use crate::cfg::types::{ControlFlowGraph, BlockId};
 use crate::dataflow::taint::TaintState;
 use std::collections::{VecDeque, BTreeMap, HashMap};
@@ -74,7 +74,7 @@ impl<'a> TaintAnalysis<'a> {
             
             // 1. Compute IN[B] = Union(OUT[P]) for preds P
             // For entry block, IN is initialized. For others:
-            let mut input_state = if block_id == self.cfg.entry {
+            let input_state = if block_id == self.cfg.entry {
                  self.in_states.get(&block_id).cloned().unwrap_or_default()
             } else {
                  let mut s = TaintState::new();

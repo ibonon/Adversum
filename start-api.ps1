@@ -4,7 +4,7 @@ Write-Host "    Démarrage API Adversum" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$projectRoot = "f:\Adversum\adversum"
+$projectRoot = $PSScriptRoot
 $apiPath = "$projectRoot\api"
 
 # Vérifier si le port 8000 est déjà utilisé

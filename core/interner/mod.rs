@@ -9,6 +9,11 @@ pub struct SymbolId(pub u32);
 impl SymbolId {
     /// Reserved ID for empty or invalid.
     pub const NULL: SymbolId = SymbolId(0);
+
+    #[inline]
+    pub fn as_u32(&self) -> u32 {
+        self.0
+    }
 }
 
 /// Bidirectional String Interner.

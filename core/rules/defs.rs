@@ -1,5 +1,4 @@
 use crate::rules::types::{Rule, MatchContext, Report, Severity};
-use crate::ir::types::{Instr, Operand};
 
 pub struct GenericTaintRule {
     pub rule_id: String,
@@ -22,19 +21,16 @@ impl GenericTaintRule {
 }
 
 impl Rule for GenericTaintRule {
-    fn id(&self) -> &'static str {
-        // We need static str for id() per trait, but we have String. 
-        // We'll leak it or we need to change Rule trait to return &str or String.
-        // For now, let's assume we can Box::leak for MVP or change trait.
-        Box::leak(self.rule_id.clone().into_boxed_str())
+    fn id(&self) -> &str {
+        &self.rule_id
     }
     
-    fn name(&self) -> &'static str {
-        Box::leak(self.rule_name.clone().into_boxed_str())
+    fn name(&self) -> &str {
+        &self.rule_name
     }
     
-    fn description(&self) -> &'static str {
-        Box::leak(self.description.clone().into_boxed_str())
+    fn description(&self) -> &str {
+        &self.description
     }
     
     fn severity(&self) -> Severity {

@@ -17,9 +17,10 @@ fn main() {
             // Pass None for ranges (full-file scan) — 3rd argument added
             match analyze_default(&content, Some(file_path.as_str()), None) {
                 Ok(findings) => {
+                    let light_findings = findings.iter().cloned().map(map_finding_to_light).collect();
                     let result = AnalysisResult {
-                        // map_finding_to_light converts Finding -> LightFinding
-                        findings: findings.into_iter().map(map_finding_to_light).collect(),
+                        light_findings,
+                        findings,
                         file_hashes: std::collections::HashMap::new(),
                         robustness_score: 1.0,
                     };

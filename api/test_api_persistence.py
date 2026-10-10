@@ -15,12 +15,12 @@ client = TestClient(app, headers={"X-API-Key": API_KEY})
 
 def test_persistence_workflow():
     print("Testing API Persistence...")
-    create_db_and_tables() # Ensure DB exists
+    asyncio.run(create_db_and_tables()) # Ensure DB exists
     
     # 1. Trigger Audit
     current_dir = os.path.abspath(os.path.dirname(__file__))
-    project_root = os.path.abspath(os.path.join(current_dir, "../../"))
-    target_scan_path = os.path.join(project_root, "adversum", "orchestrator")
+    project_root = os.path.abspath(os.path.join(current_dir, ".."))
+    target_scan_path = os.path.join(project_root, "orchestrator")
     
     print(f"Submitting job for {target_scan_path}...")
     response = client.post("/audit", json={"target_path": target_scan_path})
@@ -35,7 +35,7 @@ def test_persistence_workflow():
         resp = client.get(f"/audit/{job_id}")
         data = resp.json()
         print(f"Status: {data['status']}")
-        if data["status"] == "completed":
+        if data["status"].lower() == "completed":
             print("Job Completed.")
             break
     else:

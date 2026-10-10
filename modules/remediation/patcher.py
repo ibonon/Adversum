@@ -25,7 +25,9 @@ class RemediationPatcher:
                 file_content = f.read()
 
         if not file_content:
-            return "", ""
+            file_content = finding.get("snippet", "")
+            if not file_content:
+                return "", ""
 
         module = finding.get("module", "")
         rule_id = finding.get("rule_id", "")

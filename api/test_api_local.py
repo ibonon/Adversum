@@ -13,11 +13,13 @@ from fastapi.testclient import TestClient
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from api.main import app
+from orchestrator.services.db import create_db_and_tables
 
 client = TestClient(app, headers={"X-API-Key": "test-secret-key"})
 
 def test_api_workflow():
     print("Testing API Workflow...")
+    asyncio.run(create_db_and_tables())
 
     # 1. Check Root
     response = client.get("/")
@@ -25,13 +27,11 @@ def test_api_workflow():
     print(f"Root: {response.json()}")
 
     # 2. Submit Job (Scanning current directory)
-    # We use the current directory '.' as the target
     current_dir = os.path.abspath(os.path.dirname(__file__))
-    # Go up one level to 'api' then '..' to root
-    project_root = os.path.abspath(os.path.join(current_dir, "../../"))
+    project_root = os.path.abspath(os.path.join(current_dir, ".."))
     
     # Let's scan the 'orchestrator' folder to find some files
-    target_scan_path = os.path.join(project_root, "adversum", "orchestrator")
+    target_scan_path = os.path.join(project_root, "orchestrator")
     
     print(f"Submitting audit for: {target_scan_path}")
     response = client.post("/audit", json={"target_path": target_scan_path, "project_name": "Test Run"})
@@ -58,7 +58,7 @@ def test_api_workflow():
         status = status_data["status"]
         print(f"Job Status: {status}")
         
-        if status in ["completed", "failed"]:
+        if status.lower() in ["completed", "failed"]:
             print("Final Result:")
             if status_data.get("summary"):
                 print(f"Summary: {status_data['summary']}")

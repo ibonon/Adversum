@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
 from enum import Enum
 
@@ -15,7 +15,7 @@ class Job(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     project_path: str = Field(index=True)
     status: JobStatus = Field(default=JobStatus.PENDING, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)  # Added index for sorting
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), index=True)  # Added index for sorting
     completed_at: Optional[datetime] = Field(None, index=True)  # FIX: Added index for filtering/sorting
     summary: Optional[str] = None # Generated AI summary
     error_message: Optional[str] = None
@@ -54,7 +54,7 @@ class AuditLog(SQLModel, table=True):
     __table_args__ = {'extend_existing': True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     action: str
     target: str
     user_identifier: Optional[str] = "system" # Future: User ID
@@ -67,7 +67,7 @@ class FileHash(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     file_path: str = Field(index=True, unique=True)
     xxh3_hash: str
-    last_scanned_at: datetime = Field(default_factory=datetime.utcnow)
+    last_scanned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
 class CachedFinding(SQLModel, table=True):
     __table_args__ = {'extend_existing': True}

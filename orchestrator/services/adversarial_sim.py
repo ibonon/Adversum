@@ -6,6 +6,17 @@ from ..core_bridge.core_wrapper import CoreWrapper
 
 logger = logging.getLogger(__name__)
 
+class AdversarialResultDict(dict):
+    """Provides both dictionary and attribute-style access to attack simulation results."""
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(f"'AdversarialResultDict' object has no attribute '{name}'")
+            
+    def __setattr__(self, name, value):
+        self[name] = value
+
 class AdversarialSimulator:
     """
     Interfaces with the Rust Adversarial Kit.
@@ -84,7 +95,21 @@ class AdversarialSimulator:
             result = self.wrapper.rust_core.run_adversarial(request)
             
             logger.info(f"Adversarial Simulation ({method}) complete. Success: {result.success} (Queries: {result.query_count}, Cost: ${result.cost:.4f}, Detected: {result.detected})")
-            return result
+            return AdversarialResultDict({
+                "success": getattr(result, "success", False),
+                "perturbed_data": list(getattr(result, "perturbed_data", [])),
+                "algorithm": getattr(result, "algorithm", method),
+                "method": getattr(result, "algorithm", method),
+                "epsilon": epsilon,
+                "query_count": getattr(result, "query_count", 0),
+                "cost": getattr(result, "cost", 0.0),
+                "detected": getattr(result, "detected", False),
+                "blocked_by_waf": getattr(result, "blocked_by_waf", False),
+                "threat_score": getattr(result, "threat_score", 0.0),
+                "robustness_score": getattr(result, "robustness_score", 1.0),
+                "adversarial_prompt": getattr(result, "adversarial_prompt", None),
+                "perturbation_norm": getattr(result, "perturbation_norm", 0.0),
+            })
             
         except Exception as e:
             logger.error(f"Adversarial Simulation Failed: {e}")

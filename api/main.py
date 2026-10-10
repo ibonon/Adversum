@@ -1,17 +1,29 @@
+import sys
+import os
+from pathlib import Path
+
+# Automatically ensure project root is in sys.path for both CMD and PowerShell
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(_PROJECT_ROOT) / ".env")
+except ImportError:
+    pass
+
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Request, status, Query
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, desc
 import asyncio
 import uuid
-import sys
-import os
 import time
 import logging
 import json
@@ -29,6 +41,35 @@ from orchestrator.services.db import create_db_and_tables, get_session
 
 # Security utilities
 from api.security import validate_scan_path, is_git_url
+
+# ── Nebius (NVIDIA Nemotron) + Tavily integrations ─────────────────────────
+# Lazy-imported so the API starts even without the keys configured.
+# Set NEBIUS_API_KEY and TAVILY_API_KEY in the environment to activate them.
+try:
+    from orchestrator.services.nebius_llm import (
+        validate_findings_batch,
+        generate_executive_summary,
+        generate_attack_graph_hypothesis,
+        nebius_health_check,
+        get_active_model,
+        get_active_base_url,
+        _is_available as _nebius_available,
+    )
+    _NEBIUS_LOADED = True
+except Exception as _e:
+    logger = logging.getLogger("adversum.api")
+    logger.warning(f"[Nebius] Module not loaded: {_e}")
+    _NEBIUS_LOADED = False
+
+try:
+    from orchestrator.services.threat_intel import (
+        enrich_findings_batch,
+        _is_available as _tavily_available,
+    )
+    _TAVILY_LOADED = True
+except Exception as _e:
+    logging.getLogger("adversum.api").warning(f"[Tavily] Module not loaded: {_e}")
+    _TAVILY_LOADED = False
 
 # Setup Rate Limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -216,7 +257,7 @@ async def process_audit(job_id: int, target_path: str):
             
             # Update Job
             job.status = JobStatus.COMPLETED
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             if "summary" in result:
                 job.summary = result["summary"]
             if "robustness_score" in result:
@@ -233,7 +274,7 @@ async def process_audit(job_id: int, target_path: str):
             if len(error_trace) > 5000:
                 error_trace = error_trace[:5000] + "\n... (truncated)"
             job.summary = f"ERROR: {str(e)}\n\nTraceback:\n{error_trace}"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
         
         is_completed = (job.status == JobStatus.COMPLETED)
         session.add(job)
@@ -518,7 +559,7 @@ async def get_audit_status(
     )
 
 @app.get("/audits", response_model=List[JobResponse], dependencies=[Depends(get_api_key)])
-async def list_audits(session: Session = Depends(get_session)):
+async def list_audits(session: AsyncSession = Depends(get_session)):
     """List all audit jobs."""
     # FIX: Use subquery to avoid N+1 query problem
     # Instead of loading job.findings for each job (N+1), we count in a single query
@@ -553,7 +594,7 @@ def health():
     return {"status": "ok"}
 
 @app.get("/stats/dashboard", dependencies=[Depends(get_api_key)])
-async def get_dashboard_stats(session: Session = Depends(get_session)):
+async def get_dashboard_stats(session: AsyncSession = Depends(get_session)):
     """
     Optimized aggregation for dashboard metrics.
     Replaces heavy client-side processing with efficient SQL queries.
@@ -569,7 +610,7 @@ async def get_dashboard_stats(session: Session = Depends(get_session)):
     
     # Recent Activity (Last 7 Days)
     # Using SQLite specific syntax for date grouping
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
     
     activity_query = (
         select(
@@ -779,6 +820,72 @@ class RemediateRequest(BaseModel):
     findings: List[Dict[str, Any]]
 
 
+
+async def _ai_enrich_result(res: dict, repo_url: str = "", project_name: str = "") -> dict:
+    """
+    Post-process a scan result dict with:
+      1. NVIDIA Nemotron (Nebius Token Factory) — finding validation & confidence scoring
+      2. Tavily Search — CVE / exploit threat intelligence enrichment
+      3. Nemotron executive summary generation
+
+    All steps are optional and gracefully no-op when API keys are absent.
+    """
+    findings = res.get("findings", [])
+    if not isinstance(findings, list):
+        findings = []
+
+    active_model = get_active_model() if (_NEBIUS_LOADED and _nebius_available()) else None
+    active_infra = (
+        "NVIDIA NIM API" if os.getenv("NEBIUS_API_KEY", "").startswith("nvapi-")
+        else "Nebius Token Factory"
+    ) if (_NEBIUS_LOADED and _nebius_available()) else None
+
+    ai_metadata = {
+        "nebius_enabled": _NEBIUS_LOADED and _nebius_available(),
+        "tavily_enabled": _TAVILY_LOADED and _tavily_available(),
+        "model": active_model,
+        "infrastructure": active_infra,
+    }
+
+    if findings:
+        # Step 1 — Tavily threat intel (fastest, run first)
+        if _TAVILY_LOADED and _tavily_available():
+            print("\033[96m[*] [Nebius/Tavily] Enrichissement threat-intel en cours...\033[0m", flush=True)
+            findings = await enrich_findings_batch(findings, max_findings=5)
+
+        # Step 2 — Nebius / NVIDIA Nemotron finding validation
+        if _NEBIUS_LOADED and _nebius_available():
+            print("\033[96m[*] [Nebius/Nemotron] Validation IA des findings en cours (NVIDIA Nemotron)...\033[0m", flush=True)
+            findings = await validate_findings_batch(findings, max_findings=4)
+
+        # Step 3 — Executive summary
+        if _NEBIUS_LOADED and _nebius_available():
+            stats = res.get("stats", {})
+            summary = await generate_executive_summary(
+                findings, stats,
+                repo_url=repo_url,
+                project_name=project_name or "Security Audit Target",
+            )
+            if summary:
+                res["ai_executive_summary"] = summary
+                print("\033[92m[✓] [Nebius/Nemotron] Résumé exécutif IA généré avec succès.\033[0m", flush=True)
+
+        # Step 4 — Attack Graph Kill Chain Hypothesis (NVIDIA Nemotron Reasoning)
+        if _NEBIUS_LOADED and _nebius_available():
+            attack_graph = await generate_attack_graph_hypothesis(
+                findings,
+                repo_url=repo_url,
+                project_name=project_name or "Target System",
+            )
+            if attack_graph:
+                res["ai_attack_graph"] = attack_graph
+                print("\033[92m[✓] [Nebius/Nemotron] Graphe d'Attaque Multi-Étapes IA synthétisé avec succès.\033[0m", flush=True)
+
+    res["findings"] = findings
+    res["ai_metadata"] = ai_metadata
+    return res
+
+
 @app.post("/api/v1/scan/clone-and-scan", tags=["Scanner"])
 async def clone_and_scan_endpoint(
     payload: CloneAndScanRequest,
@@ -833,10 +940,11 @@ async def clone_and_scan_endpoint(
             try:
                 res = json.loads(raw[json_start:])
                 res["repo_url"] = target_input
+                res = await _ai_enrich_result(res, repo_url=target_input, project_name=payload.project_name or "")
                 return res
             except json.JSONDecodeError:
                 pass
-        return {"raw_output": raw, "error": scan_res.stderr}
+        return {"raw_output": raw, "error": scan_res.stderr, "findings": [], "ai_metadata": {"nebius_enabled": False, "tavily_enabled": False}}
 
     temp_dir = tempfile.mkdtemp(prefix="adversum_scan_")
     try:
@@ -906,11 +1014,12 @@ async def clone_and_scan_endpoint(
             try:
                 res = json.loads(raw[json_start:])
                 res["repo_url"] = payload.repo_url
+                res = await _ai_enrich_result(res, repo_url=payload.repo_url, project_name=payload.project_name or "")
                 return res
             except json.JSONDecodeError:
                 pass
 
-        return {"raw_output": raw, "error": scan_res.stderr}
+        return {"raw_output": raw, "error": scan_res.stderr, "findings": [], "ai_metadata": {"nebius_enabled": False, "tavily_enabled": False}}
 
 
     finally:

@@ -77,15 +77,20 @@ class CoreWrapper:
         """
         Runs the Rust Core SAST analysis on a list of paths.
         Returns a tuple of (findings, file_hashes, robustness_score).
+
+        The Rust engine now returns rich Finding objects directly — no integer rule_id
+        reverse-lookup or file re-reading needed.
         """
         if not self.use_ffi:
             logger.warning("Core engine not linked. Using Python Fallback Analysis.")
             return self._analyze_fallback(paths)
 
         logger.info(f"Sending {len(paths)} files to Core for parallel AST analysis.")
-        
-        all_findings = []
-        file_hashes = {}
+
+        all_findings: list[RawFinding] = []
+        file_hashes: dict[str, str] = {}
+        robustness_score = 1.0
+
         try:
             # 1. Targeted Scan Support (Dirty Ranges)
             if dirty_ranges and hasattr(self.rust_core, "inspect_targeted"):
@@ -93,94 +98,78 @@ class CoreWrapper:
                 result = self.rust_core.inspect_targeted(dirty_ranges)
             else:
                 result = self.rust_core.inspect_files(paths)
-            
-            # Handle backward compatibility for JSON string return
+
+            # Handle legacy JSON string return (backward compat with old builds)
             if isinstance(result, str):
                 import json
                 data = json.loads(result)
-                # Mock object to match structure
-                class MockResult:
-                    def __init__(self, d):
+
+                class _MockResult:
+                    def __init__(self, d: dict) -> None:
+                        self.light_findings = []
                         self.findings = []
-                        for f in d.get("findings", []):
-                            if isinstance(f, dict):
-                                class MockFinding:
-                                    def __init__(self, fd):
-                                        self.file_path = fd.get("file_path", "unknown")
-                                        self.line = fd.get("line", 0)
-                                        self.snippet = fd.get("snippet", "")
-                                        self.id = fd.get("id", "UNKNOWN")
-                                        self.severity = fd.get("severity", "LOW")
-                                        self.message = fd.get("message", "")
-                                        self.flow_path = fd.get("flow_path", [])
-                                        self.proof = fd.get("proof") 
-                                        self.immune_context = fd.get("immune_context")
-                                        self.proof_anchor = fd.get("proof_anchor")
-                                self.findings.append(MockFinding(f))
-                            else:
-                                self.findings.append(f)
+                        for fd in d.get("findings", []):
+                            class _F:
+                                pass
+                            obj = _F()
+                            obj.id = fd.get("id", "UNKNOWN")
+                            obj.message = fd.get("message", "")
+                            obj.severity = fd.get("severity", "LOW")
+                            obj.line = fd.get("line", 0)
+                            obj.snippet = fd.get("snippet", "")
+                            obj.file_path = fd.get("file_path")
+                            obj.flow_path = fd.get("flow_path", [])
+                            obj.proof = fd.get("proof")
+                            obj.immune_context = fd.get("immune_context")
+                            obj.proof_anchor = fd.get("proof_anchor")
+                            self.findings.append(obj)
                         self.file_hashes = d.get("file_hashes", {})
                         self.robustness_score = d.get("robustness_score", 1.0)
-                
-                result = MockResult(data)
 
-            # O(1) Rules map for FFI reduction (Including semantic, attack_graph, scoring, and adversarial modules)
-            RULES_DICT = {
-                1: ("RUST_CORE_001_DANGEROUS_EVAL", "CRITICAL", "Dangerous eval() detected"),
-                2: ("RUST_CORE_002_OS_SYSTEM", "CRITICAL", "os.system() call detected"),
-                3: ("RUST_CORE_003_SUBPROCESS_POPEN", "CRITICAL", "subprocess.Popen() shell invocation"),
-                4: ("RUST_CORE_004_PATH_TRAVERSAL", "HIGH", "Arbitrary file open() detected"),
-                6: ("RUST_CORE_006_SMB_VULN", "CRITICAL", "Insecure SMBConnection configuration"),
-                10: ("SEMANTIC_001_TAINT_FLOW", "HIGH", "Taint flow detected via semantic analysis"),
-                11: ("GRAPH_001_ATTACK_PATH", "CRITICAL", "Critical attack path constructed from multiple vulnerabilities"),
-                12: ("SCORING_001_RISK_DEGRADATION", "MEDIUM", "Component risk score degraded due to cumulative flaws"),
-                13: ("ADVERSARIAL_001_PROMPT_INJECTION", "CRITICAL", "LLM Prompt Injection vector detected (Fast Adversarial Kit)"),
-                0: ("RUST_CORE_GENERIC_FLOW", "MEDIUM", "Semantic flow violation")
-            }
-            
-            # Group by file to read efficiently
-            by_file = {}
+                result = _MockResult(data)
+
+            # 2. Consume rich Finding objects — no RULES_DICT, no file re-reading
             for f in result.findings:
-                fp = getattr(f, 'file_path', None) or 'unknown'
-                by_file.setdefault(fp, []).append(f)
-                
-            for file_path, light_findings in by_file.items():
-                file_lines = []
-                if file_path != "unknown" and os.path.exists(file_path):
+                file_path = getattr(f, "file_path", None) or "unknown"
+
+                # Map optional TaintProof → Python dict for the Pydantic model
+                proof_dict: Optional[Dict] = None
+                raw_proof = getattr(f, "proof", None)
+                if raw_proof is not None:
                     try:
-                        with open(file_path, "r", encoding="utf-8", errors="ignore") as file_obj:
-                            file_lines = file_obj.readlines()
-                    except Exception as e:
-                        logger.warning(f"Could not read {file_path} for snippet rehydration: {e}")
-                
-                for f in light_findings:
-                    rule_info = RULES_DICT.get(f.rule_id, RULES_DICT[0])
-                    snippet = ""
-                    # 1-indexed lines
-                    if 0 < f.line <= len(file_lines):
-                        snippet = file_lines[f.line - 1].strip()
-                        
-                    all_findings.append(RawFinding(
-                        file_path=file_path,
-                        line=f.line,
-                        snippet=snippet,
-                        id=rule_info[0],
-                        severity=rule_info[1],
-                        message=rule_info[2],
-                        flow_path=["Native Core Flow"],
-                        proof=None,
-                        immune_context=None,
-                        proof_anchor=None
-                    ))
-            
-            file_hashes = result.file_hashes
-            robustness_score = result.robustness_score
+                        proof_dict = {
+                            "verified": bool(getattr(raw_proof, "verified", True)),
+                            "evidence": list(getattr(raw_proof, "evidence", []) or []),
+                            "taint_source": getattr(raw_proof, "taint_source", None),
+                        }
+                    except Exception:
+                        proof_dict = None
+
+                flow_path = list(getattr(f, "flow_path", []) or [])
+
+                all_findings.append(RawFinding(
+                    file_path=file_path,
+                    line=f.line,
+                    snippet=f.snippet or "",          # real source line from Rust mmap
+                    id=f.id,                          # e.g. "RUST_CORE_001_DANGEROUS_EVAL"
+                    severity=f.severity,
+                    message=f.message,
+                    flow_path=flow_path if flow_path else ["Rust Core (Taint Analysis)"],
+                    proof=proof_dict,
+                    immune_context=getattr(f, "immune_context", None),
+                    proof_anchor=getattr(f, "proof_anchor", None),
+                ))
+
+            file_hashes = dict(result.file_hashes)
+            robustness_score = float(result.robustness_score)
+
         except Exception as e:
-            logger.error(f"Engine failure during AST analysis: {e}")
+            logger.error(f"Engine failure during AST analysis: {e}", exc_info=True)
             robustness_score = 1.0
 
         logger.info(f"Core analysis complete. {len(all_findings)} findings reported.")
         return all_findings, file_hashes, robustness_score
+
 
     def validate_findings(self, findings: List[RawFinding]) -> List[Any]:
         """

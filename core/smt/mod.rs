@@ -10,7 +10,7 @@ pub use solver::{SmtSolver, SmtResult, Interval};
 
 use serde::{Serialize, Deserialize};
 use pyo3::prelude::*;
-use crate::ir::types::{FunctionIR, Program};
+use crate::ir::types::FunctionIR;
 
 /// Résultat complet d'une vérification formelle SMT exposé à Python via PyO3
 #[pyclass(get_all)]

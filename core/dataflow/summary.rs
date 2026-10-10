@@ -26,10 +26,10 @@ impl FunctionSummary {
 use crate::ir::types::Module;
 use crate::callgraph::CallGraph;
 use crate::cfg::build::CfgBuilder;
-use crate::dataflow::analysis::{TaintAnalysis, TaintConfig, FlowFinding};
+use crate::dataflow::analysis::{TaintAnalysis, TaintConfig};
 use crate::dataflow::taint::TaintState;
 
-pub fn compute_summaries(module: &Module, cg: &CallGraph, config: &TaintConfig) -> HashMap<SymbolId, FunctionSummary> {
+pub fn compute_summaries(module: &Module, _cg: &CallGraph, config: &TaintConfig) -> HashMap<SymbolId, FunctionSummary> {
     let mut summaries = HashMap::new();
     
     // Process functions (can be optimized with topological sort later)

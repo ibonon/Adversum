@@ -33,6 +33,7 @@ pub struct ValidatedFinding {
 #[pymethods]
 impl ValidatedFinding {
     #[new]
+    #[pyo3(signature = (raw, validation_status, ai_confidence, reasoning_notes, remediation_suggestion, fix_description=None, fix_code=None))]
     fn new(
         raw: Finding,
         validation_status: String,

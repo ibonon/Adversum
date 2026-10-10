@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use crate::ir::types::{Instr, Operand, Op, FunctionIR};
-use crate::interner::SymbolId;
 use super::ast::{SmtExpr, SmtVar, Sort};
 use serde::{Serialize, Deserialize};
 

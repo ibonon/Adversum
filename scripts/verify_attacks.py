@@ -27,16 +27,20 @@ def test_evasion_kit():
         print(f"\nTesting Method: {method}")
         result = sim.simulate_attack(method, input_vector, epsilon=0.1)
         
-        if result.get("success"):
+        success = getattr(result, "success", False) if not isinstance(result, dict) else result.get("success", False)
+        pert_norm = getattr(result, "perturbation_norm", 0) if not isinstance(result, dict) else result.get("perturbation_norm", 0)
+        perturbed = getattr(result, "perturbed_data", []) if not isinstance(result, dict) else result.get("perturbed_data", [])
+
+        if success:
             print(f"  [OK] Success: True")
-            print(f"  [OK] Perturbation Norm: {result.get('perturbation_norm', 0):.4f}")
+            print(f"  [OK] Perturbation Norm: {pert_norm:.4f}")
             
             # Check if data actually changed
-            perturbed = result.get("perturbed_data", [])
             diff = sum(abs(p - o) for p, o in zip(perturbed, input_vector))
             print(f"  [OK] Data Divergence (Sum Abs Diff): {diff:.4f}")
         else:
-            print(f"  [FAIL] Failed: {result.get('error', 'Unknown Error')}")
+            err = getattr(result, "error", "Unknown Error") if not isinstance(result, dict) else result.get("error", "Unknown Error")
+            print(f"  [FAIL] Failed: {err}")
             
     print("="*50)
 

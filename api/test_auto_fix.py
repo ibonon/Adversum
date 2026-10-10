@@ -24,7 +24,8 @@ def test_auto_fix_workflow():
         except PermissionError:
             print("Warning: Could not remove adversum.db (in use), skipping clean.")
         
-    create_db_and_tables()
+    import asyncio
+    asyncio.run(create_db_and_tables())
 
     # 1. Create a Vulnerable File
     test_dir = os.path.join(os.path.dirname(__file__), "../temp_test_project")

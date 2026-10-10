@@ -47,9 +47,9 @@ pub struct MatchContext<'a> {
 
 /// The Interface for valid security rules.
 pub trait Rule {
-    fn id(&self) -> &'static str;
-    fn name(&self) -> &'static str;
-    fn description(&self) -> &'static str;
+    fn id(&self) -> &str;
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
     fn severity(&self) -> Severity;
     
     /// Evaluates the rule against the code context.

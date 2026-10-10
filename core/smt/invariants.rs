@@ -32,7 +32,7 @@ pub struct InvariantQuery {
 impl SecurityInvariant {
     /// Génère la formule SMT de vérification pour cet invariant,
     /// en tenant compte de l'état symbolique après exécution.
-    pub fn to_query(&self, state: &SymbolicState, context: &InvariantContext) -> InvariantQuery {
+    pub fn to_query(&self, state: &SymbolicState, _context: &InvariantContext) -> InvariantQuery {
         match self {
             SecurityInvariant::NoArithmeticOverflow => {
                 // Pour chaque opération arithmétique dans l'état symbolique,

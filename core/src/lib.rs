@@ -9,6 +9,7 @@ pub mod callgraph;
 pub mod cfg;
 #[path = "../context.rs"]
 pub mod context;
+pub mod cursor_pool;
 #[path = "../dataflow/mod.rs"]
 pub mod dataflow;
 #[path = "../interner/mod.rs"]
@@ -27,6 +28,8 @@ pub mod sarif;
 pub mod scoring;
 #[path = "../smt/mod.rs"]
 pub mod smt;
+#[path = "../tier0/mod.rs"]
+pub mod tier0;
 #[macro_use]
 extern crate serde;
 use serde::{Deserialize, Serialize};
@@ -39,16 +42,16 @@ use crate::cfg::build::CfgBuilder;
 use crate::context::{NoOpTracer, PipelineError, Quotas, Tracer};
 use crate::dataflow::analysis::{TaintAnalysis, TaintConfig};
 use crate::ir::lower::LoweringContext;
+use crate::tier0::{should_analyze, Lang as Tier0Lang};
 
 use memmap2::Mmap;
 use once_cell::sync::Lazy;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
-use pythonize::pythonize;
 use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
-use tree_sitter::{Language, Parser, Query, QueryCursor};
+use tree_sitter::{Language, Parser, Query};
 use walkdir::WalkDir;
 use xxhash_rust::xxh3::xxh3_64;
 
@@ -57,6 +60,7 @@ use xxhash_rust::xxh3::xxh3_64;
 // SAFETY: These query strings are hardcoded and known to be syntactically valid.
 // Any syntax errors would be caught at compilation time via the lazy_static initialization panic.
 // Using unwrap() here is justified as these are constants that never change.
+#[allow(dead_code)] // Retained for planned Tier-0 fast pre-filter integration
 static PY_QUERIES: Lazy<Vec<(&'static str, Query)>> = Lazy::new(|| {
     let language = tree_sitter_python::language();
     vec![
@@ -97,7 +101,8 @@ impl LightFinding {
 #[pyclass(get_all)]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AnalysisResult {
-    pub findings: Vec<LightFinding>,
+    pub findings: Vec<Finding>,
+    pub light_findings: Vec<LightFinding>,
     pub file_hashes: std::collections::HashMap<String, String>,
     pub robustness_score: f32, // Adversarial Machine Learning Metric
 }
@@ -126,15 +131,27 @@ pub fn finding_to_report(f: &Finding, instr_idx: usize) -> crate::rules::types::
     }
 }
 
-pub fn map_finding_to_light(f: Finding) -> LightFinding {
-    let rule_id = match f.id.as_str() {
+pub fn map_finding_to_light_rule_id(id: &str) -> u32 {
+    match id {
         "RUST_CORE_001_DANGEROUS_EVAL" => 1,
         "RUST_CORE_002_OS_SYSTEM" => 2,
         "RUST_CORE_003_SUBPROCESS_POPEN" => 3,
         "RUST_CORE_004_PATH_TRAVERSAL" => 4,
+        "RUST_CORE_005_SQL_INJECTION" => 5,
         "RUST_CORE_006_SMB_VULN" => 6,
+        "RUST_CORE_007_TEMPLATE_INJECTION" => 7,
+        "RUST_CORE_008_INSECURE_DESERIALIZATION" => 8,
+        "RUST_CORE_009_INSECURE_YAML" => 9,
+        "SEMANTIC_001_TAINT_FLOW" => 10,
+        "GRAPH_001_ATTACK_PATH" => 11,
+        "SCORING_001_RISK_DEGRADATION" => 12,
+        "ADVERSARIAL_001_PROMPT_INJECTION" => 13,
         _ => 0,
-    };
+    }
+}
+
+pub fn map_finding_to_light(f: Finding) -> LightFinding {
+    let rule_id = map_finding_to_light_rule_id(&f.id);
     LightFinding {
         rule_id,
         line: f.line,
@@ -183,6 +200,32 @@ impl Finding {
             immune_context,
         }
     }
+
+    #[getter]
+    pub fn rule_id(&self) -> u32 {
+        map_finding_to_light_rule_id(&self.id)
+    }
+}
+
+pub fn extract_line_snippet(source: &[u8], line: usize) -> String {
+    if line == 0 {
+        return String::new();
+    }
+    let mut current_line = 1;
+    let mut line_start = 0;
+    for (i, &b) in source.iter().enumerate() {
+        if b == b'\n' {
+            if current_line == line {
+                return String::from_utf8_lossy(&source[line_start..i]).trim().to_string();
+            }
+            current_line += 1;
+            line_start = i + 1;
+        }
+    }
+    if current_line == line && line_start < source.len() {
+        return String::from_utf8_lossy(&source[line_start..]).trim().to_string();
+    }
+    String::new()
 }
 
 #[pyclass(get_all)]
@@ -265,7 +308,6 @@ impl<'a> Pipeline<'a> {
         let root_node = tree.root_node();
 
         let mut findings = Vec::new();
-        let mut cursor = QueryCursor::new();
 
         // --- Deterministic Analysis Phase ---
         // 1. AST to IR Lowering (Placeholder/Simplified for this demo, usually we'd parse with our ast module)
@@ -308,8 +350,14 @@ impl<'a> Pipeline<'a> {
         };
 
         // 2. Lower AST to IR  (now receives source bytes for line-number mapping)
-        let mut lowering = LoweringContext::new(source_code);
-        let (ir_program, mut interner, instr_lines) = lowering.build(&ast_program);
+        let lowering = LoweringContext::new(source_code);
+        let (mut ir_program, mut interner, instr_lines) = lowering.build(&ast_program);
+
+        // --- Phase 3 E-Graph Optimization: Equality Saturation & Deobfuscation ---
+        // Normalizes algebraic identities, unfolds string concatenation (e.g. "os." + "system"),
+        // and simplifies opaque predicates before CFG construction.
+        crate::ir::egraph::deobfuscate_program(&mut ir_program, &mut interner);
+
         let module = crate::ir::types::Module {
             program: ir_program,
         };
@@ -429,6 +477,21 @@ impl<'a> Pipeline<'a> {
                 .with_line_map(instr_lines.clone());
         top_analysis.run(crate::dataflow::taint::TaintState::new());
 
+        // --- Phase 3 Declarative Datalog Analysis (Ascent) ---
+        // Runs relational fixpoint for provable provenance and cross-validation
+        let (datalog_findings, _datalog_count) = crate::dataflow::datalog::run_datalog_taint(
+            &module.program,
+            &config,
+            &interner,
+            &instr_lines,
+            &summaries,
+        );
+        for df in datalog_findings {
+            if !top_analysis.findings.iter().any(|f| f.sink_instr_idx == df.sink_instr_idx && f.sink_func == df.sink_func) {
+                top_analysis.findings.push(df);
+            }
+        }
+
         let match_ctx = crate::rules::MatchContext {
             program: &module.program,
             cfg: &top_cfg,
@@ -468,6 +531,14 @@ impl<'a> Pipeline<'a> {
                 }
             }
 
+            let effective_line = if line > 0 { line } else { 1 };
+            let raw_snippet = extract_line_snippet(source_code, effective_line);
+            let snippet = if !raw_snippet.is_empty() {
+                raw_snippet
+            } else {
+                "Flow-based detection — see surrounding source context".into()
+            };
+
             findings.push(Finding {
                 id: report.rule_id,
                 message: report.description,
@@ -477,8 +548,8 @@ impl<'a> Pipeline<'a> {
                     crate::rules::Severity::High => "HIGH".into(),
                     crate::rules::Severity::Critical => "CRITICAL".into(),
                 },
-                line: if line > 0 { line } else { 1 },
-                snippet: "Flow-based detection — see surrounding source context".into(),
+                line: effective_line,
+                snippet,
                 file_path: file_path.map(|s| s.to_string()),
                 flow_path: vec!["Source → Propagation → Sink (Rule Engine)".into()],
                 proof: Some(TaintProof {
@@ -530,8 +601,10 @@ pub fn analyze_sarif(_py: Python<'_>, source: String, file_path: String) -> PyRe
 #[pyfunction]
 fn inspect_code(_py: Python<'_>, source: String) -> PyResult<AnalysisResult> {
     if let Ok(findings) = analyze_default(source.as_bytes(), None, None) {
+        let light_findings = findings.iter().cloned().map(map_finding_to_light).collect();
         Ok(AnalysisResult {
-            findings: findings.into_iter().map(map_finding_to_light).collect(),
+            findings,
+            light_findings,
             file_hashes: std::collections::HashMap::new(),
             robustness_score: 1.0, // Default for single file
         })
@@ -576,70 +649,115 @@ fn compute_hashes(
 
 #[pyfunction]
 fn inspect_files(_py: Python<'_>, paths: Vec<String>) -> PyResult<AnalysisResult> {
-    let mut file_hashes = std::collections::HashMap::new();
-
-    let findings: Vec<Finding> = paths
+    let results: Vec<(Vec<Finding>, Option<(String, String)>)> = paths
         .par_iter()
-        .filter_map(|path_str| {
+        .map(|path_str| {
             let path = Path::new(path_str);
-            let file = fs::File::open(path).ok()?;
-            let mmap = unsafe { Mmap::map(&file).ok()? };
 
-            match analyze_default(&mmap, Some(path_str), None) {
-                Ok(res) => Some(res),
-                Err(_) => None,
+            // --- Open & Mmap (single pass for hash + pre-filter + analysis) ---
+            let file = match fs::File::open(path) {
+                Ok(f) => f,
+                Err(_) => return (Vec::new(), None),
+            };
+            let mmap = match unsafe { Mmap::map(&file) } {
+                Ok(m) => m,
+                Err(_) => return (Vec::new(), None),
+            };
+
+            // Always compute the hash (needed for incremental diffing regardless of analysis).
+            let hash = format!("{:x}", xxh3_64(&mmap));
+
+            // --- Tier-0 Pre-Filter ---
+            // Derive language from file extension and fast-reject clean files.
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let lang = Tier0Lang::from_ext(ext);
+            if !should_analyze(&mmap, lang) {
+                // No taint-relevant patterns — skip full AST pipeline entirely.
+                return (Vec::new(), Some((path_str.clone(), hash)));
             }
+
+            // --- Full Semantic Pipeline ---
+            let file_findings = match analyze_default(&mmap, Some(path_str), None) {
+                Ok(res) => res,
+                Err(_) => Vec::new(),
+            };
+            (file_findings, Some((path_str.clone(), hash)))
         })
-        .flatten()
         .collect();
 
-    for path_str in paths {
-        if let Ok(file) = fs::File::open(&path_str) {
-            if let Ok(mmap) = unsafe { Mmap::map(&file) } {
-                file_hashes.insert(path_str, format!("{:x}", xxh3_64(&mmap)));
-            }
+    let mut all_findings = Vec::new();
+    let mut file_hashes = std::collections::HashMap::new();
+
+    for (findings, hash_pair) in results {
+        all_findings.extend(findings);
+        if let Some((path, hash)) = hash_pair {
+            file_hashes.insert(path, hash);
         }
     }
 
+    let light_findings = all_findings.iter().cloned().map(map_finding_to_light).collect();
+
     Ok(AnalysisResult {
-        findings: findings.into_iter().map(map_finding_to_light).collect(),
+        findings: all_findings,
+        light_findings,
         file_hashes,
         robustness_score: 0.85,
     })
 }
+
 
 #[pyfunction]
 fn inspect_targeted(
     _py: Python<'_>,
     targets: std::collections::HashMap<String, Vec<(usize, usize)>>,
 ) -> PyResult<AnalysisResult> {
-    let mut file_hashes = std::collections::HashMap::new();
+    let target_list: Vec<(String, Vec<(usize, usize)>)> = targets.into_iter().collect();
 
-    let findings: Vec<Finding> = targets
+    let results: Vec<(Vec<Finding>, Option<(String, String)>)> = target_list
         .par_iter()
-        .filter_map(|(path_str, ranges)| {
+        .map(|(path_str, ranges)| {
             let path = Path::new(path_str);
-            let file = fs::File::open(path).ok()?;
-            let mmap = unsafe { Mmap::map(&file).ok()? };
+            let file = match fs::File::open(path) {
+                Ok(f) => f,
+                Err(_) => return (Vec::new(), None),
+            };
+            let mmap = match unsafe { Mmap::map(&file) } {
+                Ok(m) => m,
+                Err(_) => return (Vec::new(), None),
+            };
+            let hash = format!("{:x}", xxh3_64(&mmap));
 
-            match analyze_default(&mmap, Some(path_str), Some(ranges)) {
-                Ok(res) => Some(res),
-                Err(_) => None,
+            // --- Tier-0 Pre-Filter (targeted) ---
+            // Even in targeted mode, skip the full pipeline if no relevant patterns exist.
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let lang = Tier0Lang::from_ext(ext);
+            if !should_analyze(&mmap, lang) {
+                return (Vec::new(), Some((path_str.clone(), hash)));
             }
+
+            let file_findings = match analyze_default(&mmap, Some(path_str), Some(ranges)) {
+                Ok(res) => res,
+                Err(_) => Vec::new(),
+            };
+            (file_findings, Some((path_str.clone(), hash)))
         })
-        .flatten()
         .collect();
 
-    for path_str in targets.keys() {
-        if let Ok(file) = fs::File::open(&path_str) {
-            if let Ok(mmap) = unsafe { Mmap::map(&file) } {
-                file_hashes.insert(path_str.clone(), format!("{:x}", xxh3_64(&mmap)));
-            }
+    let mut all_findings = Vec::new();
+    let mut file_hashes = std::collections::HashMap::new();
+
+    for (findings, hash_pair) in results {
+        all_findings.extend(findings);
+        if let Some((path, hash)) = hash_pair {
+            file_hashes.insert(path, hash);
         }
     }
 
+    let light_findings = all_findings.iter().cloned().map(map_finding_to_light).collect();
+
     Ok(AnalysisResult {
-        findings: findings.into_iter().map(map_finding_to_light).collect(),
+        findings: all_findings,
+        light_findings,
         file_hashes,
         robustness_score: 1.0,
     })
