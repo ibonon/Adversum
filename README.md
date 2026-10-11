@@ -291,8 +291,8 @@ Pour toute question ou problème :
 
 - Tree-sitter pour l'analyse syntaxique
 - FastAPI pour le framework backend
-- Next.js pour le framework frontend
-- OpenAI pour les capacités de raisonnement IA
+- Nebius Token Factory pour l'infrastructure d'inférence IA
+- NVIDIA pour les modèles open-source Nemotron
 
 ---
 

@@ -43,20 +43,21 @@ class ReportGenerator:
         if not self.use_llm:
             return self._generate_template_summary(stats, findings)
 
-        logger.info(f"Génération du rapport d'audit pour {len(findings)} findings (LLM pour rédaction uniquement)...")
-        
+        logger.info(f"Génération du rapport d'audit pour {len(findings)} findings (NVIDIA Nemotron pour rédaction)...")
+
         # Préparer les données structurées pour le LLM
         report_data = self._prepare_report_data(stats, findings)
-        
-        # Utiliser Ollama (open source) par défaut, fallback vers GPT-4o-mini si configuré
-        # Le modèle GPT_4O_MINI sera automatiquement routé vers Ollama si disponible
+
+        # Use NVIDIA Nemotron (via Nebius Token Factory) for report writing.
+        # Falls back automatically to Ollama or mock if NEBIUS_API_KEY is not set.
         summary = await self.client.generate_async(
-            LLMModel.GPT_4O_MINI,  # Routé automatiquement vers Ollama si disponible
+            LLMModel.NEMOTRON_LIGHTNING,   # Primary: Nebius/Nemotron
             REPORT_SYSTEM_PROMPT,
             report_data
         )
-        
+
         return summary
+
 
     def _compute_statistics(self, findings: List[ValidatedFinding]) -> Dict:
         """Calcule les statistiques de manière déterministe."""
@@ -206,7 +207,7 @@ Aucune vulnérabilité détectée lors de cet audit. Le code analysé ne présen
         detailed_data = self._prepare_detailed_report_data(stats, findings)
         
         detailed_report = await self.client.generate_async(
-            LLMModel.GPT_4O_MINI,
+            LLMModel.NEMOTRON_LIGHTNING,   # Primary: Nebius/Nemotron
             REPORT_SYSTEM_PROMPT,
             detailed_data
         )

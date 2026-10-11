@@ -71,22 +71,25 @@ class AIValidator:
             # Use specialized researcher prompt for Zero-Day candidates
             is_zeroday_research = raw.id == "ZERODAY_CANDIDATE_SINK"
             system_prompt = ZERODAY_SYSTEM_PROMPT if is_zeroday_research else ANALYSIS_SYSTEM_PROMPT
-            
-            # Hybrid Preference: Use DeepSeek R1 if Ollama is enabled
+
+            # Model resolution priority:
+            #   1. Ollama (local open-source)  — if USE_OLLAMA=true
+            #   2. Nebius/NVIDIA Nemotron      — primary cloud backend (Phase 2)
             if self.client.ollama_enabled:
                 model = LLMModel.OLLAMA_DEEPSEEK_R1_DISTILL
             else:
-                model = LLMModel.OPENAI_O1_PREVIEW if is_zeroday_research else LLMModel.CLAUDE_3_5_SONNET
-            
+                # Both analyzer and zero-day researcher now use NVIDIA Nemotron via Nebius
+                model = LLMModel.NEMOTRON_LIGHTNING
+
             analysis_result = await self.client.generate_async(
-                model, 
-                system_prompt, 
+                model,
+                system_prompt,
                 analysis_prompt
             )
-            
+
             import json
-            
-            # Parse Thought and Answer from DeepSeek R1 or other models
+
+            # Parse Thought and Answer from reasoning models (DeepSeek R1, Nemotron)
             thought = ""
             if "<think>" in analysis_result and "</think>" in analysis_result:
                 parts = analysis_result.split("</think>")
@@ -94,7 +97,7 @@ class AIValidator:
                 final_answer = parts[1].strip()
             else:
                 final_answer = analysis_result.strip()
-            
+
             # Parse JSON from Answer
             try:
                 # Basic cleanup in case of markdown blocks
@@ -102,30 +105,30 @@ class AIValidator:
                     final_answer = final_answer.split("```json")[1].split("```")[0].strip()
                 elif "```" in final_answer:
                     final_answer = final_answer.split("```")[1].split("```")[0].strip()
-                
+
                 analysis_data = json.loads(final_answer)
-                status_label = "[Deep-Reasoning]" if not self.client.is_mock else "[Simulation-Mock]"
+                status_label = "[Nemotron-Reasoning]" if not self.client.is_mock else "[Simulation-Mock]"
                 notes = f"{status_label}: {analysis_data.get('analysis', 'Analysis unavailable.')}"
                 if thought:
                     notes = f"[Chain of Thought]:\n{thought}\n\n{notes}"
                 fix_proposal = analysis_data.get("fix")
             except json.JSONDecodeError:
-                status_label = "[Analyzer (Parse Error)]" if not self.client.is_mock else "[Simulation-Mock (Fallback)]"
+                status_label = "[Nemotron (Parse Error)]" if not self.client.is_mock else "[Simulation-Mock (Fallback)]"
                 notes = f"{status_label}: {final_answer}"
                 if thought:
                     notes = f"[Chain of Thought]:\n{thought}\n\n{notes}"
                 fix_proposal = None
-            
+
             status = ValidationStatus.CONFIRMED
             confidence = 0.9
-            
-            # Step 2: Auditor (OpenAI o1) - Challenge mechanism
+
+            # Step 2: Auditor (NVIDIA Nemotron) — Challenge mechanism
             if raw.severity in [Severity.HIGH, Severity.CRITICAL]:
-                logger.info(f"Triggering Highly Intelligent Auditor (o1) for {raw.severity} finding...")
+                logger.info(f"[Nemotron Auditor] Challenging {raw.severity} finding: {raw.id}")
                 audit_prompt = f"Previous Analysis: {analysis_result}\nOriginal Finding: {raw.message}\nSnippet: {raw.snippet}"
-                
-                # Prefer R1 for auditing too if enabled
-                audit_model = LLMModel.OLLAMA_DEEPSEEK_R1_DISTILL if self.client.ollama_enabled else LLMModel.OPENAI_O1_PREVIEW
+
+                # Prefer Ollama for auditing if available, otherwise use Nemotron
+                audit_model = LLMModel.OLLAMA_DEEPSEEK_R1_DISTILL if self.client.ollama_enabled else LLMModel.NEMOTRON_LIGHTNING
 
                 audit_result = await self.client.generate_async(
                     audit_model,

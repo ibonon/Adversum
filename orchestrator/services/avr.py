@@ -226,7 +226,7 @@ class AVREngine:
 
             validator = AIValidator()
             result_json = await validator.client.generate_async(
-                LLMModel.CLAUDE_3_5_SONNET,
+                LLMModel.NEMOTRON_LIGHTNING,   # Phase 2: Nebius/NVIDIA Nemotron
                 ANALYSIS_SYSTEM_PROMPT
                 + "\nFOCUS: You are in Refinement Mode. The previous fix failed validation.",
                 prompt,
