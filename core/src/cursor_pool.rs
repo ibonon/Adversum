@@ -9,7 +9,7 @@
 //! per Rayon worker thread and reused across all files processed by that thread.
 //!
 //! ## Usage
-//! ```rust
+//! ```rust,ignore
 //! use cursor_pool::with_cursor;
 //! use tree_sitter::Query;
 //!

@@ -58,8 +58,8 @@ impl BastounisVerifier {
         // p approx (C * arch^1.5 / (r+s))^(1/3)
         
         let complexity_term = architecture_complexity.powf(1.5);
-        let p_cubed = (c_factor * complexity_term) / total_samples;
-        let p_critical = p_cubed.powf(1.0/3.0);
+        let p_cubed = total_samples / (c_factor * complexity_term).max(1.0);
+        let p_critical = p_cubed.powf(1.0 / 3.0);
         
         // If p_critical is small, it means the probability of stability (p) is low.
         // Probability of instability > 1 - p.
