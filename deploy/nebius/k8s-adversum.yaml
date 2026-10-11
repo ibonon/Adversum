@@ -1,0 +1,190 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: adversum
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: adversum-secrets
+  namespace: adversum
+type: Opaque
+stringData:
+  # Remplacer par vos clés réelles lors du déploiement
+  NEBIUS_API_KEY: "your_nebius_token_factory_api_key_here"
+  TAVILY_API_KEY: "your_tavily_api_key_here"
+  API_KEY: "adv-dev-key-123"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adversum-config
+  namespace: adversum
+data:
+  NEBIUS_BASE_URL: "https://api.tokenfactory.nebius.com/v1/"
+  NEBIUS_MODEL: "nvidia/Nemotron-3_5-Lightning"
+  ALLOWED_ORIGINS: "*"
+  APP_ENV: "production"
+---
+# ─── BACKEND DEPLOYMENT ────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adversum-backend
+  namespace: adversum
+  labels:
+    app: adversum-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: adversum-backend
+  template:
+    metadata:
+      labels:
+        app: adversum-backend
+    spec:
+      containers:
+        - name: backend
+          image: cr.nemax.nebius.cloud/adversum/adversum-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: adversum-config
+            - secretRef:
+                name: adversum-secrets
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "2Gi"
+            limits:
+              cpu: "4000m"
+              memory: "8Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adversum-backend
+  namespace: adversum
+  labels:
+    app: adversum-backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app: adversum-backend
+---
+# ─── FRONTEND DEPLOYMENT ───────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adversum-frontend
+  namespace: adversum
+  labels:
+    app: adversum-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: adversum-frontend
+  template:
+    metadata:
+      labels:
+        app: adversum-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: cr.nemax.nebius.cloud/adversum/adversum-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adversum-frontend-lb
+  namespace: adversum
+  labels:
+    app: adversum-frontend
+  annotations:
+    # Nebius Cloud Network Load Balancer integration
+    nebius.com/load-balancer-type: "external"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http
+  selector:
+    app: adversum-frontend
+---
+# ─── INGRESS (OPTIONNEL AVEC NOM DE DOMAINE ET TLS) ───────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: adversum-ingress
+  namespace: adversum
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  rules:
+    - host: "adversum.demo.nebius.app"
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: adversum-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: adversum-frontend
+                port:
+                  number: 80

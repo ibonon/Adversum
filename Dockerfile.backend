@@ -1,73 +1,84 @@
-# Multi-stage build for Rust Core + Python Backend
+# =============================================================================
+# Adversum Backend — Multi-stage Build (Rust Core + FastAPI Engine)
+# Optimized for Nebius AI Cloud (MK8s & Container Runtimes)
+# =============================================================================
 
-# Stage 1: Rust Builder
-FROM python:3.10-slim as builder
+# --- Stage 1: Rust Core Builder ---
+FROM python:3.11-slim AS builder
 
-# Install system dependencies for building Rust
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     build-essential \
     pkg-config \
     libssl-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# Install Rust toolchain
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install maturin for building Python extension
-RUN pip install maturin
-
-# Copy source code
-WORKDIR /app
-COPY . .
-
-# Build Rust Core Extension
-WORKDIR /app/adversum/core
-# We use maturin build --release and then install the wheel
-RUN maturin build --release --out ../../dist
-
-# Stage 2: Final Runtime
-FROM python:3.10-slim
+# Install maturin for PyO3 wheel building
+RUN pip install --no-cache-dir maturin
 
 WORKDIR /app
 
-# Install Runtime dependencies and curl for healthcheck
-RUN apt-get update && apt-get install -y \
-    sqlite3 \
+# Copy Rust core source
+COPY core/ /app/core/
+
+# Build optimized release wheel for Linux x86_64
+WORKDIR /app/core
+RUN maturin build --release --out /app/dist
+
+
+# --- Stage 2: Final Production Runtime ---
+FROM python:3.11-slim
+
+LABEL maintainer="Adversum Security Team"
+LABEL description="Adversum AI Security Engine on Nebius AI Cloud"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PORT=8000 \
+    APP_ENV=production
+
+WORKDIR /app
+
+# System runtime dependencies (git required for cloning repos during audit)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     curl \
+    sqlite3 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Create non-root application user for container security
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser -m -d /home/appuser appuser
 
-# Copy built wheels from builder
+# Copy and install the compiled Rust Core PyO3 wheel
 COPY --from=builder /app/dist /app/dist
+RUN pip install --no-cache-dir /app/dist/*.whl && rm -rf /app/dist
 
-# Install the Rust Core wheel
-RUN pip install /app/dist/*.whl
+# Install Python requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir tavily-python
 
-# Copy application code
+# Copy full application codebase
 COPY . .
 
-# Install Python dependencies
-# Explicitly installing from requirements or manually if no file exists yet
-# For now, manually installing key deps as per project history
-RUN pip install fastapi uvicorn[standard] sqlmodel pydantic httpx python-multipart slowapi
+# Set permissions for non-root user
+RUN chown -R appuser:appuser /app /home/appuser
 
-# Change ownership to appuser
-RUN chown -R appuser:appuser /app
-
-# Switch to non-root user
 USER appuser
 
-# Expose API Port
 EXPOSE 8000
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8000/ || exit 1
+# Container Healthcheck (Nebius AI Cloud & K8s compatibility)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
 
-# Run API
-CMD ["python", "adversum/api/main.py"]
-
+# Start FastAPI with Uvicorn
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

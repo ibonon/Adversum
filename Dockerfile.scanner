@@ -1,24 +1,29 @@
-# ============================================================
-# Adversum Scanner — Isolated Container for GitHub Repo SAST
-# ============================================================
-# This lightweight container:
-# 1. Clones any GitHub repository (shallow)
-# 2. Runs the multi-language SAST engine (Python fallback)
-# 3. Outputs a JSON or text report, then exits
-# ============================================================
+# =============================================================================
+# Adversum Scanner — Isolated Container for Ephemeral GitHub SAST
+# Designed for Nebius AI Cloud / Ephemeral Jobs
+# =============================================================================
 
 FROM python:3.12-slim
 
-# Install system dependencies: git for cloning
-RUN apt-get update && apt-get install -y \
+LABEL maintainer="Adversum Security Team"
+LABEL description="Isolated SAST Scanner container for Adversum"
+
+# Install git and CA certificates for cloning remote repositories
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Run as non-root user for security sandboxing
+RUN groupadd -r -g 1001 scanneruser && \
+    useradd -r -u 1001 -g scanneruser -m -d /home/scanneruser scanneruser
+
 WORKDIR /scanner
 
-# Copy only the scanner entrypoint (no full app deps needed)
 COPY scripts/scanner/entrypoint.py .
+RUN chown -R scanneruser:scanneruser /scanner /home/scanneruser
 
-# No pip install needed — standalone script, zero dependencies
+USER scanneruser
+ENV PYTHONUNBUFFERED=1
+
 CMD ["python", "entrypoint.py"]
