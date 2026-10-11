@@ -1,8 +1,7 @@
-pub mod types;
-pub mod lower;
 pub mod egraph;
+pub mod lower;
+pub mod types;
 
-pub use types::*;
-pub use lower::*;
 pub use egraph::*;
-
+pub use lower::*;
+pub use types::*;

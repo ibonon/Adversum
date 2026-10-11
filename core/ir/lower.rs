@@ -1,7 +1,7 @@
 use crate::ast::types as ast;
-use crate::ir::types::*;
 use crate::ast::visit::Visitor;
 use crate::interner::{Interner, SymbolId};
+use crate::ir::types::*;
 
 pub struct LoweringContext<'src> {
     pub instructions: Vec<Instr>,
@@ -61,12 +61,19 @@ impl<'src> LoweringContext<'src> {
         self.instructions.push(instr);
         self.instr_lines.push(line);
     }
-    
+
     // Add ability to extract interner
     pub fn finish(self) -> (Program, Interner, Vec<usize>) {
-        (Program { instructions: self.instructions, functions: self.functions }, self.interner, self.instr_lines)
+        (
+            Program {
+                instructions: self.instructions,
+                functions: self.functions,
+            },
+            self.interner,
+            self.instr_lines,
+        )
     }
-    
+
     // Kept build signature but logic changed.
     // Usually we want to keep the interner.
     pub fn build(mut self, program: &ast::Program) -> (Program, Interner, Vec<usize>) {
@@ -93,14 +100,20 @@ impl<'src> LoweringContext<'src> {
                     let obj_sym = self.interner.intern(parts[0]);
                     let field_sym = self.interner.intern(parts[1]);
                     let dest = self.new_temp();
-                    self.emit(Instr::FieldLoad { dest: dest.clone(), obj: obj_sym, field: field_sym });
+                    self.emit(Instr::FieldLoad {
+                        dest: dest.clone(),
+                        obj: obj_sym,
+                        field: field_sym,
+                    });
                     dest
                 } else {
                     let sym = self.interner.intern(name);
                     Operand::Var(sym)
                 }
             }
-            ast::Expr::Binary { op, left, right, .. } => {
+            ast::Expr::Binary {
+                op, left, right, ..
+            } => {
                 let lhs = self.lower_expr(left);
                 let rhs = self.lower_expr(right);
                 let dest = self.new_temp();
@@ -118,11 +131,16 @@ impl<'src> LoweringContext<'src> {
                     ast::BinOp::Ge => Op::Ge,
                     ast::BinOp::And => Op::And,
                     ast::BinOp::Or => Op::Or,
-                    ast::BinOp::BitAnd => Op::And, 
+                    ast::BinOp::BitAnd => Op::And,
                     ast::BinOp::BitOr => Op::Or,
-                    ast::BinOp::BitXor => Op::Ne, 
+                    ast::BinOp::BitXor => Op::Ne,
                 };
-                self.emit(Instr::Binary { dest: dest.clone(), op: ir_op, left: lhs, right: rhs });
+                self.emit(Instr::Binary {
+                    dest: dest.clone(),
+                    op: ir_op,
+                    left: lhs,
+                    right: rhs,
+                });
                 dest
             }
             ast::Expr::Unary { op, operand, .. } => {
@@ -132,10 +150,18 @@ impl<'src> LoweringContext<'src> {
                     ast::UnOp::Neg => Op::Neg,
                     ast::UnOp::Not => Op::Not,
                 };
-                self.emit(Instr::Unary { dest: dest.clone(), op: ir_op, operand: val });
+                self.emit(Instr::Unary {
+                    dest: dest.clone(),
+                    op: ir_op,
+                    operand: val,
+                });
                 dest
             }
-            ast::Expr::Call { function, args, span } => {
+            ast::Expr::Call {
+                function,
+                args,
+                span,
+            } => {
                 let func_sym = if let ast::Expr::Identifier { name, .. } = &**function {
                     self.interner.intern(name)
                 } else {
@@ -147,7 +173,11 @@ impl<'src> LoweringContext<'src> {
                 let dest = self.new_temp();
                 let line = self.byte_offset_to_line(span.start);
                 self.emit_with_line(
-                    Instr::Call { dest: Some(dest.clone()), func: func_sym, args: arg_ops },
+                    Instr::Call {
+                        dest: Some(dest.clone()),
+                        func: func_sym,
+                        args: arg_ops,
+                    },
                     line,
                 );
                 dest
@@ -162,7 +192,10 @@ impl<'ast> Visitor<'ast> for LoweringContext<'_> {
             ast::Stmt::Let { name, value, .. } => {
                 let val = self.lower_expr(value);
                 let sym = self.interner.intern(name);
-                self.emit(Instr::Assign { dest: Operand::Var(sym), src: val });
+                self.emit(Instr::Assign {
+                    dest: Operand::Var(sym),
+                    src: val,
+                });
             }
             ast::Stmt::Assign { target, value, .. } => {
                 let val = self.lower_expr(value);
@@ -171,10 +204,17 @@ impl<'ast> Visitor<'ast> for LoweringContext<'_> {
                         let parts: Vec<&str> = name.splitn(2, '.').collect();
                         let obj_sym = self.interner.intern(parts[0]);
                         let field_sym = self.interner.intern(parts[1]);
-                        self.emit(Instr::FieldStore { obj: obj_sym, field: field_sym, src: val });
+                        self.emit(Instr::FieldStore {
+                            obj: obj_sym,
+                            field: field_sym,
+                            src: val,
+                        });
                     } else {
                         let sym = self.interner.intern(name);
-                        self.emit(Instr::Assign { dest: Operand::Var(sym), src: val });
+                        self.emit(Instr::Assign {
+                            dest: Operand::Var(sym),
+                            src: val,
+                        });
                     }
                 } else {
                     // TODO complex assign
@@ -183,46 +223,63 @@ impl<'ast> Visitor<'ast> for LoweringContext<'_> {
             ast::Stmt::Expr { expr, .. } => {
                 self.lower_expr(expr);
             }
-            ast::Stmt::If { condition, then_block, else_block, .. } => {
+            ast::Stmt::If {
+                condition,
+                then_block,
+                else_block,
+                ..
+            } => {
                 let cond = self.lower_expr(condition);
                 let label_true = self.new_label();
                 let label_end = self.new_label();
-                let label_else = if else_block.is_some() { self.new_label() } else { label_end };
+                let label_else = if else_block.is_some() {
+                    self.new_label()
+                } else {
+                    label_end
+                };
 
-                self.emit(Instr::JumpIf { cond: cond.clone(), label: label_true });
+                self.emit(Instr::JumpIf {
+                    cond: cond.clone(),
+                    label: label_true,
+                });
                 self.emit(Instr::Jump(label_else));
-                
+
                 self.emit(Instr::Label(label_true));
                 for s in then_block {
                     self.visit_stmt(s);
                 }
                 self.emit(Instr::Jump(label_end));
-                
+
                 if let Some(else_stmts) = else_block {
                     self.emit(Instr::Label(label_else));
                     for s in else_stmts {
                         self.visit_stmt(s);
                     }
                 }
-                
+
                 self.emit(Instr::Label(label_end));
             }
-            ast::Stmt::While { condition, body, .. } => {
+            ast::Stmt::While {
+                condition, body, ..
+            } => {
                 let label_start = self.new_label();
                 let label_body = self.new_label();
                 let label_end = self.new_label();
-                
+
                 self.emit(Instr::Label(label_start));
                 let cond = self.lower_expr(condition);
-                self.emit(Instr::JumpIf { cond, label: label_body });
+                self.emit(Instr::JumpIf {
+                    cond,
+                    label: label_body,
+                });
                 self.emit(Instr::Jump(label_end));
-                
+
                 self.emit(Instr::Label(label_body));
                 for s in body {
                     self.visit_stmt(s);
                 }
                 self.emit(Instr::Jump(label_start));
-                
+
                 self.emit(Instr::Label(label_end));
             }
             ast::Stmt::Return { value, .. } => {
@@ -235,7 +292,9 @@ impl<'ast> Visitor<'ast> for LoweringContext<'_> {
                     self.visit_stmt(s);
                 }
             }
-            ast::Stmt::FunctionDef { name, params, body, .. } => {
+            ast::Stmt::FunctionDef {
+                name, params, body, ..
+            } => {
                 let func_sym = self.interner.intern(name);
                 let mut param_syms = Vec::new();
                 for p in params {
@@ -255,7 +314,7 @@ impl<'ast> Visitor<'ast> for LoweringContext<'_> {
                     params: param_syms,
                     instructions: std::mem::replace(&mut self.instructions, saved_instructions),
                 };
-                
+
                 // Store lines? We need a way to store function lines. For MVP, we can keep lines global or per function.
                 // Actually, since lines are associated with the lowered instructions, we should put them back.
                 // But wait, instr_lines is expected to match the length of program.instructions.

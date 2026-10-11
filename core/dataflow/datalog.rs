@@ -8,11 +8,11 @@
 //! - **Proven provenance**: Returns explicit `(source_idx, sink_idx, tag)` triples.
 //! - **Vectorized evaluation**: `ascent` evaluates relations in memory-contiguous indices.
 
-use ascent::ascent;
-use crate::ir::types::{Instr, Operand, Program};
-use crate::interner::{Interner, SymbolId};
 use crate::dataflow::analysis::{FlowFinding, TaintConfig};
 use crate::dataflow::summary::FunctionSummary;
+use crate::interner::{Interner, SymbolId};
+use crate::ir::types::{Instr, Operand, Program};
+use ascent::ascent;
 use std::collections::HashMap;
 
 ascent! {
@@ -87,7 +87,9 @@ pub fn run_datalog_taint(
                     prog.dfg_edge.push((s, d));
                 }
             }
-            Instr::Binary { dest, left, right, .. } => {
+            Instr::Binary {
+                dest, left, right, ..
+            } => {
                 if let Some(d) = encode_operand(dest) {
                     if let Some(l) = encode_operand(left) {
                         prog.dfg_edge.push((l, d));
@@ -108,7 +110,11 @@ pub fn run_datalog_taint(
                     prog.dfg_edge.push((s, obj_node));
                 }
             }
-            Instr::FieldLoad { dest, obj, field: _ } => {
+            Instr::FieldLoad {
+                dest,
+                obj,
+                field: _,
+            } => {
                 let obj_node = (1u64 << 32) | (obj.as_u32() as u64);
                 if let Some(d) = encode_operand(dest) {
                     prog.dfg_edge.push((obj_node, d));
@@ -203,8 +209,8 @@ pub fn run_datalog_taint(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::{Instr, Operand, Program};
     use crate::interner::Interner;
+    use crate::ir::types::{Instr, Operand, Program};
 
     #[test]
     fn datalog_finds_direct_taint_flow() {
@@ -243,7 +249,8 @@ mod tests {
         };
 
         let summaries = HashMap::new();
-        let (findings, count) = run_datalog_taint(&program, &config, &interner, &[10, 11, 12], &summaries);
+        let (findings, count) =
+            run_datalog_taint(&program, &config, &interner, &[10, 11, 12], &summaries);
 
         assert_eq!(count, 1);
         assert_eq!(findings.len(), 1);
@@ -265,13 +272,11 @@ mod tests {
         };
 
         let program = Program {
-            instructions: vec![
-                Instr::Call {
-                    dest: Some(Operand::Temp(0)),
-                    func: safe_sym,
-                    args: vec![],
-                },
-            ],
+            instructions: vec![Instr::Call {
+                dest: Some(Operand::Temp(0)),
+                func: safe_sym,
+                args: vec![],
+            }],
             functions: HashMap::new(),
         };
 

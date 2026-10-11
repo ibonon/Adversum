@@ -1,11 +1,8 @@
-pub mod ewc;
-pub mod loss;
-pub mod gradients;
-pub mod theory;
 pub mod bounds;
-
-
-
+pub mod ewc;
+pub mod gradients;
+pub mod loss;
+pub mod theory;
 
 use ndarray::ArrayD;
 

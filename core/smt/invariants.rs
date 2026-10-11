@@ -1,6 +1,6 @@
 use super::ast::{SmtExpr, Sort};
 use super::symbolic::SymbolicState;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Invariants de sécurité formels vérifiables par SMT
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,15 +54,23 @@ impl SecurityInvariant {
                 InvariantQuery {
                     violation_formula: violation,
                     declared_vars: vec![
-                        super::ast::SmtVar { name: "sym_a".to_string(), sort: Sort::Int },
-                        super::ast::SmtVar { name: "sym_b".to_string(), sort: Sort::Int },
+                        super::ast::SmtVar {
+                            name: "sym_a".to_string(),
+                            sort: Sort::Int,
+                        },
+                        super::ast::SmtVar {
+                            name: "sym_b".to_string(),
+                            sort: Sort::Int,
+                        },
                     ],
                     description: "Arithmetic overflow: a + b may exceed MAX_UINT256".to_string(),
                 }
             }
             SecurityInvariant::DivisionByZeroSafe => {
                 // Violation: le dénominateur est == 0
-                let denom = state.registers.get("__denominator__")
+                let denom = state
+                    .registers
+                    .get("__denominator__")
                     .cloned()
                     .unwrap_or_else(|| SmtExpr::int_var("sym_denom"));
                 let violation = SmtExpr::And(vec![
@@ -86,14 +94,18 @@ impl SecurityInvariant {
                 ]);
                 InvariantQuery {
                     violation_formula: violation,
-                    declared_vars: vec![
-                        super::ast::SmtVar { name: "path_contains_dotdot".to_string(), sort: Sort::Bool },
-                    ],
-                    description: "Path traversal: resolved path may escape base directory".to_string(),
+                    declared_vars: vec![super::ast::SmtVar {
+                        name: "path_contains_dotdot".to_string(),
+                        sort: Sort::Bool,
+                    }],
+                    description: "Path traversal: resolved path may escape base directory"
+                        .to_string(),
                 }
             }
             SecurityInvariant::NonNegativeReturn => {
-                let ret = state.registers.get("__return__")
+                let ret = state
+                    .registers
+                    .get("__return__")
                     .cloned()
                     .unwrap_or_else(|| SmtExpr::int_var("sym_ret"));
                 let violation = SmtExpr::And(vec![

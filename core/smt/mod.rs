@@ -1,16 +1,16 @@
 pub mod ast;
-pub mod symbolic;
 pub mod invariants;
 pub mod solver;
+pub mod symbolic;
 
 pub use ast::{SmtExpr, SmtVar, Sort};
-pub use symbolic::{SymbolicState, execute_symbolically, symbolize_function};
-pub use invariants::{SecurityInvariant, InvariantQuery, InvariantContext};
-pub use solver::{SmtSolver, SmtResult, Interval};
+pub use invariants::{InvariantContext, InvariantQuery, SecurityInvariant};
+pub use solver::{Interval, SmtResult, SmtSolver};
+pub use symbolic::{execute_symbolically, symbolize_function, SymbolicState};
 
-use serde::{Serialize, Deserialize};
-use pyo3::prelude::*;
 use crate::ir::types::FunctionIR;
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Résultat complet d'une vérification formelle SMT exposé à Python via PyO3
 #[pyclass(get_all)]
@@ -32,20 +32,38 @@ pub struct SmtProofResult {
 impl SmtProofResult {
     #[new]
     #[pyo3(signature = (verdict, invariant, counterexample, smtlib2_formula, target))]
-    fn new(verdict: String, invariant: String, counterexample: Option<String>,
-           smtlib2_formula: String, target: String) -> Self {
-        Self { verdict, invariant, counterexample, smtlib2_formula, target }
+    fn new(
+        verdict: String,
+        invariant: String,
+        counterexample: Option<String>,
+        smtlib2_formula: String,
+        target: String,
+    ) -> Self {
+        Self {
+            verdict,
+            invariant,
+            counterexample,
+            smtlib2_formula,
+            target,
+        }
     }
 
     fn __repr__(&self) -> String {
-        format!("SmtProofResult(verdict={}, invariant={})", self.verdict, self.invariant)
+        format!(
+            "SmtProofResult(verdict={}, invariant={})",
+            self.verdict, self.invariant
+        )
     }
 }
 
 /// Vérifie un invariant de sécurité sur une FunctionIR sérialisée en JSON
 /// Appelable depuis Python: adversum_core.verify_invariant_smt(ir_json, invariant_type, target)
 #[pyfunction]
-pub fn verify_invariant_smt(ir_json: &str, invariant_type: &str, target: &str) -> PyResult<SmtProofResult> {
+pub fn verify_invariant_smt(
+    ir_json: &str,
+    invariant_type: &str,
+    target: &str,
+) -> PyResult<SmtProofResult> {
     // Désérialiser la FunctionIR depuis JSON
     let func: FunctionIR = serde_json::from_str(ir_json)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid IR JSON: {}", e)))?;
@@ -53,9 +71,9 @@ pub fn verify_invariant_smt(ir_json: &str, invariant_type: &str, target: &str) -
     // Choisir l'invariant
     let invariant = match invariant_type {
         "overflow" | "NoArithmeticOverflow" => SecurityInvariant::NoArithmeticOverflow,
-        "divzero" | "DivisionByZeroSafe"   => SecurityInvariant::DivisionByZeroSafe,
-        "path" | "PathTraversalSafe"        => SecurityInvariant::PathTraversalSafe,
-        "nonneg" | "NonNegativeReturn"      => SecurityInvariant::NonNegativeReturn,
+        "divzero" | "DivisionByZeroSafe" => SecurityInvariant::DivisionByZeroSafe,
+        "path" | "PathTraversalSafe" => SecurityInvariant::PathTraversalSafe,
+        "nonneg" | "NonNegativeReturn" => SecurityInvariant::NonNegativeReturn,
         other => SecurityInvariant::Custom(other.to_string()),
     };
 
@@ -74,7 +92,7 @@ pub fn verify_invariant_smt(ir_json: &str, invariant_type: &str, target: &str) -
         file_path: target.to_string(),
     };
     let query = invariant.to_query(&state, &ctx);
-    
+
     // Lancer le solveur
     let solver = SmtSolver::new();
     let smtlib2 = solver.to_smtlib2_script(&query.violation_formula, &query.declared_vars);
@@ -83,7 +101,8 @@ pub fn verify_invariant_smt(ir_json: &str, invariant_type: &str, target: &str) -
     let (verdict, counterexample) = match result {
         SmtResult::Unsat => ("PROVED".to_string(), None),
         SmtResult::Sat { model } => {
-            let ce = model.iter()
+            let ce = model
+                .iter()
                 .map(|(k, v)| format!("{} = {}", k, v))
                 .collect::<Vec<_>>()
                 .join(", ");

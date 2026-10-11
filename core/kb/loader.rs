@@ -32,17 +32,23 @@ pub struct KbFile {
 
 impl KbFile {
     pub fn sink_names(&self) -> Vec<String> {
-        self.sinks.iter().map(|s| match s {
-            SinkOrString::Full(e) => e.name.clone(),
-            SinkOrString::Short(s) => s.clone(),
-        }).collect()
+        self.sinks
+            .iter()
+            .map(|s| match s {
+                SinkOrString::Full(e) => e.name.clone(),
+                SinkOrString::Short(s) => s.clone(),
+            })
+            .collect()
     }
-    
+
     pub fn cwe_map(&self) -> HashMap<String, String> {
-        self.sinks.iter().filter_map(|s| match s {
-            SinkOrString::Full(e) => Some((e.name.clone(), e.cwe.clone())),
-            _ => None,
-        }).collect()
+        self.sinks
+            .iter()
+            .filter_map(|s| match s {
+                SinkOrString::Full(e) => Some((e.name.clone(), e.cwe.clone())),
+                _ => None,
+            })
+            .collect()
     }
 }
 
@@ -55,6 +61,12 @@ pub const PYTHON_KB: &str = include_str!("../../knowledge/taint/python_sinks.jso
 pub const JS_KB: &str = include_str!("../../knowledge/taint/sources_js.json");
 pub const JAVA_KB: &str = include_str!("../../knowledge/taint/sources_java.json");
 
-pub fn get_python_kb() -> KbFile { load_kb(PYTHON_KB).expect("Invalid Python KB JSON") }
-pub fn get_js_kb() -> KbFile { load_kb(JS_KB).expect("Invalid JS KB JSON") }
-pub fn get_java_kb() -> KbFile { load_kb(JAVA_KB).expect("Invalid Java KB JSON") }
+pub fn get_python_kb() -> KbFile {
+    load_kb(PYTHON_KB).expect("Invalid Python KB JSON")
+}
+pub fn get_js_kb() -> KbFile {
+    load_kb(JS_KB).expect("Invalid JS KB JSON")
+}
+pub fn get_java_kb() -> KbFile {
+    load_kb(JAVA_KB).expect("Invalid Java KB JSON")
+}

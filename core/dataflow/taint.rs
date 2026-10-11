@@ -1,6 +1,6 @@
-use std::collections::{BTreeSet, HashMap};
-use crate::ir::types::Operand;
 use crate::interner::SymbolId;
+use crate::ir::types::Operand;
+use std::collections::{BTreeSet, HashMap};
 
 // Represents the set of tainted values (Temps or Vars).
 // Using BTreeSet for deterministic iteration and sparse storage optimization.
@@ -26,16 +26,24 @@ impl TaintState {
 
     pub fn taint(&mut self, op: &Operand) {
         match op {
-            Operand::Temp(t) => { self.tainted_temps.insert(*t); }
-            Operand::Var(v) => { self.tainted_vars.insert(*v); }
-            Operand::Constant(_) => {} 
+            Operand::Temp(t) => {
+                self.tainted_temps.insert(*t);
+            }
+            Operand::Var(v) => {
+                self.tainted_vars.insert(*v);
+            }
+            Operand::Constant(_) => {}
         }
     }
-    
+
     pub fn untaint(&mut self, op: &Operand) {
         match op {
-            Operand::Temp(t) => { self.tainted_temps.remove(t); }
-            Operand::Var(v) => { self.tainted_vars.remove(v); }
+            Operand::Temp(t) => {
+                self.tainted_temps.remove(t);
+            }
+            Operand::Var(v) => {
+                self.tainted_vars.remove(v);
+            }
             Operand::Constant(_) => {}
         }
     }
@@ -52,11 +60,15 @@ impl TaintState {
         let len_temps = self.tainted_temps.len();
         let len_vars = self.tainted_vars.len();
         let len_fields = self.tainted_fields.len();
-        
-        self.tainted_temps.extend(other.tainted_temps.iter().cloned());
+
+        self.tainted_temps
+            .extend(other.tainted_temps.iter().cloned());
         self.tainted_vars.extend(other.tainted_vars.iter().cloned());
-        self.tainted_fields.extend(other.tainted_fields.iter().map(|(k, v)| (*k, *v)));
-        
-        len_temps != self.tainted_temps.len() || len_vars != self.tainted_vars.len() || len_fields != self.tainted_fields.len()
+        self.tainted_fields
+            .extend(other.tainted_fields.iter().map(|(k, v)| (*k, *v)));
+
+        len_temps != self.tainted_temps.len()
+            || len_vars != self.tainted_vars.len()
+            || len_fields != self.tainted_fields.len()
     }
 }

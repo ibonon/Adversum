@@ -9,9 +9,9 @@
 //! 2. **Opaque Predicates**: `if (1 == 1)` or `if (x ^ x == 0)` => unconditional jump.
 //! 3. **Identity Chaining**: `t1 = x + 0`, `t2 = t1 * 1` => `x`.
 
-use egg::*;
-use crate::ir::types::{Instr, Op, Operand, Program};
 use crate::interner::Interner;
+use crate::ir::types::{Instr, Op, Operand, Program};
+use egg::*;
 use std::collections::HashMap;
 
 define_language! {
@@ -52,7 +52,6 @@ pub fn make_rules() -> Vec<Rewrite<IRExpr, ()>> {
         rewrite!("zero-mul"; "(* 0 ?x)" => "0"),
         rewrite!("sub-self"; "(- ?x ?x)" => "0"),
         rewrite!("xor-self"; "(^ ?x ?x)" => "0"),
-
         // Boolean identities
         rewrite!("double-not"; "(not (not ?x))" => "?x"),
         rewrite!("and-true"; "(& ?x true)" => "?x"),
@@ -75,13 +74,22 @@ pub fn deobfuscate_program(program: &mut Program, interner: &mut Interner) -> us
     for instr in &mut program.instructions {
         match instr {
             // 1. Constant String Concatenation: t3 = "os." + "system" => "os.system"
-            Instr::Binary { dest, op: Op::Add, left, right } => {
-                let left_val = resolved_constants.get(left).cloned()
+            Instr::Binary {
+                dest,
+                op: Op::Add,
+                left,
+                right,
+            } => {
+                let left_val = resolved_constants
+                    .get(left)
+                    .cloned()
                     .or_else(|| match left {
                         Operand::Constant(s) => Some(s.clone()),
                         _ => None,
                     });
-                let right_val = resolved_constants.get(right).cloned()
+                let right_val = resolved_constants
+                    .get(right)
+                    .cloned()
                     .or_else(|| match right {
                         Operand::Constant(s) => Some(s.clone()),
                         _ => None,
@@ -102,32 +110,35 @@ pub fn deobfuscate_program(program: &mut Program, interner: &mut Interner) -> us
             }
 
             // 2. Opaque Predicates: x - x => 0, x ^ x => 0
-            Instr::Binary { dest, op, left, right } if left == right => {
-                match op {
-                    Op::Sub => {
-                        *instr = Instr::Assign {
-                            dest: dest.clone(),
-                            src: Operand::Constant("0".into()),
-                        };
-                        rewritten_count += 1;
-                    }
-                    Op::Eq => {
-                        *instr = Instr::Assign {
-                            dest: dest.clone(),
-                            src: Operand::Constant("true".into()),
-                        };
-                        rewritten_count += 1;
-                    }
-                    Op::Ne => {
-                        *instr = Instr::Assign {
-                            dest: dest.clone(),
-                            src: Operand::Constant("false".into()),
-                        };
-                        rewritten_count += 1;
-                    }
-                    _ => {}
+            Instr::Binary {
+                dest,
+                op,
+                left,
+                right,
+            } if left == right => match op {
+                Op::Sub => {
+                    *instr = Instr::Assign {
+                        dest: dest.clone(),
+                        src: Operand::Constant("0".into()),
+                    };
+                    rewritten_count += 1;
                 }
-            }
+                Op::Eq => {
+                    *instr = Instr::Assign {
+                        dest: dest.clone(),
+                        src: Operand::Constant("true".into()),
+                    };
+                    rewritten_count += 1;
+                }
+                Op::Ne => {
+                    *instr = Instr::Assign {
+                        dest: dest.clone(),
+                        src: Operand::Constant("false".into()),
+                    };
+                    rewritten_count += 1;
+                }
+                _ => {}
+            },
 
             // 3. Propagation of resolved constants
             Instr::Assign { dest, src } => {
@@ -141,7 +152,11 @@ pub fn deobfuscate_program(program: &mut Program, interner: &mut Interner) -> us
             }
 
             // 4. Deobfuscation of Indirect Sinks: call t3(args) where t3 was "os.system"
-            Instr::Call { dest: _, func, args: _ } => {
+            Instr::Call {
+                dest: _,
+                func,
+                args: _,
+            } => {
                 let func_name = interner.resolve(*func).to_string();
                 // Check if the func symbol matches a variable holding a deobfuscated string
                 let var_op = Operand::Var(*func);
@@ -164,8 +179,8 @@ pub fn deobfuscate_program(program: &mut Program, interner: &mut Interner) -> us
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::{Instr, Op, Operand, Program};
     use crate::interner::Interner;
+    use crate::ir::types::{Instr, Op, Operand, Program};
     use std::collections::HashMap;
 
     #[test]

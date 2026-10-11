@@ -11,9 +11,7 @@ pub enum SafetyInvariant {
     /// Execution must be bounded by a specific complexity.
     ComplexityBound(usize),
     /// Data must match a specific deterministic schema/regex.
-    SchemaMatch {
-        regex: String,
-    },
+    SchemaMatch { regex: String },
 }
 
 impl SafetyInvariant {
@@ -22,7 +20,9 @@ impl SafetyInvariant {
         match self {
             SafetyInvariant::NoFlow { .. } => {
                 // Si l'évidence contient "verified: true" pour un flow suspect, l'invariant est violé.
-                !evidence.iter().any(|e| e.contains("PREUVE : Donnée externe non filtrée"))
+                !evidence
+                    .iter()
+                    .any(|e| e.contains("PREUVE : Donnée externe non filtrée"))
             }
             _ => true,
         }

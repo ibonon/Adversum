@@ -1,10 +1,9 @@
-pub mod taint;
 pub mod analysis;
-pub mod summary;
 pub mod datalog;
+pub mod summary;
+pub mod taint;
 
-pub use taint::*;
 pub use analysis::*;
-pub use summary::*;
 pub use datalog::*;
-
+pub use summary::*;
+pub use taint::*;

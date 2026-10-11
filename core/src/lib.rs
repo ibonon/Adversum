@@ -216,14 +216,18 @@ pub fn extract_line_snippet(source: &[u8], line: usize) -> String {
     for (i, &b) in source.iter().enumerate() {
         if b == b'\n' {
             if current_line == line {
-                return String::from_utf8_lossy(&source[line_start..i]).trim().to_string();
+                return String::from_utf8_lossy(&source[line_start..i])
+                    .trim()
+                    .to_string();
             }
             current_line += 1;
             line_start = i + 1;
         }
     }
     if current_line == line && line_start < source.len() {
-        return String::from_utf8_lossy(&source[line_start..]).trim().to_string();
+        return String::from_utf8_lossy(&source[line_start..])
+            .trim()
+            .to_string();
     }
     String::new()
 }
@@ -487,7 +491,11 @@ impl<'a> Pipeline<'a> {
             &summaries,
         );
         for df in datalog_findings {
-            if !top_analysis.findings.iter().any(|f| f.sink_instr_idx == df.sink_instr_idx && f.sink_func == df.sink_func) {
+            if !top_analysis
+                .findings
+                .iter()
+                .any(|f| f.sink_instr_idx == df.sink_instr_idx && f.sink_func == df.sink_func)
+            {
                 top_analysis.findings.push(df);
             }
         }
@@ -695,7 +703,11 @@ fn inspect_files(_py: Python<'_>, paths: Vec<String>) -> PyResult<AnalysisResult
         }
     }
 
-    let light_findings = all_findings.iter().cloned().map(map_finding_to_light).collect();
+    let light_findings = all_findings
+        .iter()
+        .cloned()
+        .map(map_finding_to_light)
+        .collect();
 
     Ok(AnalysisResult {
         findings: all_findings,
@@ -704,7 +716,6 @@ fn inspect_files(_py: Python<'_>, paths: Vec<String>) -> PyResult<AnalysisResult
         robustness_score: 0.85,
     })
 }
-
 
 #[pyfunction]
 fn inspect_targeted(
@@ -753,7 +764,11 @@ fn inspect_targeted(
         }
     }
 
-    let light_findings = all_findings.iter().cloned().map(map_finding_to_light).collect();
+    let light_findings = all_findings
+        .iter()
+        .cloned()
+        .map(map_finding_to_light)
+        .collect();
 
     Ok(AnalysisResult {
         findings: all_findings,

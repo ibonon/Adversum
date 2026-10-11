@@ -26,22 +26,45 @@ pub struct CvssV4 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum AttackVector { Network, Adjacent, Local, Physical }
+pub enum AttackVector {
+    Network,
+    Adjacent,
+    Local,
+    Physical,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum AttackComplexity { Low, High }
+pub enum AttackComplexity {
+    Low,
+    High,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum AttackRequirements { None, Present }
+pub enum AttackRequirements {
+    None,
+    Present,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum PrivilegesRequired { None, Low, High }
+pub enum PrivilegesRequired {
+    None,
+    Low,
+    High,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum UserInteraction { None, Passive, Active }
+pub enum UserInteraction {
+    None,
+    Passive,
+    Active,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Impact { High, Low, None }
+pub enum Impact {
+    High,
+    Low,
+    None,
+}
 
 impl CvssV4 {
     /// Derive a CVSS 4.0 vector from a CWE identifier.
@@ -139,7 +162,8 @@ impl CvssV4 {
                 si: Impact::None,
                 sa: Impact::None,
             },
-            _ => Self { // Default ~7.0
+            _ => Self {
+                // Default ~7.0
                 av: AttackVector::Network,
                 ac: AttackComplexity::Low,
                 at: AttackRequirements::None,
@@ -159,44 +183,99 @@ impl CvssV4 {
     pub fn base_score(&self) -> f64 {
         // Approximate lookup values based on prompt
         match (
-            &self.av, &self.ac, &self.at, &self.pr, &self.ui,
-            &self.vc, &self.vi, &self.va,
-            &self.sc, &self.si, &self.sa
+            &self.av, &self.ac, &self.at, &self.pr, &self.ui, &self.vc, &self.vi, &self.va,
+            &self.sc, &self.si, &self.sa,
         ) {
             (
-                AttackVector::Network, AttackComplexity::Low, AttackRequirements::None, PrivilegesRequired::None, UserInteraction::None,
-                Impact::High, Impact::High, Impact::High,
-                Impact::High, Impact::High, Impact::High
+                AttackVector::Network,
+                AttackComplexity::Low,
+                AttackRequirements::None,
+                PrivilegesRequired::None,
+                UserInteraction::None,
+                Impact::High,
+                Impact::High,
+                Impact::High,
+                Impact::High,
+                Impact::High,
+                Impact::High,
             ) => 10.0,
             (
-                AttackVector::Network, AttackComplexity::Low, AttackRequirements::None, PrivilegesRequired::None, UserInteraction::None,
-                Impact::High, Impact::High, Impact::None,
-                Impact::None, Impact::None, Impact::None
+                AttackVector::Network,
+                AttackComplexity::Low,
+                AttackRequirements::None,
+                PrivilegesRequired::None,
+                UserInteraction::None,
+                Impact::High,
+                Impact::High,
+                Impact::None,
+                Impact::None,
+                Impact::None,
+                Impact::None,
             ) => 9.3,
             (
-                AttackVector::Network, AttackComplexity::Low, AttackRequirements::None, PrivilegesRequired::None, UserInteraction::Passive,
-                Impact::Low, Impact::Low, Impact::None,
-                Impact::Low, Impact::Low, Impact::None
+                AttackVector::Network,
+                AttackComplexity::Low,
+                AttackRequirements::None,
+                PrivilegesRequired::None,
+                UserInteraction::Passive,
+                Impact::Low,
+                Impact::Low,
+                Impact::None,
+                Impact::Low,
+                Impact::Low,
+                Impact::None,
             ) => 5.3,
             (
-                AttackVector::Network, AttackComplexity::Low, AttackRequirements::None, PrivilegesRequired::None, UserInteraction::None,
-                Impact::High, Impact::None, Impact::None,
-                Impact::None, Impact::None, Impact::None
+                AttackVector::Network,
+                AttackComplexity::Low,
+                AttackRequirements::None,
+                PrivilegesRequired::None,
+                UserInteraction::None,
+                Impact::High,
+                Impact::None,
+                Impact::None,
+                Impact::None,
+                Impact::None,
+                Impact::None,
             ) => 7.5,
             (
-                AttackVector::Network, AttackComplexity::Low, AttackRequirements::None, PrivilegesRequired::None, UserInteraction::None,
-                Impact::High, Impact::High, Impact::High,
-                Impact::None, Impact::None, Impact::None
+                AttackVector::Network,
+                AttackComplexity::Low,
+                AttackRequirements::None,
+                PrivilegesRequired::None,
+                UserInteraction::None,
+                Impact::High,
+                Impact::High,
+                Impact::High,
+                Impact::None,
+                Impact::None,
+                Impact::None,
             ) => 9.8,
             (
-                AttackVector::Network, AttackComplexity::Low, AttackRequirements::None, PrivilegesRequired::None, UserInteraction::None,
-                Impact::High, Impact::Low, Impact::None,
-                Impact::None, Impact::None, Impact::None
+                AttackVector::Network,
+                AttackComplexity::Low,
+                AttackRequirements::None,
+                PrivilegesRequired::None,
+                UserInteraction::None,
+                Impact::High,
+                Impact::Low,
+                Impact::None,
+                Impact::None,
+                Impact::None,
+                Impact::None,
             ) => 8.2,
             (
-                AttackVector::Network, AttackComplexity::Low, AttackRequirements::None, PrivilegesRequired::None, UserInteraction::None,
-                Impact::High, Impact::High, Impact::None,
-                Impact::None, Impact::None, Impact::None
+                AttackVector::Network,
+                AttackComplexity::Low,
+                AttackRequirements::None,
+                PrivilegesRequired::None,
+                UserInteraction::None,
+                Impact::High,
+                Impact::High,
+                Impact::None,
+                Impact::None,
+                Impact::None,
+                Impact::None,
             ) => 8.6,
             _ => 7.0, // Default fallback
         }
@@ -220,19 +299,64 @@ impl CvssV4 {
 
     /// Return the CVSS vector string representation.
     pub fn vector_string(&self) -> String {
-        let av = match self.av { AttackVector::Network => "N", AttackVector::Adjacent => "A", AttackVector::Local => "L", AttackVector::Physical => "P" };
-        let ac = match self.ac { AttackComplexity::Low => "L", AttackComplexity::High => "H" };
-        let at = match self.at { AttackRequirements::None => "N", AttackRequirements::Present => "P" };
-        let pr = match self.pr { PrivilegesRequired::None => "N", PrivilegesRequired::Low => "L", PrivilegesRequired::High => "H" };
-        let ui = match self.ui { UserInteraction::None => "N", UserInteraction::Passive => "P", UserInteraction::Active => "A" };
-        let vc = match self.vc { Impact::High => "H", Impact::Low => "L", Impact::None => "N" };
-        let vi = match self.vi { Impact::High => "H", Impact::Low => "L", Impact::None => "N" };
-        let va = match self.va { Impact::High => "H", Impact::Low => "L", Impact::None => "N" };
-        let sc = match self.sc { Impact::High => "H", Impact::Low => "L", Impact::None => "N" };
-        let si = match self.si { Impact::High => "H", Impact::Low => "L", Impact::None => "N" };
-        let sa = match self.sa { Impact::High => "H", Impact::Low => "L", Impact::None => "N" };
+        let av = match self.av {
+            AttackVector::Network => "N",
+            AttackVector::Adjacent => "A",
+            AttackVector::Local => "L",
+            AttackVector::Physical => "P",
+        };
+        let ac = match self.ac {
+            AttackComplexity::Low => "L",
+            AttackComplexity::High => "H",
+        };
+        let at = match self.at {
+            AttackRequirements::None => "N",
+            AttackRequirements::Present => "P",
+        };
+        let pr = match self.pr {
+            PrivilegesRequired::None => "N",
+            PrivilegesRequired::Low => "L",
+            PrivilegesRequired::High => "H",
+        };
+        let ui = match self.ui {
+            UserInteraction::None => "N",
+            UserInteraction::Passive => "P",
+            UserInteraction::Active => "A",
+        };
+        let vc = match self.vc {
+            Impact::High => "H",
+            Impact::Low => "L",
+            Impact::None => "N",
+        };
+        let vi = match self.vi {
+            Impact::High => "H",
+            Impact::Low => "L",
+            Impact::None => "N",
+        };
+        let va = match self.va {
+            Impact::High => "H",
+            Impact::Low => "L",
+            Impact::None => "N",
+        };
+        let sc = match self.sc {
+            Impact::High => "H",
+            Impact::Low => "L",
+            Impact::None => "N",
+        };
+        let si = match self.si {
+            Impact::High => "H",
+            Impact::Low => "L",
+            Impact::None => "N",
+        };
+        let sa = match self.sa {
+            Impact::High => "H",
+            Impact::Low => "L",
+            Impact::None => "N",
+        };
 
-        format!("CVSS:4.0/AV:{}/AC:{}/AT:{}/PR:{}/UI:{}/VC:{}/VI:{}/VA:{}/SC:{}/SI:{}/SA:{}",
-            av, ac, at, pr, ui, vc, vi, va, sc, si, sa)
+        format!(
+            "CVSS:4.0/AV:{}/AC:{}/AT:{}/PR:{}/UI:{}/VC:{}/VI:{}/VA:{}/SC:{}/SI:{}/SA:{}",
+            av, ac, at, pr, ui, vc, vi, va, sc, si, sa
+        )
     }
 }

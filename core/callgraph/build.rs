@@ -1,5 +1,5 @@
-use crate::ir::types::{Instr, Program};
 use crate::callgraph::types::{CallGraph, CallNode};
+use crate::ir::types::{Instr, Program};
 use std::collections::HashSet;
 
 pub struct CallGraphBuilder<'a> {
@@ -17,18 +17,24 @@ impl<'a> CallGraphBuilder<'a> {
         // Register all functions as nodes
         for (func_id, func_ir) in &self.program.functions {
             let is_method = func_ir.params.first().is_some();
-            cg.nodes.insert(*func_id, CallNode { 
-                func_name: *func_id, 
-                is_method, 
-                class_sym: None 
-            });
+            cg.nodes.insert(
+                *func_id,
+                CallNode {
+                    func_name: *func_id,
+                    is_method,
+                    class_sym: None,
+                },
+            );
             cg.callees.insert(*func_id, HashSet::new());
         }
 
         // Iterate through all functions to find calls
         for (caller_id, func_ir) in &self.program.functions {
             for instr in &func_ir.instructions {
-                if let Instr::Call { func: callee_id, .. } = instr {
+                if let Instr::Call {
+                    func: callee_id, ..
+                } = instr
+                {
                     // Only add edge if callee is known in the program (user-defined function)
                     if self.program.functions.contains_key(callee_id) {
                         cg.edges.push((*caller_id, *callee_id));

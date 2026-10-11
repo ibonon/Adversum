@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-use crate::ir::types::Program;
 use crate::cfg::types::ControlFlowGraph;
 use crate::dataflow::analysis::TaintAnalysis;
 use crate::interner::Interner;
+use crate::ir::types::Program;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
@@ -51,7 +51,7 @@ pub trait Rule {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn severity(&self) -> Severity;
-    
+
     /// Evaluates the rule against the code context.
     /// Returns a list of findings (Reports).
     fn evaluate(&self, ctx: &MatchContext) -> Vec<Report>;

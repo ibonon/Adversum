@@ -1,12 +1,12 @@
 // Deterministic Validator - Rust Implementation
 // Replaces the slow Python sequential validator with parallel Rust processing
 
+use once_cell::sync::Lazy;
 use pyo3::prelude::*;
-use serde::{Serialize, Deserialize};
 use rayon::prelude::*;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use once_cell::sync::Lazy;
 
 use crate::Finding;
 
@@ -22,7 +22,7 @@ pub enum SanitizerType {
 #[pyclass(get_all)]
 pub struct ValidatedFinding {
     pub raw: Finding,
-    pub validation_status: String,  // "CONFIRMED", "REJECTED", "LOW_RISK"
+    pub validation_status: String, // "CONFIRMED", "REJECTED", "LOW_RISK"
     pub ai_confidence: f32,
     pub reasoning_notes: String,
     pub remediation_suggestion: String,
@@ -71,35 +71,44 @@ pub struct DeterministicValidator {
 // Pre-compile all regex patterns at startup
 static FALSE_POSITIVE_REGEXES: Lazy<HashMap<String, Vec<Regex>>> = Lazy::new(|| {
     let mut map = HashMap::new();
-    
+
     // DANGEROUS_EVAL patterns
-    map.insert("RUST_CORE_001_DANGEROUS_EVAL".to_string(), vec![
-        Regex::new(r"ast\.literal_eval").unwrap(),
-        Regex::new(r"json\.loads").unwrap(),
-        Regex::new(r"#.*test.*eval").unwrap(),
-        Regex::new(r#"['"].*['"]"#).unwrap(),
-    ]);
-    
+    map.insert(
+        "RUST_CORE_001_DANGEROUS_EVAL".to_string(),
+        vec![
+            Regex::new(r"ast\.literal_eval").unwrap(),
+            Regex::new(r"json\.loads").unwrap(),
+            Regex::new(r"#.*test.*eval").unwrap(),
+            Regex::new(r#"['"].*['"]"#).unwrap(),
+        ],
+    );
+
     // OS_SYSTEM patterns
-    map.insert("RUST_CORE_002_OS_SYSTEM".to_string(), vec![
-        Regex::new(r"shlex\.quote").unwrap(),
-        Regex::new(r"subprocess\.run").unwrap(),
-        Regex::new(r"#.*test").unwrap(),
-    ]);
-    
+    map.insert(
+        "RUST_CORE_002_OS_SYSTEM".to_string(),
+        vec![
+            Regex::new(r"shlex\.quote").unwrap(),
+            Regex::new(r"subprocess\.run").unwrap(),
+            Regex::new(r"#.*test").unwrap(),
+        ],
+    );
+
     // SUBPROCESS_POPEN patterns
-    map.insert("RUST_CORE_003_SUBPROCESS_POPEN".to_string(), vec![
-        Regex::new(r"shell=False").unwrap(),
-        Regex::new(r"subprocess\.run").unwrap(),
-    ]);
-    
+    map.insert(
+        "RUST_CORE_003_SUBPROCESS_POPEN".to_string(),
+        vec![
+            Regex::new(r"shell=False").unwrap(),
+            Regex::new(r"subprocess\.run").unwrap(),
+        ],
+    );
+
     map
 });
 
 impl DeterministicValidator {
     pub fn new() -> Self {
         let mut sanitizers = HashMap::new();
-        
+
         // Escape sanitizers
         sanitizers.insert("shlex.quote".to_string(), SanitizerType::Escape);
         sanitizers.insert("shlex.quote_plus".to_string(), SanitizerType::Escape);
@@ -108,8 +117,11 @@ impl DeterministicValidator {
         sanitizers.insert("urllib.parse.quote".to_string(), SanitizerType::Escape);
         sanitizers.insert("urllib.parse.quote_plus".to_string(), SanitizerType::Escape);
         sanitizers.insert("DOMPurify.sanitize".to_string(), SanitizerType::Escape);
-        sanitizers.insert("StringEscapeUtils.escapeHtml4".to_string(), SanitizerType::Escape);
-        
+        sanitizers.insert(
+            "StringEscapeUtils.escapeHtml4".to_string(),
+            SanitizerType::Escape,
+        );
+
         // Validation sanitizers
         sanitizers.insert("re.match".to_string(), SanitizerType::Validate);
         sanitizers.insert("re.search".to_string(), SanitizerType::Validate);
@@ -117,20 +129,20 @@ impl DeterministicValidator {
         sanitizers.insert("str.isalnum".to_string(), SanitizerType::Validate);
         sanitizers.insert("str.isalpha".to_string(), SanitizerType::Validate);
         sanitizers.insert("str.isdigit".to_string(), SanitizerType::Validate);
-        
+
         // Encoding sanitizers
         sanitizers.insert("base64.b64encode".to_string(), SanitizerType::Encode);
         sanitizers.insert("urllib.parse.urlencode".to_string(), SanitizerType::Encode);
-        
+
         // Parameterization
         sanitizers.insert("sqlite3.execute".to_string(), SanitizerType::Parameterize);
         sanitizers.insert("psycopg2.execute".to_string(), SanitizerType::Parameterize);
         sanitizers.insert("pymysql.execute".to_string(), SanitizerType::Parameterize);
         sanitizers.insert("mysql.format".to_string(), SanitizerType::Parameterize);
         sanitizers.insert("PreparedStatement".to_string(), SanitizerType::Parameterize);
-        
+
         let mut validation_rules = HashMap::new();
-        
+
         // Rule: DANGEROUS_EVAL
         validation_rules.insert(
             "RUST_CORE_001_DANGEROUS_EVAL".to_string(),
@@ -144,7 +156,7 @@ impl DeterministicValidator {
                 confidence: 0.95,
             },
         );
-        
+
         // Rule: OS_SYSTEM
         validation_rules.insert(
             "RUST_CORE_002_OS_SYSTEM".to_string(),
@@ -158,7 +170,7 @@ impl DeterministicValidator {
                 confidence: 0.95,
             },
         );
-        
+
         // Rule: SUBPROCESS_POPEN
         validation_rules.insert(
             "RUST_CORE_003_SUBPROCESS_POPEN".to_string(),
@@ -172,13 +184,13 @@ impl DeterministicValidator {
                 confidence: 0.90,
             },
         );
-        
+
         Self {
             sanitizers,
             validation_rules,
         }
     }
-    
+
     /// Validate findings in parallel using Rayon
     pub fn validate_parallel(&self, findings: Vec<Finding>) -> Vec<ValidatedFinding> {
         findings
@@ -186,50 +198,55 @@ impl DeterministicValidator {
             .map(|finding| self.validate_single(finding))
             .collect()
     }
-    
+
     fn validate_single(&self, raw: &Finding) -> ValidatedFinding {
         // Get validation rule for this finding
         let rule = self.validation_rules.get(&raw.id);
-        
+
         if rule.is_none() {
             // Unknown rule: conservative validation (CONFIRMED)
             return ValidatedFinding {
                 raw: raw.clone(),
                 validation_status: "CONFIRMED".to_string(),
                 ai_confidence: 0.8,
-                reasoning_notes: "[Deterministic] Unknown rule, conservative validation.".to_string(),
+                reasoning_notes: "[Deterministic] Unknown rule, conservative validation."
+                    .to_string(),
                 remediation_suggestion: self.generate_fix(&raw.id, &raw.snippet).0,
                 fix_description: Some(self.generate_fix(&raw.id, &raw.snippet).0),
                 fix_code: Some(self.generate_fix(&raw.id, &raw.snippet).1),
             };
         }
-        
+
         let rule = rule.unwrap();
-        
+
         // Detect sanitizers in flow path
         let sanitizers_found = self.detect_sanitizers(&raw.flow_path, &raw.snippet);
-        
+
         // Check for false positive patterns
         let is_false_positive = self.check_false_positive_patterns(rule, &raw.snippet);
-        
+
         // Check if required sanitizers are present
-        let has_required_sanitizers = self.check_required_sanitizers(
-            &rule.required_sanitizers,
-            &sanitizers_found,
-        );
-        
+        let has_required_sanitizers =
+            self.check_required_sanitizers(&rule.required_sanitizers, &sanitizers_found);
+
         // Deterministic decision
         let (status, confidence, notes) = if is_false_positive {
             (
                 "REJECTED".to_string(),
                 0.1,
-                format!("[Deterministic] False positive pattern detected: {}", raw.id),
+                format!(
+                    "[Deterministic] False positive pattern detected: {}",
+                    raw.id
+                ),
             )
         } else if has_required_sanitizers {
             (
                 "LOW_RISK".to_string(),
                 0.3,
-                format!("[Deterministic] Sanitizers detected in flow path: {:?}", sanitizers_found),
+                format!(
+                    "[Deterministic] Sanitizers detected in flow path: {:?}",
+                    sanitizers_found
+                ),
             )
         } else {
             (
@@ -245,10 +262,10 @@ impl DeterministicValidator {
                 ),
             )
         };
-        
+
         // Generate deterministic fix
         let (fix_description, fix_code) = self.generate_fix(&raw.id, &raw.snippet);
-        
+
         ValidatedFinding {
             raw: raw.clone(),
             validation_status: status,
@@ -259,10 +276,10 @@ impl DeterministicValidator {
             fix_code: Some(fix_code),
         }
     }
-    
+
     fn detect_sanitizers(&self, flow_path: &[String], snippet: &str) -> Vec<SanitizerType> {
         let mut found = HashSet::new();
-        
+
         // Analyze flow_path
         for step in flow_path {
             for (sanitizer_name, sanitizer_type) in &self.sanitizers {
@@ -271,17 +288,20 @@ impl DeterministicValidator {
                 }
             }
         }
-        
+
         // Analyze snippet
         for (sanitizer_name, sanitizer_type) in &self.sanitizers {
-            if snippet.to_lowercase().contains(&sanitizer_name.to_lowercase()) {
+            if snippet
+                .to_lowercase()
+                .contains(&sanitizer_name.to_lowercase())
+            {
                 found.insert(*sanitizer_type);
             }
         }
-        
+
         found.into_iter().collect()
     }
-    
+
     fn check_false_positive_patterns(&self, rule: &ValidationRule, snippet: &str) -> bool {
         for pattern in &rule.false_positive_patterns {
             if pattern.is_match(snippet) {
@@ -290,7 +310,7 @@ impl DeterministicValidator {
         }
         false
     }
-    
+
     fn check_required_sanitizers(
         &self,
         required: &[SanitizerType],
@@ -299,11 +319,11 @@ impl DeterministicValidator {
         if required.is_empty() {
             return false;
         }
-        
+
         let found_set: HashSet<_> = found.iter().collect();
         required.iter().any(|req| found_set.contains(req))
     }
-    
+
     fn generate_fix(&self, rule_id: &str, _snippet: &str) -> (String, String) {
         match rule_id {
             "RUST_CORE_001_DANGEROUS_EVAL" => (

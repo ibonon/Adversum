@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::rules::types::Report;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttackNode {

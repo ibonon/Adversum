@@ -1,8 +1,8 @@
-use crate::ir::types::{Instr, Program};
-use crate::cfg::types::{ControlFlowGraph, BlockId};
-use crate::dataflow::taint::TaintState;
-use std::collections::{VecDeque, BTreeMap, HashMap};
+use crate::cfg::types::{BlockId, ControlFlowGraph};
 use crate::dataflow::summary::FunctionSummary;
+use crate::dataflow::taint::TaintState;
+use crate::ir::types::{Instr, Program};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 pub struct TaintAnalysis<'a> {
     program: &'a Program,
@@ -37,7 +37,12 @@ pub struct FlowFinding {
 }
 
 impl<'a> TaintAnalysis<'a> {
-    pub fn new(program: &'a Program, cfg: &'a ControlFlowGraph, config: TaintConfig, summaries: &'a HashMap<crate::interner::SymbolId, FunctionSummary>) -> Self {
+    pub fn new(
+        program: &'a Program,
+        cfg: &'a ControlFlowGraph,
+        config: TaintConfig,
+        summaries: &'a HashMap<crate::interner::SymbolId, FunctionSummary>,
+    ) -> Self {
         Self {
             program,
             cfg,
@@ -59,33 +64,33 @@ impl<'a> TaintAnalysis<'a> {
     pub fn run(&mut self, initial_taint: TaintState) {
         // Initialize worklist
         let mut worklist: VecDeque<BlockId> = VecDeque::new();
-        
+
         // Init entry block
         if let Some(entry_blk) = self.cfg.get_block(self.cfg.entry) {
-             self.in_states.insert(entry_blk.id, initial_taint.clone());
-             worklist.push_back(entry_blk.id);
+            self.in_states.insert(entry_blk.id, initial_taint.clone());
+            worklist.push_back(entry_blk.id);
         }
 
         // Iteration
         let mut visited_count = 0; // Guard against infinite loops? Only needed if non-monotonic transfer (not the case here)
-        
+
         while let Some(block_id) = worklist.pop_front() {
             visited_count += 1;
-            
+
             // 1. Compute IN[B] = Union(OUT[P]) for preds P
             // For entry block, IN is initialized. For others:
             let input_state = if block_id == self.cfg.entry {
-                 self.in_states.get(&block_id).cloned().unwrap_or_default()
+                self.in_states.get(&block_id).cloned().unwrap_or_default()
             } else {
-                 let mut s = TaintState::new();
-                 if let Some(blk) = self.cfg.get_block(block_id) {
-                     for &pred in &blk.preds {
-                         if let Some(pred_out) = self.out_states.get(&pred) {
-                             s.merge(pred_out);
-                         }
-                     }
-                 }
-                 s
+                let mut s = TaintState::new();
+                if let Some(blk) = self.cfg.get_block(block_id) {
+                    for &pred in &blk.preds {
+                        if let Some(pred_out) = self.out_states.get(&pred) {
+                            s.merge(pred_out);
+                        }
+                    }
+                }
+                s
             };
 
             // 2. Compute OUT[B] = Transfer(IN[B])
@@ -93,18 +98,21 @@ impl<'a> TaintAnalysis<'a> {
             let mut current_state = input_state.clone();
             if let Some(blk) = self.cfg.get_block(block_id) {
                 if blk.instr_range.end <= self.program.instructions.len() {
-                     for (offset, instr) in self.program.instructions[blk.instr_range.clone()].iter().enumerate() {
-                         let global_idx = blk.instr_range.start + offset;
-                         self.transfer_instr(&mut current_state, instr, global_idx);
-                     }
+                    for (offset, instr) in self.program.instructions[blk.instr_range.clone()]
+                        .iter()
+                        .enumerate()
+                    {
+                        let global_idx = blk.instr_range.start + offset;
+                        self.transfer_instr(&mut current_state, instr, global_idx);
+                    }
                 }
             }
 
             // 3. Check for change
             let changed = if let Some(old_out) = self.out_states.get(&block_id) {
-                 old_out != &current_state
+                old_out != &current_state
             } else {
-                 true
+                true
             };
 
             if changed {
@@ -113,14 +121,14 @@ impl<'a> TaintAnalysis<'a> {
                 if let Some(blk) = self.cfg.get_block(block_id) {
                     for &succ in &blk.succs {
                         if !worklist.contains(&succ) {
-                             worklist.push_back(succ);
+                            worklist.push_back(succ);
                         }
                     }
                 }
             }
         }
     }
-    
+
     fn transfer_instr(&mut self, state: &mut TaintState, instr: &Instr, instr_idx: usize) {
         match instr {
             Instr::FieldStore { obj, field, src } => {
@@ -142,7 +150,9 @@ impl<'a> TaintAnalysis<'a> {
                     state.untaint(dest);
                 }
             }
-            Instr::Binary { dest, left, right, .. } => {
+            Instr::Binary {
+                dest, left, right, ..
+            } => {
                 if state.is_tainted(left) || state.is_tainted(right) {
                     state.taint(dest);
                 } else {
@@ -158,7 +168,7 @@ impl<'a> TaintAnalysis<'a> {
             }
             Instr::Call { dest, func, args } => {
                 let src_line = self.instr_lines.get(instr_idx).copied().unwrap_or(0);
-                
+
                 // Check if callee is a known summary
                 let mut is_known_callee = false;
                 let mut return_tainted = false;
@@ -180,7 +190,7 @@ impl<'a> TaintAnalysis<'a> {
                             }
                         }
                     }
-                    
+
                     // Check if return value becomes tainted
                     for param_idx in &summary.tainted_returns {
                         if let Some(arg) = args.get(*param_idx) {
@@ -190,7 +200,7 @@ impl<'a> TaintAnalysis<'a> {
                             }
                         }
                     }
-                    
+
                     // Apply tainted fields to caller's self object
                     if !summary.tainted_self_fields.is_empty() {
                         if let Some(crate::ir::types::Operand::Var(self_sym)) = args.first() {
@@ -215,7 +225,10 @@ impl<'a> TaintAnalysis<'a> {
                             self.findings.push(FlowFinding {
                                 sink_instr_idx: instr_idx,
                                 sink_func: *func,
-                                evidence: format!("Tainted argument {} passed to sensitive sink", i),
+                                evidence: format!(
+                                    "Tainted argument {} passed to sensitive sink",
+                                    i
+                                ),
                                 line: src_line,
                             });
                         }
@@ -246,7 +259,7 @@ impl<'a> TaintAnalysis<'a> {
             _ => {}
         }
     }
-    
+
     pub fn get_exit_state(&self, block_id: BlockId) -> Option<&TaintState> {
         self.out_states.get(&block_id)
     }

@@ -1,5 +1,5 @@
+use super::{error::AdversarialError, validate_request, AdversarialRequest, AdversarialResult};
 use ndarray::{ArrayD, IxDyn};
-use super::{AdversarialRequest, AdversarialResult, validate_request, error::AdversarialError};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 
@@ -8,13 +8,15 @@ use rand_distr::StandardNormal;
 pub fn fgsm(req: &AdversarialRequest) -> Result<AdversarialResult, AdversarialError> {
     // Validate request parameters
     validate_request(req)?;
-    
-    let mut data = ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone())
-        .map_err(|_| AdversarialError::ShapeMismatch {
-            shape: req.shape.clone(),
-            data_len: req.input_data.len(),
+
+    let mut data =
+        ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone()).map_err(|_| {
+            AdversarialError::ShapeMismatch {
+                shape: req.shape.clone(),
+                data_len: req.input_data.len(),
+            }
         })?;
-    
+
     let perturbation = data.mapv(|x| if x >= 0.0 { req.epsilon } else { -req.epsilon });
     data += &perturbation;
 
@@ -37,21 +39,23 @@ pub fn fgsm(req: &AdversarialRequest) -> Result<AdversarialResult, AdversarialEr
 pub fn pgd(req: &AdversarialRequest) -> Result<AdversarialResult, AdversarialError> {
     // Validate request parameters
     validate_request(req)?;
-    
-    let original_data = ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone())
-        .map_err(|_| AdversarialError::ShapeMismatch {
-            shape: req.shape.clone(),
-            data_len: req.input_data.len(),
+
+    let original_data =
+        ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone()).map_err(|_| {
+            AdversarialError::ShapeMismatch {
+                shape: req.shape.clone(),
+                data_len: req.input_data.len(),
+            }
         })?;
     let mut data = original_data.clone();
-    
+
     let steps = 10;
     let alpha = req.epsilon / 4.0;
 
     for _ in 0..steps {
         let grad_sign = data.mapv(|x| if x >= 0.0 { 1.0 } else { -1.0 });
         data += &(grad_sign * alpha);
-        
+
         data.zip_mut_with(&original_data, |x, x_orig| {
             *x = (*x).max(*x_orig - req.epsilon).min(*x_orig + req.epsilon);
             *x = (*x).max(0.0).min(1.0);
@@ -77,18 +81,20 @@ pub fn pgd(req: &AdversarialRequest) -> Result<AdversarialResult, AdversarialErr
 pub fn carlini_wagner(req: &AdversarialRequest) -> Result<AdversarialResult, AdversarialError> {
     // Validate request parameters
     validate_request(req)?;
-    
-    let original_data = ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone())
-        .map_err(|_| AdversarialError::ShapeMismatch {
-            shape: req.shape.clone(),
-            data_len: req.input_data.len(),
+
+    let original_data =
+        ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone()).map_err(|_| {
+            AdversarialError::ShapeMismatch {
+                shape: req.shape.clone(),
+                data_len: req.input_data.len(),
+            }
         })?;
     let mut data = original_data.clone();
-    
+
     let confidence = 0.5;
     let learning_rate = 0.01;
     let max_iterations = 40;
-    
+
     for _ in 0..max_iterations {
         data.zip_mut_with(&original_data, |x, x_orig| {
             let grad = if *x > *x_orig { 1.0 } else { -1.0 };
@@ -119,11 +125,13 @@ pub fn carlini_wagner(req: &AdversarialRequest) -> Result<AdversarialResult, Adv
 pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, AdversarialError> {
     // Validate request parameters
     validate_request(req)?;
-    
-    let original_data = ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone())
-        .map_err(|_| AdversarialError::ShapeMismatch {
-            shape: req.shape.clone(),
-            data_len: req.input_data.len(),
+
+    let original_data =
+        ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone()).map_err(|_| {
+            AdversarialError::ShapeMismatch {
+                shape: req.shape.clone(),
+                data_len: req.input_data.len(),
+            }
         })?;
     let mut rng = StdRng::seed_from_u64(42);
     let mut query_count = 0;
@@ -131,34 +139,43 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
     let mut detected = false;
     let mut blocked_by_waf = false;
     let mut threat_score = 0.0;
-    
+
     let mut last_queries: Vec<ArrayD<f32>> = Vec::new();
-    let use_defense = req.oracle_config.as_ref()
+    let use_defense = req
+        .oracle_config
+        .as_ref()
         .and_then(|c| c.defense_type.as_ref())
         .map(|t| t == "geometric_filter")
         .unwrap_or(false);
-    
-    let waf_enabled = req.oracle_config.as_ref()
+
+    let waf_enabled = req
+        .oracle_config
+        .as_ref()
         .map(|c| c.waf_enabled)
         .unwrap_or(false);
-    
-    let threat_threshold = req.oracle_config.as_ref()
+
+    let threat_threshold = req
+        .oracle_config
+        .as_ref()
         .map(|c| c.threat_threshold)
         .unwrap_or(50.0);
-    
-    let block_threshold = req.oracle_config.as_ref()
+
+    let block_threshold = req
+        .oracle_config
+        .as_ref()
         .map(|c| c.block_threshold)
         .unwrap_or(100.0);
 
-    let oracle = |x: &ArrayD<f32>, 
-                      count: &mut usize, 
-                      queries: &mut Vec<ArrayD<f32>>, 
-                      is_detected: &mut bool,
-                      is_blocked: &mut bool,
-                      threat: &mut f32,
-                      _local_rng: &mut StdRng| -> bool {
+    let oracle = |x: &ArrayD<f32>,
+                  count: &mut usize,
+                  queries: &mut Vec<ArrayD<f32>>,
+                  is_detected: &mut bool,
+                  is_blocked: &mut bool,
+                  threat: &mut f32,
+                  _local_rng: &mut StdRng|
+     -> bool {
         *count += 1;
-        
+
         // WAF/IDS: Progressive Threat Scoring
         if waf_enabled && !*is_blocked {
             // Score based on query similarity (HSJ pattern detection)
@@ -172,25 +189,25 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
                     similarity_score += 5.0;
                 }
             }
-            
+
             // Score based on query frequency (rate limiting simulation)
             let frequency_score = if *count > 100 { 10.0 } else { 0.0 };
-            
+
             // Accumulate threat score
             *threat += similarity_score + frequency_score;
-            
+
             // Check if blocked
             if *threat >= block_threshold {
                 *is_blocked = true;
                 return false; // Block all queries
             }
-            
+
             // Warn if approaching threshold
             if *threat >= threat_threshold && !*is_detected {
                 *is_detected = true;
             }
         }
-        
+
         // Geometric Detection (original logic)
         if use_defense && !*is_detected {
             for prev in queries.iter().rev().take(5) {
@@ -202,23 +219,25 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
                 }
             }
             queries.push(x.clone());
-            if queries.len() > 10 { queries.remove(0); }
+            if queries.len() > 10 {
+                queries.remove(0);
+            }
         }
 
         let diff = x - &original_data;
         let l2 = diff.mapv(|v| v * v).sum().sqrt();
-        
+
         let mut response = if let Some(config) = &req.oracle_config {
             match config.boundary_type.as_str() {
                 "distance" => l2 > config.threshold,
                 "pattern" => {
                     let pattern_sum: f32 = x.iter().take(3).sum();
                     pattern_sum > config.threshold
-                },
+                }
                 _ => l2 > req.epsilon * 1.5,
             }
         } else {
-            l2 > req.epsilon * 1.5 
+            l2 > req.epsilon * 1.5
         };
 
         if *is_detected {
@@ -226,7 +245,7 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
             // On suit strictement la règle d'immunisation.
             response = !response;
         }
-        
+
         response
     };
 
@@ -234,22 +253,37 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
     let mut adversarial_sample = original_data.clone();
     for _ in 0..100 {
         if let Some(budget) = req.query_budget {
-            if query_count >= budget { break; }
+            if query_count >= budget {
+                break;
+            }
         }
-        
-        if blocked_by_waf { break; }
-        
+
+        if blocked_by_waf {
+            break;
+        }
+
         // --- Determinisme: Suppression du jitter et des bruits aléatoires ---
         // On utilise une graine fixe et on évite le jitter pour des preuves reproductibles.
-        let noise: Vec<f32> = (0..req.input_data.len()).map(|i| {
-            let val = ((i * 12345) % 100) as f32 / 50.0 - 1.0; // Deterministic pseudo-noise
-            val
-        }).collect();
-        let noise_arr = ArrayD::from_shape_vec(IxDyn(&req.shape), noise)
-            .map_err(|_| AdversarialError::ArrayCreationError("Failed to create noise array".to_string()))?;
+        let noise: Vec<f32> = (0..req.input_data.len())
+            .map(|i| {
+                let val = ((i * 12345) % 100) as f32 / 50.0 - 1.0; // Deterministic pseudo-noise
+                val
+            })
+            .collect();
+        let noise_arr = ArrayD::from_shape_vec(IxDyn(&req.shape), noise).map_err(|_| {
+            AdversarialError::ArrayCreationError("Failed to create noise array".to_string())
+        })?;
         let candidate = &original_data + &noise_arr;
-        
-        if oracle(&candidate, &mut query_count, &mut last_queries, &mut detected, &mut blocked_by_waf, &mut threat_score, &mut rng) {
+
+        if oracle(
+            &candidate,
+            &mut query_count,
+            &mut last_queries,
+            &mut detected,
+            &mut blocked_by_waf,
+            &mut threat_score,
+            &mut rng,
+        ) {
             adversarial_sample = candidate;
             break;
         }
@@ -268,12 +302,21 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
             threat_score,
             adversarial_prompt: None,
             robustness_score: 0.0,
-
         });
     }
 
-    let is_adversarial = oracle(&adversarial_sample, &mut query_count, &mut last_queries, &mut detected, &mut blocked_by_waf, &mut threat_score, &mut rng);
-    if !is_adversarial || (req.query_budget.is_some() && query_count >= req.query_budget.unwrap_or(usize::MAX)) {
+    let is_adversarial = oracle(
+        &adversarial_sample,
+        &mut query_count,
+        &mut last_queries,
+        &mut detected,
+        &mut blocked_by_waf,
+        &mut threat_score,
+        &mut rng,
+    );
+    if !is_adversarial
+        || (req.query_budget.is_some() && query_count >= req.query_budget.unwrap_or(usize::MAX))
+    {
         return Ok(AdversarialResult {
             algorithm: req.algorithm.clone(),
             perturbed_data: req.input_data.clone(),
@@ -286,7 +329,6 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
             threat_score,
             adversarial_prompt: None,
             robustness_score: 0.0,
-
         });
     }
 
@@ -296,32 +338,48 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
 
     for _ in 0..iterations {
         if let Some(budget) = req.query_budget {
-            if query_count >= budget { break; }
+            if query_count >= budget {
+                break;
+            }
         }
-        
-        if blocked_by_waf { break; }
+
+        if blocked_by_waf {
+            break;
+        }
 
         // Binary Search
         let mut low = 0.0;
         let mut high = 1.0;
         for _ in 0..10 {
-            if blocked_by_waf { break; }
-            
+            if blocked_by_waf {
+                break;
+            }
+
             let mid = (low + high) / 2.0;
             let mid_sample = &original_data * mid + &current_sample * (1.0 - mid);
-            if oracle(&mid_sample, &mut query_count, &mut last_queries, &mut detected, &mut blocked_by_waf, &mut threat_score, &mut rng) {
+            if oracle(
+                &mid_sample,
+                &mut query_count,
+                &mut last_queries,
+                &mut detected,
+                &mut blocked_by_waf,
+                &mut threat_score,
+                &mut rng,
+            ) {
                 high = mid;
             } else {
                 low = mid;
             }
-            
+
             if req.algorithm == "STEALTHY_HSJ" {
                 // Pas de requêtes "dummy" aléatoires dans un moteur de preuve.
             }
         }
-        
-        if blocked_by_waf { break; }
-        
+
+        if blocked_by_waf {
+            break;
+        }
+
         let boundary_point = &original_data * high + &current_sample * (1.0 - high);
 
         // Gradient Estimation
@@ -331,24 +389,43 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
 
         for _ in 0..num_samples {
             if let Some(budget) = req.query_budget {
-                if query_count >= budget { break; }
+                if query_count >= budget {
+                    break;
+                }
             }
-            if blocked_by_waf { break; }
-            
-            let u: Vec<f32> = (0..req.input_data.len()).map(|_| rng.sample(StandardNormal)).collect();
-            let u_arr = ArrayD::from_shape_vec(IxDyn(&req.shape), u)
-                .map_err(|_| AdversarialError::ArrayCreationError("Failed to create gradient estimation array".to_string()))?;
+            if blocked_by_waf {
+                break;
+            }
+
+            let u: Vec<f32> = (0..req.input_data.len())
+                .map(|_| rng.sample(StandardNormal))
+                .collect();
+            let u_arr = ArrayD::from_shape_vec(IxDyn(&req.shape), u).map_err(|_| {
+                AdversarialError::ArrayCreationError(
+                    "Failed to create gradient estimation array".to_string(),
+                )
+            })?;
             let perturbed = &boundary_point + &(&u_arr * delta);
-            
-            if oracle(&perturbed, &mut query_count, &mut last_queries, &mut detected, &mut blocked_by_waf, &mut threat_score, &mut rng) {
+
+            if oracle(
+                &perturbed,
+                &mut query_count,
+                &mut last_queries,
+                &mut detected,
+                &mut blocked_by_waf,
+                &mut threat_score,
+                &mut rng,
+            ) {
                 gradient += &u_arr;
             } else {
                 gradient -= &u_arr;
             }
         }
-        
+
         let grad_norm = gradient.mapv(|v| v * v).sum().sqrt();
-        if grad_norm > 0.0 { gradient /= grad_norm; }
+        if grad_norm > 0.0 {
+            gradient /= grad_norm;
+        }
 
         let step_size = 0.05;
         current_sample = &boundary_point + &(&gradient * step_size);
@@ -377,11 +454,13 @@ pub fn hop_skip_jump(req: &AdversarialRequest) -> Result<AdversarialResult, Adve
 pub fn transfer_attack(req: &AdversarialRequest) -> Result<AdversarialResult, AdversarialError> {
     // Validate request parameters
     validate_request(req)?;
-    
-    let original_data = ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone())
-        .map_err(|_| AdversarialError::ShapeMismatch {
-            shape: req.shape.clone(),
-            data_len: req.input_data.len(),
+
+    let original_data =
+        ArrayD::from_shape_vec(IxDyn(&req.shape), req.input_data.clone()).map_err(|_| {
+            AdversarialError::ShapeMismatch {
+                shape: req.shape.clone(),
+                data_len: req.input_data.len(),
+            }
         })?;
     let mut query_count = 0;
     let cost_per_query = 0.001;
@@ -403,9 +482,8 @@ pub fn transfer_attack(req: &AdversarialRequest) -> Result<AdversarialResult, Ad
         query_budget: None,
         prompt: None,
         latent_vectors: None,
-
     };
-    
+
     let shadow_result = pgd(&shadow_pgd_req)?;
     let data_len = shadow_result.perturbed_data.len();
     let candidate_data = ArrayD::from_shape_vec(IxDyn(&req.shape), shadow_result.perturbed_data)
@@ -418,7 +496,7 @@ pub fn transfer_attack(req: &AdversarialRequest) -> Result<AdversarialResult, Ad
         *count += 1;
         let diff = x - &original_data;
         let l2 = diff.mapv(|v| v * v).sum().sqrt();
-        l2 > req.epsilon * 1.8 
+        l2 > req.epsilon * 1.8
     };
 
     let success = oracle(&candidate_data, &mut query_count);
@@ -437,7 +515,6 @@ pub fn transfer_attack(req: &AdversarialRequest) -> Result<AdversarialResult, Ad
         threat_score: 0.0,
         adversarial_prompt: None,
         robustness_score: if success { 0.2 } else { 0.9 },
-
     })
 }
 
@@ -450,7 +527,11 @@ pub fn llm_probe(req: &AdversarialRequest) -> Result<AdversarialResult, Adversar
     let mut threat_score = 0.0;
 
     // Règle 1 : Détection d'injection système (Pattern-based proof)
-    if prompt.to_lowercase().contains("ignore previous instructions") || prompt.to_lowercase().contains("system override") {
+    if prompt
+        .to_lowercase()
+        .contains("ignore previous instructions")
+        || prompt.to_lowercase().contains("system override")
+    {
         robustness_score -= 0.6;
         threat_score += 75.0;
         success = true;

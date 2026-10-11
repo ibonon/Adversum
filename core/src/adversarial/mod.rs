@@ -3,8 +3,8 @@ pub mod error;
 
 use pyo3::prelude::*;
 
-use serde::{Serialize, Deserialize};
 use error::AdversarialError;
+use serde::{Deserialize, Serialize};
 
 /// Validate an adversarial request before processing
 pub fn validate_request(req: &AdversarialRequest) -> Result<(), AdversarialError> {
@@ -12,7 +12,7 @@ pub fn validate_request(req: &AdversarialRequest) -> Result<(), AdversarialError
     if req.epsilon < 0.0 || req.epsilon > 1.0 {
         return Err(AdversarialError::InvalidEpsilon(req.epsilon));
     }
-    
+
     // Check shape consistency
     let expected_len: usize = req.shape.iter().product();
     if expected_len != req.input_data.len() {
@@ -21,11 +21,9 @@ pub fn validate_request(req: &AdversarialRequest) -> Result<(), AdversarialError
             actual: req.input_data.len(),
         });
     }
-    
+
     Ok(())
 }
-
-
 
 #[pyclass(get_all, set_all)]
 #[derive(Debug, Serialize, Deserialize, Clone)]

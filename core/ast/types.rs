@@ -43,10 +43,7 @@ pub enum Stmt {
         span: Span,
     },
     /// Return statement: `return x;`
-    Return {
-        value: Option<Expr>,
-        span: Span,
-    },
+    Return { value: Option<Expr>, span: Span },
     /// Class definition: `class Foo: ...`
     Class {
         name: String,
@@ -54,10 +51,7 @@ pub enum Stmt {
         span: Span,
     },
     /// Expression as a statement: `x + 1;`
-    Expr {
-        expr: Expr,
-        span: Span,
-    },
+    Expr { expr: Expr, span: Span },
     /// Function definition: `def foo(a, b): ...`
     FunctionDef {
         name: String,
@@ -71,15 +65,9 @@ pub enum Stmt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
     /// Literal value: `1`, `"hello"`, `true`
-    Literal {
-        value: Literal,
-        span: Span,
-    },
+    Literal { value: Literal, span: Span },
     /// Identifier lookup: `x`
-    Identifier {
-        name: String,
-        span: Span,
-    },
+    Identifier { name: String, span: Span },
     /// Binary operation: `x + y`
     Binary {
         op: BinOp,
@@ -114,10 +102,22 @@ pub enum Literal {
 /// Binary operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinOp {
-    Add, Sub, Mul, Div, Mod,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or,
-    BitAnd, BitOr, BitXor,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
 }
 
 /// Unary operators.

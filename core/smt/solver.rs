@@ -1,6 +1,6 @@
+use super::ast::{SmtExpr, SmtVar, Sort};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use super::ast::{SmtExpr, Sort, SmtVar};
-use serde::{Serialize, Deserialize};
 
 /// Résultat de la vérification SMT
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -24,11 +24,33 @@ pub struct Interval {
 }
 
 impl Interval {
-    pub fn unbounded() -> Self { Interval { lo: None, hi: None } }
-    pub fn point(n: i64) -> Self { Interval { lo: Some(n), hi: Some(n) } }
-    pub fn non_neg() -> Self { Interval { lo: Some(0), hi: None } }
-    pub fn positive() -> Self { Interval { lo: Some(1), hi: None } }
-    pub fn negative() -> Self { Interval { lo: None, hi: Some(-1) } }
+    pub fn unbounded() -> Self {
+        Interval { lo: None, hi: None }
+    }
+    pub fn point(n: i64) -> Self {
+        Interval {
+            lo: Some(n),
+            hi: Some(n),
+        }
+    }
+    pub fn non_neg() -> Self {
+        Interval {
+            lo: Some(0),
+            hi: None,
+        }
+    }
+    pub fn positive() -> Self {
+        Interval {
+            lo: Some(1),
+            hi: None,
+        }
+    }
+    pub fn negative() -> Self {
+        Interval {
+            lo: None,
+            hi: Some(-1),
+        }
+    }
 
     pub fn is_empty(&self) -> bool {
         match (self.lo, self.hi) {
@@ -81,7 +103,10 @@ pub struct SmtSolver {
 
 impl SmtSolver {
     pub fn new() -> Self {
-        SmtSolver { max_depth: 50, timeout_ms: 5000 }
+        SmtSolver {
+            max_depth: 50,
+            timeout_ms: 5000,
+        }
     }
 
     /// Point d'entrée principal: vérifie si la formule est SAT ou UNSAT
@@ -95,11 +120,14 @@ impl SmtSolver {
         }
         if let SmtExpr::BoolLit(true) = &simplified {
             // Formule triviallement vraie: SAT avec modèle vide
-            return SmtResult::Sat { model: HashMap::new() };
+            return SmtResult::Sat {
+                model: HashMap::new(),
+            };
         }
 
         // Étape 2 : Interval Constraint Propagation
-        let mut domain: Domain = declared_vars.iter()
+        let mut domain: Domain = declared_vars
+            .iter()
             .filter(|v| v.sort == Sort::Int)
             .map(|v| (v.name.clone(), Interval::unbounded()))
             .collect();
@@ -117,7 +145,8 @@ impl SmtSolver {
         }
 
         // Étape 4 : Extraire un modèle concret si SAT
-        let model: HashMap<String, String> = domain.iter()
+        let model: HashMap<String, String> = domain
+            .iter()
             .map(|(name, iv)| {
                 let val = iv.lo.or(iv.hi).unwrap_or(0);
                 (name.clone(), val.to_string())
@@ -131,8 +160,11 @@ impl SmtSolver {
     pub fn simplify(&self, expr: &SmtExpr) -> SmtExpr {
         match expr {
             // Constantes — déjà simplifiées
-            SmtExpr::BoolLit(_) | SmtExpr::IntLit(_) | SmtExpr::BitVecLit { .. } |
-            SmtExpr::StrLit(_) | SmtExpr::Var(_) => expr.clone(),
+            SmtExpr::BoolLit(_)
+            | SmtExpr::IntLit(_)
+            | SmtExpr::BitVecLit { .. }
+            | SmtExpr::StrLit(_)
+            | SmtExpr::Var(_) => expr.clone(),
 
             // Not(Not(x)) = x
             SmtExpr::Not(inner) => {
@@ -184,26 +216,35 @@ impl SmtSolver {
 
             // Arithmetic constant folding
             SmtExpr::Add(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
-                    (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => SmtExpr::IntLit(x.saturating_add(*y)),
+                    (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => {
+                        SmtExpr::IntLit(x.saturating_add(*y))
+                    }
                     (SmtExpr::IntLit(0), _) => sb,
                     (_, SmtExpr::IntLit(0)) => sa,
                     _ => SmtExpr::Add(Box::new(sa), Box::new(sb)),
                 }
             }
             SmtExpr::Sub(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
-                    (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => SmtExpr::IntLit(x.saturating_sub(*y)),
+                    (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => {
+                        SmtExpr::IntLit(x.saturating_sub(*y))
+                    }
                     (_, SmtExpr::IntLit(0)) => sa,
                     _ => SmtExpr::Sub(Box::new(sa), Box::new(sb)),
                 }
             }
             SmtExpr::Mul(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
-                    (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => SmtExpr::IntLit(x.saturating_mul(*y)),
+                    (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => {
+                        SmtExpr::IntLit(x.saturating_mul(*y))
+                    }
                     (SmtExpr::IntLit(0), _) | (_, SmtExpr::IntLit(0)) => SmtExpr::IntLit(0),
                     (SmtExpr::IntLit(1), _) => sb,
                     (_, SmtExpr::IntLit(1)) => sa,
@@ -213,43 +254,55 @@ impl SmtSolver {
 
             // Comparison constant folding
             SmtExpr::Eq(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
                     (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => SmtExpr::BoolLit(x == y),
                     (SmtExpr::BoolLit(x), SmtExpr::BoolLit(y)) => SmtExpr::BoolLit(x == y),
-                    _ => if sa == sb { SmtExpr::BoolLit(true) } else { SmtExpr::Eq(Box::new(sa), Box::new(sb)) },
+                    _ => {
+                        if sa == sb {
+                            SmtExpr::BoolLit(true)
+                        } else {
+                            SmtExpr::Eq(Box::new(sa), Box::new(sb))
+                        }
+                    }
                 }
             }
             SmtExpr::Lt(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
                     (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => SmtExpr::BoolLit(x < y),
                     _ => SmtExpr::Lt(Box::new(sa), Box::new(sb)),
                 }
             }
             SmtExpr::Le(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
                     (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => SmtExpr::BoolLit(x <= y),
                     _ => SmtExpr::Le(Box::new(sa), Box::new(sb)),
                 }
             }
             SmtExpr::Gt(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
                     (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => SmtExpr::BoolLit(x > y),
                     _ => SmtExpr::Gt(Box::new(sa), Box::new(sb)),
                 }
             }
             SmtExpr::Ge(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
                     (SmtExpr::IntLit(x), SmtExpr::IntLit(y)) => SmtExpr::BoolLit(x >= y),
                     _ => SmtExpr::Ge(Box::new(sa), Box::new(sb)),
                 }
             }
             SmtExpr::Implies(a, b) => {
-                let sa = self.simplify(a); let sb = self.simplify(b);
+                let sa = self.simplify(a);
+                let sb = self.simplify(b);
                 match (&sa, &sb) {
                     (SmtExpr::BoolLit(false), _) => SmtExpr::BoolLit(true),
                     (_, SmtExpr::BoolLit(true)) => SmtExpr::BoolLit(true),
@@ -267,7 +320,11 @@ impl SmtSolver {
         let mut out = String::new();
         out.push_str("(set-logic QF_ALIA)\n");
         for var in declared_vars {
-            out.push_str(&format!("(declare-const {} {})\n", var.name, var.sort.to_smtlib2()));
+            out.push_str(&format!(
+                "(declare-const {} {})\n",
+                var.name,
+                var.sort.to_smtlib2()
+            ));
         }
         out.push_str(&format!("(assert {})\n", formula.to_smtlib2()));
         out.push_str("(check-sat)\n");
@@ -276,7 +333,11 @@ impl SmtSolver {
     }
 }
 
-impl Default for SmtSolver { fn default() -> Self { Self::new() } }
+impl Default for SmtSolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Résultat d'une étape ICP
 #[derive(Debug)]
@@ -299,14 +360,21 @@ impl SmtSolver {
                         IcpResult::Unchanged => {}
                     }
                 }
-                if changed { IcpResult::Narrowed } else { IcpResult::Unchanged }
+                if changed {
+                    IcpResult::Narrowed
+                } else {
+                    IcpResult::Unchanged
+                }
             }
             // x >= 0  =>  domain[x].lo = max(0, current_lo)
             SmtExpr::Ge(left, right) => {
                 if let (SmtExpr::Var(v), SmtExpr::IntLit(n)) = (left.as_ref(), right.as_ref()) {
                     if let Some(iv) = domain.get_mut(&v.name) {
                         let new_lo = Some(iv.lo.map_or(*n, |lo| lo.max(*n)));
-                        if new_lo != iv.lo { iv.lo = new_lo; return IcpResult::Narrowed; }
+                        if new_lo != iv.lo {
+                            iv.lo = new_lo;
+                            return IcpResult::Narrowed;
+                        }
                     }
                 }
                 IcpResult::Unchanged
@@ -316,7 +384,10 @@ impl SmtSolver {
                 if let (SmtExpr::Var(v), SmtExpr::IntLit(n)) = (left.as_ref(), right.as_ref()) {
                     if let Some(iv) = domain.get_mut(&v.name) {
                         let new_lo = Some(iv.lo.map_or(*n + 1, |lo| lo.max(*n + 1)));
-                        if new_lo != iv.lo { iv.lo = new_lo; return IcpResult::Narrowed; }
+                        if new_lo != iv.lo {
+                            iv.lo = new_lo;
+                            return IcpResult::Narrowed;
+                        }
                     }
                 }
                 IcpResult::Unchanged
@@ -326,7 +397,10 @@ impl SmtSolver {
                 if let (SmtExpr::Var(v), SmtExpr::IntLit(n)) = (left.as_ref(), right.as_ref()) {
                     if let Some(iv) = domain.get_mut(&v.name) {
                         let new_hi = Some(iv.hi.map_or(*n, |hi| hi.min(*n)));
-                        if new_hi != iv.hi { iv.hi = new_hi; return IcpResult::Narrowed; }
+                        if new_hi != iv.hi {
+                            iv.hi = new_hi;
+                            return IcpResult::Narrowed;
+                        }
                     }
                 }
                 IcpResult::Unchanged
@@ -336,9 +410,13 @@ impl SmtSolver {
                 if let (SmtExpr::Var(v), SmtExpr::IntLit(n)) = (left.as_ref(), right.as_ref()) {
                     if let Some(iv) = domain.get_mut(&v.name) {
                         let new_iv = Interval::point(*n);
-                        if iv.is_empty() { return IcpResult::Contradiction; }
+                        if iv.is_empty() {
+                            return IcpResult::Contradiction;
+                        }
                         let intersected = iv.intersect(&new_iv);
-                        if intersected.is_empty() { return IcpResult::Contradiction; }
+                        if intersected.is_empty() {
+                            return IcpResult::Contradiction;
+                        }
                         *iv = intersected;
                         return IcpResult::Narrowed;
                     }
@@ -350,7 +428,10 @@ impl SmtSolver {
                 if let (SmtExpr::Var(v), SmtExpr::IntLit(n)) = (left.as_ref(), right.as_ref()) {
                     if let Some(iv) = domain.get_mut(&v.name) {
                         let new_hi = Some(iv.hi.map_or(*n - 1, |hi| hi.min(*n - 1)));
-                        if new_hi != iv.hi { iv.hi = new_hi; return IcpResult::Narrowed; }
+                        if new_hi != iv.hi {
+                            iv.hi = new_hi;
+                            return IcpResult::Narrowed;
+                        }
                     }
                 }
                 IcpResult::Unchanged

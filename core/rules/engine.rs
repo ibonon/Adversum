@@ -1,4 +1,4 @@
-use crate::rules::types::{Rule, MatchContext, Report};
+use crate::rules::types::{MatchContext, Report, Rule};
 
 pub struct RuleEngine {
     rules: Vec<Box<dyn Rule>>,
@@ -6,9 +6,7 @@ pub struct RuleEngine {
 
 impl RuleEngine {
     pub fn new() -> Self {
-        Self {
-            rules: Vec::new(),
-        }
+        Self { rules: Vec::new() }
     }
 
     pub fn add_rule<R: Rule + 'static>(&mut self, rule: R) {

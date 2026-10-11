@@ -1,4 +1,4 @@
-use crate::rules::types::{Rule, MatchContext, Report, Severity};
+use crate::rules::types::{MatchContext, Report, Rule, Severity};
 
 pub struct GenericTaintRule {
     pub rule_id: String,
@@ -24,22 +24,22 @@ impl Rule for GenericTaintRule {
     fn id(&self) -> &str {
         &self.rule_id
     }
-    
+
     fn name(&self) -> &str {
         &self.rule_name
     }
-    
+
     fn description(&self) -> &str {
         &self.description
     }
-    
+
     fn severity(&self) -> Severity {
         self.severity
     }
 
     fn evaluate(&self, ctx: &MatchContext) -> Vec<Report> {
         let mut reports = Vec::new();
-        
+
         for finding in &ctx.dataflow.findings {
             let func_name = ctx.interner.resolve(finding.sink_func);
             if self.sink_function_names.contains(&func_name.to_string()) {
@@ -57,7 +57,7 @@ impl Rule for GenericTaintRule {
                 });
             }
         }
-        
+
         reports
     }
 }

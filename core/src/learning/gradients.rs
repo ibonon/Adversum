@@ -1,5 +1,5 @@
-use ndarray::ArrayD;
 use super::Gradients;
+use ndarray::ArrayD;
 
 /// A simple wrapper for gradients using ndarray
 pub struct StandardGradient {
@@ -16,7 +16,7 @@ impl Gradients for StandardGradient {
     fn as_array(&self) -> &ArrayD<f32> {
         &self.grads
     }
-    
+
     fn add(&mut self, other: &ArrayD<f32>) {
         self.grads = &self.grads + other;
     }

@@ -32,7 +32,7 @@ impl ControlFlowGraph {
             exits: Vec::new(),
         }
     }
-    
+
     pub fn get_block(&self, id: BlockId) -> Option<&BasicBlock> {
         self.blocks.get(id)
     }

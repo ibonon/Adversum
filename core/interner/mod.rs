@@ -1,9 +1,11 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Lightweight handle to an interned string.
 /// Using u32 for compactness (supports 4 billion strings, sufficient).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
 pub struct SymbolId(pub u32);
 
 impl SymbolId {
@@ -53,7 +55,7 @@ impl Interner {
     pub fn resolve(&self, id: SymbolId) -> &str {
         &self.vec[id.0 as usize]
     }
-    
+
     // Resolves ID to String (Option safe version)
     pub fn get(&self, id: SymbolId) -> Option<&str> {
         self.vec.get(id.0 as usize).map(|s| s.as_str())

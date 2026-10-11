@@ -17,7 +17,8 @@ fn main() {
             // Pass None for ranges (full-file scan) — 3rd argument added
             match analyze_default(&content, Some(file_path.as_str()), None) {
                 Ok(findings) => {
-                    let light_findings = findings.iter().cloned().map(map_finding_to_light).collect();
+                    let light_findings =
+                        findings.iter().cloned().map(map_finding_to_light).collect();
                     let result = AnalysisResult {
                         light_findings,
                         findings,
@@ -31,7 +32,7 @@ fn main() {
                 }
                 Err(e) => eprintln!("Error analyzing file: {:?}", e),
             }
-        },
+        }
         Err(e) => {
             eprintln!("Error reading file {}: {}", file_path, e);
         }

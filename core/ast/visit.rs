@@ -30,7 +30,12 @@ pub fn walk_stmt<'ast, V: Visitor<'ast>>(visitor: &mut V, stmt: &'ast Stmt) {
             visitor.visit_expr(target);
             visitor.visit_expr(value);
         }
-        Stmt::If { condition, then_block, else_block, .. } => {
+        Stmt::If {
+            condition,
+            then_block,
+            else_block,
+            ..
+        } => {
             visitor.visit_expr(condition);
             for s in then_block {
                 visitor.visit_stmt(s);
@@ -41,7 +46,9 @@ pub fn walk_stmt<'ast, V: Visitor<'ast>>(visitor: &mut V, stmt: &'ast Stmt) {
                 }
             }
         }
-        Stmt::While { condition, body, .. } => {
+        Stmt::While {
+            condition, body, ..
+        } => {
             visitor.visit_expr(condition);
             for s in body {
                 visitor.visit_stmt(s);
@@ -68,7 +75,7 @@ pub fn walk_stmt<'ast, V: Visitor<'ast>>(visitor: &mut V, stmt: &'ast Stmt) {
 
 pub fn walk_expr<'ast, V: Visitor<'ast>>(visitor: &mut V, expr: &'ast Expr) {
     match expr {
-        Expr::Literal { .. } => {} // Leaf
+        Expr::Literal { .. } => {}    // Leaf
         Expr::Identifier { .. } => {} // Leaf
         Expr::Binary { left, right, .. } => {
             visitor.visit_expr(left);

@@ -36,13 +36,16 @@ pub fn emit_sarif(findings: &[Finding], file_path: &str) -> SarifLog {
     for finding in findings {
         let cwe = rule_to_cwe(&finding.id);
         let cvss = CvssV4::from_cwe(cwe);
-        
+
         let level = severity_to_level(&finding.severity);
 
         let location = SarifLocation {
             physical_location: SarifPhysicalLocation {
                 artifact_location: SarifArtifactLocation {
-                    uri: finding.file_path.clone().unwrap_or_else(|| file_path.to_string()),
+                    uri: finding
+                        .file_path
+                        .clone()
+                        .unwrap_or_else(|| file_path.to_string()),
                     index: 0,
                 },
                 region: SarifRegion {
@@ -71,7 +74,9 @@ pub fn emit_sarif(findings: &[Finding], file_path: &str) -> SarifLog {
             sarif_rules.push(SarifRule {
                 id: finding.id.clone(),
                 name: finding.id.clone(),
-                short_description: SarifMessage { text: finding.message.clone() },
+                short_description: SarifMessage {
+                    text: finding.message.clone(),
+                },
                 properties: SarifRuleProperties {
                     tags: vec![cwe.to_string()],
                     precision: "high".to_string(),

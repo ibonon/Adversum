@@ -25,7 +25,11 @@ impl<'a> JavaParser<'a> {
                     let value_node = child.child_by_field_name("right")?;
                     let target = self.parse_expr(target_node)?;
                     let value = self.parse_expr(value_node)?;
-                    Some(Stmt::Assign { target, value, span })
+                    Some(Stmt::Assign {
+                        target,
+                        value,
+                        span,
+                    })
                 } else {
                     let expr = self.parse_expr(child)?;
                     Some(Stmt::Expr { expr, span })
@@ -38,14 +42,17 @@ impl<'a> JavaParser<'a> {
                     if child.kind() == "variable_declarator" {
                         let name_node = child.child_by_field_name("name")?;
                         let value_node = child.child_by_field_name("value");
-                        
+
                         let name = name_node.utf8_text(self.source).ok()?.to_string();
                         let value = if let Some(v_node) = value_node {
                             self.parse_expr(v_node)?
                         } else {
-                            Expr::Literal { value: Literal::Null, span: span.clone() }
+                            Expr::Literal {
+                                value: Literal::Null,
+                                span: span.clone(),
+                            }
                         };
-                        
+
                         return Some(Stmt::Let { name, value, span });
                     }
                 }
@@ -55,7 +62,7 @@ impl<'a> JavaParser<'a> {
                 let condition_node = node.child_by_field_name("condition")?;
                 // In tree-sitter-java, condition might be wrapped in parenthesized_expression
                 let condition = self.parse_expr(condition_node)?;
-                
+
                 let then_node = node.child_by_field_name("consequence")?;
                 let mut then_block = Vec::new();
                 if then_node.kind() == "block" {
@@ -68,7 +75,7 @@ impl<'a> JavaParser<'a> {
                 } else if let Some(s) = self.parse_stmt(then_node) {
                     then_block.push(s);
                 }
-                
+
                 let else_node = node.child_by_field_name("alternative");
                 let else_block = else_node.map(|n| {
                     let mut block = Vec::new();
@@ -85,7 +92,12 @@ impl<'a> JavaParser<'a> {
                     block
                 });
 
-                Some(Stmt::If { condition, then_block, else_block, span })
+                Some(Stmt::If {
+                    condition,
+                    then_block,
+                    else_block,
+                    span,
+                })
             }
             "return_statement" => {
                 let mut value = None;
@@ -114,7 +126,12 @@ impl<'a> JavaParser<'a> {
                 let name = node.utf8_text(self.source).ok()?.to_string();
                 Some(Expr::Identifier { name, span })
             }
-            "string_literal" | "decimal_integer_literal" | "decimal_floating_point_literal" | "true" | "false" | "null_literal" => {
+            "string_literal"
+            | "decimal_integer_literal"
+            | "decimal_floating_point_literal"
+            | "true"
+            | "false"
+            | "null_literal" => {
                 let text = node.utf8_text(self.source).ok()?;
                 let lit = match node.kind() {
                     "decimal_integer_literal" => Literal::Int(text.parse().ok()?),
@@ -129,12 +146,15 @@ impl<'a> JavaParser<'a> {
             "method_invocation" => {
                 let function_node = node.child_by_field_name("name")?;
                 let function = Box::new(self.parse_expr(function_node)?);
-                
+
                 // Usually method calls have an object. Let's merge object and name if possible
                 let function = if let Some(obj_node) = node.child_by_field_name("object") {
                     let obj_text = obj_node.utf8_text(self.source).ok()?;
                     let func_text = function_node.utf8_text(self.source).ok()?;
-                    Box::new(Expr::Identifier { name: format!("{}.{}", obj_text, func_text), span: span.clone() })
+                    Box::new(Expr::Identifier {
+                        name: format!("{}.{}", obj_text, func_text),
+                        span: span.clone(),
+                    })
                 } else {
                     function
                 };
@@ -149,18 +169,31 @@ impl<'a> JavaParser<'a> {
                         }
                     }
                 }
-                Some(Expr::Call { function, args, span })
+                Some(Expr::Call {
+                    function,
+                    args,
+                    span,
+                })
             }
             "field_access" => {
-                let obj = node.child_by_field_name("object")?.utf8_text(self.source).ok()?;
-                let field = node.child_by_field_name("field")?.utf8_text(self.source).ok()?;
+                let obj = node
+                    .child_by_field_name("object")?
+                    .utf8_text(self.source)
+                    .ok()?;
+                let field = node
+                    .child_by_field_name("field")?
+                    .utf8_text(self.source)
+                    .ok()?;
                 let name = format!("{}.{}", obj, field);
                 Some(Expr::Identifier { name, span })
             }
             "binary_expression" => {
                 let left = Box::new(self.parse_expr(node.child_by_field_name("left")?)?);
                 let right = Box::new(self.parse_expr(node.child_by_field_name("right")?)?);
-                let op_text = node.child_by_field_name("operator")?.utf8_text(self.source).ok()?;
+                let op_text = node
+                    .child_by_field_name("operator")?
+                    .utf8_text(self.source)
+                    .ok()?;
                 let op = match op_text {
                     "+" => BinOp::Add,
                     "-" => BinOp::Sub,
@@ -174,7 +207,12 @@ impl<'a> JavaParser<'a> {
                     "||" => BinOp::Or,
                     _ => BinOp::Add,
                 };
-                Some(Expr::Binary { op, left, right, span })
+                Some(Expr::Binary {
+                    op,
+                    left,
+                    right,
+                    span,
+                })
             }
             "parenthesized_expression" => {
                 // Extract inner expression, skipping '(' and ')'
@@ -188,9 +226,10 @@ impl<'a> JavaParser<'a> {
                 }
                 inner
             }
-            _ => {
-                Some(Expr::Literal { value: Literal::Null, span })
-            }
+            _ => Some(Expr::Literal {
+                value: Literal::Null,
+                span,
+            }),
         }
     }
 }

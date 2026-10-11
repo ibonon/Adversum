@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::interner::SymbolId;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

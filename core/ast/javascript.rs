@@ -25,7 +25,11 @@ impl<'a> JavaScriptParser<'a> {
                     let value_node = child.child_by_field_name("right")?;
                     let target = self.parse_expr(target_node)?;
                     let value = self.parse_expr(value_node)?;
-                    Some(Stmt::Assign { target, value, span })
+                    Some(Stmt::Assign {
+                        target,
+                        value,
+                        span,
+                    })
                 } else {
                     let expr = self.parse_expr(child)?;
                     Some(Stmt::Expr { expr, span })
@@ -38,14 +42,17 @@ impl<'a> JavaScriptParser<'a> {
                     if child.kind() == "variable_declarator" {
                         let name_node = child.child_by_field_name("name")?;
                         let value_node = child.child_by_field_name("value");
-                        
+
                         let name = name_node.utf8_text(self.source).ok()?.to_string();
                         let value = if let Some(v_node) = value_node {
                             self.parse_expr(v_node)?
                         } else {
-                            Expr::Literal { value: Literal::Null, span: span.clone() }
+                            Expr::Literal {
+                                value: Literal::Null,
+                                span: span.clone(),
+                            }
                         };
-                        
+
                         return Some(Stmt::Let { name, value, span });
                     }
                 }
@@ -65,7 +72,7 @@ impl<'a> JavaScriptParser<'a> {
                 } else if let Some(s) = self.parse_stmt(then_node) {
                     then_block.push(s);
                 }
-                
+
                 let else_node = node.child_by_field_name("alternative");
                 let else_block = else_node.map(|n| {
                     let mut block = Vec::new();
@@ -88,7 +95,12 @@ impl<'a> JavaScriptParser<'a> {
                     block
                 });
 
-                Some(Stmt::If { condition, then_block, else_block, span })
+                Some(Stmt::If {
+                    condition,
+                    then_block,
+                    else_block,
+                    span,
+                })
             }
             "return_statement" => {
                 let value = if let Some(expr_node) = node.child(1) {
@@ -130,10 +142,12 @@ impl<'a> JavaScriptParser<'a> {
                         } else {
                             Literal::Null
                         }
-                    },
+                    }
                     "true" => Literal::Bool(true),
                     "false" => Literal::Bool(false),
-                    "string" => Literal::String(text.trim_matches('"').trim_matches('\'').to_string()),
+                    "string" => {
+                        Literal::String(text.trim_matches('"').trim_matches('\'').to_string())
+                    }
                     _ => Literal::Null,
                 };
                 Some(Expr::Literal { value: lit, span })
@@ -151,19 +165,32 @@ impl<'a> JavaScriptParser<'a> {
                         }
                     }
                 }
-                Some(Expr::Call { function, args, span })
+                Some(Expr::Call {
+                    function,
+                    args,
+                    span,
+                })
             }
             "member_expression" => {
                 // Flatten a.b.c into string identifier for simplicity in MVP taint analysis
-                let obj = node.child_by_field_name("object")?.utf8_text(self.source).ok()?;
-                let prop = node.child_by_field_name("property")?.utf8_text(self.source).ok()?;
+                let obj = node
+                    .child_by_field_name("object")?
+                    .utf8_text(self.source)
+                    .ok()?;
+                let prop = node
+                    .child_by_field_name("property")?
+                    .utf8_text(self.source)
+                    .ok()?;
                 let name = format!("{}.{}", obj, prop);
                 Some(Expr::Identifier { name, span })
             }
             "binary_expression" => {
                 let left = Box::new(self.parse_expr(node.child_by_field_name("left")?)?);
                 let right = Box::new(self.parse_expr(node.child_by_field_name("right")?)?);
-                let op_text = node.child_by_field_name("operator")?.utf8_text(self.source).ok()?;
+                let op_text = node
+                    .child_by_field_name("operator")?
+                    .utf8_text(self.source)
+                    .ok()?;
                 let op = match op_text {
                     "+" => BinOp::Add,
                     "-" => BinOp::Sub,
@@ -177,14 +204,20 @@ impl<'a> JavaScriptParser<'a> {
                     "||" => BinOp::Or,
                     _ => BinOp::Add, // fallback
                 };
-                Some(Expr::Binary { op, left, right, span })
+                Some(Expr::Binary {
+                    op,
+                    left,
+                    right,
+                    span,
+                })
             }
-            "parenthesized_expression" => {
-                self.parse_expr(node.child(1)?)
-            }
+            "parenthesized_expression" => self.parse_expr(node.child(1)?),
             _ => {
                 // Default fallback to null literal if unsupported expr type is encountered
-                Some(Expr::Literal { value: Literal::Null, span })
+                Some(Expr::Literal {
+                    value: Literal::Null,
+                    span,
+                })
             }
         }
     }

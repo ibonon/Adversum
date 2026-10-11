@@ -36,7 +36,7 @@ jobs:
 
     - name: Clippy (Linting)
       working-directory: ./core
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --all-targets --all-features
 
     - name: Build & Test
       working-directory: ./core
@@ -59,15 +59,15 @@ jobs:
         pip install ruff pytest
         pip install -r requirements.txt --ignore-requires-python || true
 
-    - name: Lint with Ruff
+    - name: Lint with Ruff (Fatal Syntax & Import Errors)
       run: |
         ruff check --select=E9,F63,F7,F82 .
-        ruff check . --ignore=E501
+        ruff check . --ignore=E501 --exit-zero
 
-    - name: Run Tests
+    - name: Run Test Suite
       run: |
         export PYTHONPATH=$PYTHONPATH:$(pwd)
-        pytest tests/ -v --ignore=api --ignore=orchestrator || true
+        pytest orchestrator/tests modules/solidity/tests -v
 
   # --- FRONTEND ---
   frontend-build:

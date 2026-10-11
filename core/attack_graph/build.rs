@@ -1,4 +1,4 @@
-use crate::attack_graph::types::{AttackGraph, AttackEdge, AttackNode};
+use crate::attack_graph::types::{AttackEdge, AttackGraph, AttackNode};
 use crate::rules::types::{Report, Severity};
 
 /// Deterministic builder for the inter-finding AttackGraph.
@@ -50,10 +50,7 @@ impl GraphBuilder {
         });
 
         for (i, report) in ordered.into_iter().enumerate() {
-            graph.nodes.push(AttackNode {
-                id: i,
-                report,
-            });
+            graph.nodes.push(AttackNode { id: i, report });
         }
 
         // 2. Build edges with the deterministic rules above.
@@ -100,9 +97,7 @@ impl GraphBuilder {
             .any(|p| from.report.rule_id.starts_with(p));
 
         // Rule 2: a Critical compromise grants broader reach in the same unit.
-        if from.report.severity == Severity::Critical
-            && to.report.severity != Severity::Critical
-        {
+        if from.report.severity == Severity::Critical && to.report.severity != Severity::Critical {
             return Some(format!(
                 "escalation: {} (Critical) grants reach to later {}",
                 from.report.rule_id, to.report.rule_id
@@ -151,7 +146,14 @@ mod tests {
         }
     }
 
-    fn rep_with_vars(rule_id: &str, sev: Severity, line: usize, file: &str, src_var: Option<&str>, out_var: Option<&str>) -> Report {
+    fn rep_with_vars(
+        rule_id: &str,
+        sev: Severity,
+        line: usize,
+        file: &str,
+        src_var: Option<&str>,
+        out_var: Option<&str>,
+    ) -> Report {
         let mut r = rep(rule_id, sev, line, file);
         r.source_var = src_var.map(|s| s.to_string());
         r.output_var = out_var.map(|s| s.to_string());
@@ -161,8 +163,22 @@ mod tests {
     #[test]
     fn builds_data_flow_chain() {
         let reports = vec![
-            rep_with_vars("RUST_CORE_004_PATH_TRAVERSAL", Severity::High, 10, "a.py", None, Some("file_content")),
-            rep_with_vars("RUST_CORE_001_DANGEROUS_EVAL", Severity::Critical, 20, "a.py", Some("file_content"), None),
+            rep_with_vars(
+                "RUST_CORE_004_PATH_TRAVERSAL",
+                Severity::High,
+                10,
+                "a.py",
+                None,
+                Some("file_content"),
+            ),
+            rep_with_vars(
+                "RUST_CORE_001_DANGEROUS_EVAL",
+                Severity::Critical,
+                20,
+                "a.py",
+                Some("file_content"),
+                None,
+            ),
         ];
         let g = GraphBuilder::build(reports);
         assert_eq!(g.edges.len(), 1);
@@ -209,7 +225,12 @@ mod tests {
     fn deterministic_node_ordering() {
         let reports = vec![
             rep("RUST_CORE_005_SQL_INJECTION", Severity::High, 40, "a.py"),
-            rep("RUST_CORE_001_DANGEROUS_EVAL", Severity::Critical, 5, "a.py"),
+            rep(
+                "RUST_CORE_001_DANGEROUS_EVAL",
+                Severity::Critical,
+                5,
+                "a.py",
+            ),
         ];
         let g = GraphBuilder::build(reports);
         // Sorted by line: EVAL (5) first, then SQLi (40).

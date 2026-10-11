@@ -29,13 +29,13 @@ mod tests {
     fn test_ewc_gradient() {
         // Setup: theta = [2.0, 4.0], sigma^2 = [0.5, 2.0], lambda = 1.0
         // Expected gradient = 1.0 * [2.0/0.5, 4.0/2.0] = [4.0, 2.0]
-        
+
         let theta = arr1(&[2.0, 4.0]).into_dyn();
         let sigma_sq = arr1(&[0.5, 2.0]).into_dyn();
-        
+
         let fisher = FisherInformation::new(sigma_sq);
         let grad = fisher.compute_regularization_gradient(&theta, 1.0);
-        
+
         assert_eq!(grad[0], 4.0);
         assert_eq!(grad[1], 2.0);
     }

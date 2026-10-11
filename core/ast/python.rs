@@ -24,18 +24,26 @@ impl<'a> PythonParser<'a> {
                 match child.kind() {
                     "assignment" => {
                         let target_node = child.child_by_field_name("left")?;
-                        let value_node  = child.child_by_field_name("right")?;
+                        let value_node = child.child_by_field_name("right")?;
                         let target = self.parse_expr(target_node)?;
-                        let value  = self.parse_expr(value_node)?;
-                        Some(Stmt::Assign { target, value, span })
+                        let value = self.parse_expr(value_node)?;
+                        Some(Stmt::Assign {
+                            target,
+                            value,
+                            span,
+                        })
                     }
                     "augmented_assignment" => {
                         // x += expr  =>  treat as  x = x + expr
                         let target_node = child.child_by_field_name("left")?;
-                        let value_node  = child.child_by_field_name("right")?;
+                        let value_node = child.child_by_field_name("right")?;
                         let target = self.parse_expr(target_node)?;
-                        let value  = self.parse_expr(value_node)?;
-                        Some(Stmt::Assign { target, value, span })
+                        let value = self.parse_expr(value_node)?;
+                        Some(Stmt::Assign {
+                            target,
+                            value,
+                            span,
+                        })
                     }
                     _ => {
                         let expr = self.parse_expr(child)?;
@@ -47,19 +55,27 @@ impl<'a> PythonParser<'a> {
             // ── Top-level assignment ────────────────────────────────────────
             "assignment" => {
                 let target_node = node.child_by_field_name("left")?;
-                let value_node  = node.child_by_field_name("right")?;
+                let value_node = node.child_by_field_name("right")?;
                 let target = self.parse_expr(target_node)?;
-                let value  = self.parse_expr(value_node)?;
-                Some(Stmt::Assign { target, value, span })
+                let value = self.parse_expr(value_node)?;
+                Some(Stmt::Assign {
+                    target,
+                    value,
+                    span,
+                })
             }
 
             // ── Augmented assignment at top level ───────────────────────────
             "augmented_assignment" => {
                 let target_node = node.child_by_field_name("left")?;
-                let value_node  = node.child_by_field_name("right")?;
+                let value_node = node.child_by_field_name("right")?;
                 let target = self.parse_expr(target_node)?;
-                let value  = self.parse_expr(value_node)?;
-                Some(Stmt::Assign { target, value, span })
+                let value = self.parse_expr(value_node)?;
+                Some(Stmt::Assign {
+                    target,
+                    value,
+                    span,
+                })
             }
 
             // ── If statement ────────────────────────────────────────────────
@@ -72,7 +88,12 @@ impl<'a> PythonParser<'a> {
                     .child_by_field_name("alternative")
                     .map(|n| self.collect_block(n));
 
-                Some(Stmt::If { condition, then_block, else_block, span })
+                Some(Stmt::If {
+                    condition,
+                    then_block,
+                    else_block,
+                    span,
+                })
             }
 
             // ── While statement ─────────────────────────────────────────────
@@ -80,7 +101,11 @@ impl<'a> PythonParser<'a> {
                 let condition = self.parse_expr(node.child_by_field_name("condition")?)?;
                 let body_node = node.child_by_field_name("body")?;
                 let body = self.collect_block(body_node);
-                Some(Stmt::While { condition, body, span })
+                Some(Stmt::While {
+                    condition,
+                    body,
+                    span,
+                })
             }
 
             // ── For statement ───────────────────────────────────────────────
@@ -92,7 +117,11 @@ impl<'a> PythonParser<'a> {
                     value: Literal::Bool(true),
                     span: span.clone(),
                 };
-                Some(Stmt::While { condition, body, span })
+                Some(Stmt::While {
+                    condition,
+                    body,
+                    span,
+                })
             }
 
             // ── With statement ──────────────────────────────────────────────
@@ -106,7 +135,10 @@ impl<'a> PythonParser<'a> {
                     if child.kind() == "with_item" {
                         if let Some(val_node) = child.child_by_field_name("value") {
                             if let Some(expr) = self.parse_expr(val_node) {
-                                block.push(Stmt::Expr { expr, span: span.clone() });
+                                block.push(Stmt::Expr {
+                                    expr,
+                                    span: span.clone(),
+                                });
                             }
                         }
                     }
@@ -116,7 +148,10 @@ impl<'a> PythonParser<'a> {
                     block.extend(self.collect_block(body_node));
                 }
 
-                let condition = Expr::Literal { value: Literal::Bool(true), span: span.clone() };
+                let condition = Expr::Literal {
+                    value: Literal::Bool(true),
+                    span: span.clone(),
+                };
                 Some(Stmt::If {
                     condition,
                     then_block: block,
@@ -162,7 +197,9 @@ impl<'a> PythonParser<'a> {
                         if let Ok(param_name) = child.utf8_text(self.source) {
                             params.push(param_name.to_string());
                         }
-                    } else if child.kind() == "typed_parameter" || child.kind() == "default_parameter" {
+                    } else if child.kind() == "typed_parameter"
+                        || child.kind() == "default_parameter"
+                    {
                         // Extract just the identifier part
                         let mut sub_cursor = child.walk();
                         for sub_child in child.children(&mut sub_cursor) {
@@ -179,12 +216,21 @@ impl<'a> PythonParser<'a> {
                 let body_node = def_node.child_by_field_name("body")?;
                 let body = self.collect_block(body_node);
 
-                Some(Stmt::FunctionDef { name, params, body, span })
+                Some(Stmt::FunctionDef {
+                    name,
+                    params,
+                    body,
+                    span,
+                })
             }
 
             // ── Class definition ────────────────────────────────────────────
             "class_definition" => {
-                let name = node.child_by_field_name("name")?.utf8_text(self.source).ok()?.to_string();
+                let name = node
+                    .child_by_field_name("name")?
+                    .utf8_text(self.source)
+                    .ok()?
+                    .to_string();
                 let body_node = node.child_by_field_name("body")?;
                 let body = self.collect_block(body_node);
                 Some(Stmt::Class { name, body, span })
@@ -212,33 +258,52 @@ impl<'a> PythonParser<'a> {
             // ── Literals ────────────────────────────────────────────────────
             "string" | "concatenated_string" => {
                 let text = node.utf8_text(self.source).ok()?.to_string();
-                Some(Expr::Literal { value: Literal::String(text), span })
+                Some(Expr::Literal {
+                    value: Literal::String(text),
+                    span,
+                })
             }
             "integer" => {
                 let text = node.utf8_text(self.source).ok()?;
                 let v = text.parse().unwrap_or(0);
-                Some(Expr::Literal { value: Literal::Int(v), span })
+                Some(Expr::Literal {
+                    value: Literal::Int(v),
+                    span,
+                })
             }
             "float" => {
                 let text = node.utf8_text(self.source).ok()?;
                 let v = text.parse().unwrap_or(0.0);
-                Some(Expr::Literal { value: Literal::Float(v), span })
+                Some(Expr::Literal {
+                    value: Literal::Float(v),
+                    span,
+                })
             }
-            "true"  => Some(Expr::Literal { value: Literal::Bool(true),  span }),
-            "false" => Some(Expr::Literal { value: Literal::Bool(false), span }),
-            "none"  => Some(Expr::Literal { value: Literal::Null, span }),
+            "true" => Some(Expr::Literal {
+                value: Literal::Bool(true),
+                span,
+            }),
+            "false" => Some(Expr::Literal {
+                value: Literal::Bool(false),
+                span,
+            }),
+            "none" => Some(Expr::Literal {
+                value: Literal::Null,
+                span,
+            }),
 
             // ── f-string ────────────────────────────────────────────────────
-            "interpolated_string" | "f_string" => {
-                Some(Expr::Literal { value: Literal::String("<f-string>".into()), span })
-            }
+            "interpolated_string" | "f_string" => Some(Expr::Literal {
+                value: Literal::String("<f-string>".into()),
+                span,
+            }),
 
             // ── Attribute access: obj.attr (including chained a.b.c) ─────────
             // Recursively extract the full dotted path so the interner can match
             // multi-segment sinks like "request.form.get", "conn.cursor().execute",
             // "subprocess.run", etc.
             "attribute" => {
-                let obj_node  = node.child_by_field_name("object")?;
+                let obj_node = node.child_by_field_name("object")?;
                 let attr_node = node.child_by_field_name("attribute")?;
                 let attr_text = attr_node.utf8_text(self.source).ok()?.to_string();
 
@@ -277,61 +342,85 @@ impl<'a> PythonParser<'a> {
                         }
                     }
                 }
-                Some(Expr::Call { function, args, span })
+                Some(Expr::Call {
+                    function,
+                    args,
+                    span,
+                })
             }
-
 
             // ── Binary operators ─────────────────────────────────────────────
             "binary_operator" => {
-                let left  = Box::new(self.parse_expr(node.child_by_field_name("left")?)?);
+                let left = Box::new(self.parse_expr(node.child_by_field_name("left")?)?);
                 let right = Box::new(self.parse_expr(node.child_by_field_name("right")?)?);
                 let op_text = node.child(1)?.utf8_text(self.source).ok()?;
                 let op = match op_text {
-                    "+"  => BinOp::Add,
-                    "-"  => BinOp::Sub,
-                    "*"  => BinOp::Mul,
-                    "/"  => BinOp::Div,
-                    "%"  => BinOp::Mod,
+                    "+" => BinOp::Add,
+                    "-" => BinOp::Sub,
+                    "*" => BinOp::Mul,
+                    "/" => BinOp::Div,
+                    "%" => BinOp::Mod,
                     "==" => BinOp::Eq,
                     "!=" => BinOp::Ne,
-                    "<"  => BinOp::Lt,
+                    "<" => BinOp::Lt,
                     "<=" => BinOp::Le,
-                    ">"  => BinOp::Gt,
+                    ">" => BinOp::Gt,
                     ">=" => BinOp::Ge,
                     "and" => BinOp::And,
-                    "or"  => BinOp::Or,
-                    "&"  => BinOp::BitAnd,
-                    "|"  => BinOp::BitOr,
-                    "^"  => BinOp::BitXor,
-                    _    => BinOp::Add,
+                    "or" => BinOp::Or,
+                    "&" => BinOp::BitAnd,
+                    "|" => BinOp::BitOr,
+                    "^" => BinOp::BitXor,
+                    _ => BinOp::Add,
                 };
-                Some(Expr::Binary { op, left, right, span })
+                Some(Expr::Binary {
+                    op,
+                    left,
+                    right,
+                    span,
+                })
             }
 
             // ── Comparison operators ─────────────────────────────────────────
             "comparison_operator" => {
-                let left  = Box::new(self.parse_expr(node.child(0)?)?);
+                let left = Box::new(self.parse_expr(node.child(0)?)?);
                 let right = Box::new(self.parse_expr(node.child(2)?)?);
                 let op_text = node.child(1)?.utf8_text(self.source).ok()?;
                 let op = match op_text {
-                    "==" => BinOp::Eq, "!=" => BinOp::Ne,
-                    "<"  => BinOp::Lt, "<=" => BinOp::Le,
-                    ">"  => BinOp::Gt, ">=" => BinOp::Ge,
-                    _    => BinOp::Eq,
+                    "==" => BinOp::Eq,
+                    "!=" => BinOp::Ne,
+                    "<" => BinOp::Lt,
+                    "<=" => BinOp::Le,
+                    ">" => BinOp::Gt,
+                    ">=" => BinOp::Ge,
+                    _ => BinOp::Eq,
                 };
-                Some(Expr::Binary { op, left, right, span })
+                Some(Expr::Binary {
+                    op,
+                    left,
+                    right,
+                    span,
+                })
             }
 
             // ── Boolean not ──────────────────────────────────────────────────
             "not_operator" => {
                 let operand = Box::new(self.parse_expr(node.child(1)?)?);
-                Some(Expr::Unary { op: UnOp::Not, operand, span })
+                Some(Expr::Unary {
+                    op: UnOp::Not,
+                    operand,
+                    span,
+                })
             }
 
             // ── Unary minus / plus ───────────────────────────────────────────
             "unary_operator" => {
                 let operand = Box::new(self.parse_expr(node.child(1)?)?);
-                Some(Expr::Unary { op: UnOp::Neg, operand, span })
+                Some(Expr::Unary {
+                    op: UnOp::Neg,
+                    operand,
+                    span,
+                })
             }
 
             // ── Subscript: obj[key] -- passthrough the object ─────────────────
@@ -415,4 +504,3 @@ impl<'a> PythonParser<'a> {
         }
     }
 }
-

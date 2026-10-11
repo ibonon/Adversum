@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::rules::types::Severity;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Score {
@@ -10,7 +10,11 @@ pub struct Score {
 
 impl Default for Score {
     fn default() -> Self {
-        Self { base_score: 0.0, impact: 0.0, exploitability: 0.0 }
+        Self {
+            base_score: 0.0,
+            impact: 0.0,
+            exploitability: 0.0,
+        }
     }
 }
 

@@ -1,14 +1,17 @@
-use std::collections::HashMap;
-use crate::ir::types::{Instr, Operand, Op, FunctionIR};
 use super::ast::{SmtExpr, SmtVar, Sort};
-use serde::{Serialize, Deserialize};
+use crate::ir::types::{FunctionIR, Instr, Op, Operand};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Compteur global pour générer des noms de variables symboliques frais
 static FRESH_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 fn fresh_var(prefix: &str, sort: Sort) -> SmtExpr {
     let id = FRESH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    SmtExpr::Var(SmtVar { name: format!("{}_{}", prefix, id), sort })
+    SmtExpr::Var(SmtVar {
+        name: format!("{}_{}", prefix, id),
+        sort,
+    })
 }
 
 /// État symbolique d'un chemin d'exécution
@@ -36,7 +39,10 @@ impl SymbolicState {
 
     /// Crée une variable symbolique fraîche pour un paramètre d'entrée
     pub fn fresh_input(&mut self, name: &str, sort: Sort) -> SmtExpr {
-        let var = SmtVar { name: name.to_string(), sort: sort.clone() };
+        let var = SmtVar {
+            name: name.to_string(),
+            sort: sort.clone(),
+        };
         self.declared_vars.push(var.clone());
         SmtExpr::Var(var)
     }
@@ -46,12 +52,16 @@ impl SymbolicState {
         match op {
             Operand::Temp(t) => {
                 let key = format!("t{}", t);
-                self.registers.get(&key).cloned()
+                self.registers
+                    .get(&key)
+                    .cloned()
                     .unwrap_or_else(|| SmtExpr::int_var(format!("undef_t{}", t)))
             }
             Operand::Var(v) => {
                 let key = format!("v{}", v.0);
-                self.registers.get(&key).cloned()
+                self.registers
+                    .get(&key)
+                    .cloned()
                     .unwrap_or_else(|| SmtExpr::int_var(format!("undef_v{}", v.0)))
             }
             Operand::Constant(s) => {
@@ -73,7 +83,7 @@ impl SymbolicState {
     pub fn write_operand(&mut self, dest: &Operand, expr: SmtExpr) {
         let key = match dest {
             Operand::Temp(t) => format!("t{}", t),
-            Operand::Var(v)  => format!("v{}", v.0),
+            Operand::Var(v) => format!("v{}", v.0),
             Operand::Constant(_) => return, // On n'écrit pas dans une constante
         };
         self.registers.insert(key, expr);
@@ -91,7 +101,9 @@ impl SymbolicState {
 }
 
 impl Default for SymbolicState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Évalue symboliquement un Op IR en une SmtExpr
@@ -102,14 +114,14 @@ fn symbolic_binop(op: &Op, left: SmtExpr, right: SmtExpr) -> SmtExpr {
         Op::Mul => SmtExpr::Mul(Box::new(left), Box::new(right)),
         Op::Div => SmtExpr::Div(Box::new(left), Box::new(right)),
         Op::Mod => SmtExpr::Mod(Box::new(left), Box::new(right)),
-        Op::Eq  => SmtExpr::Eq(Box::new(left), Box::new(right)),
-        Op::Ne  => SmtExpr::Ne(Box::new(left), Box::new(right)),
-        Op::Lt  => SmtExpr::Lt(Box::new(left), Box::new(right)),
-        Op::Le  => SmtExpr::Le(Box::new(left), Box::new(right)),
-        Op::Gt  => SmtExpr::Gt(Box::new(left), Box::new(right)),
-        Op::Ge  => SmtExpr::Ge(Box::new(left), Box::new(right)),
+        Op::Eq => SmtExpr::Eq(Box::new(left), Box::new(right)),
+        Op::Ne => SmtExpr::Ne(Box::new(left), Box::new(right)),
+        Op::Lt => SmtExpr::Lt(Box::new(left), Box::new(right)),
+        Op::Le => SmtExpr::Le(Box::new(left), Box::new(right)),
+        Op::Gt => SmtExpr::Gt(Box::new(left), Box::new(right)),
+        Op::Ge => SmtExpr::Ge(Box::new(left), Box::new(right)),
         Op::And => SmtExpr::And(vec![left, right]),
-        Op::Or  => SmtExpr::Or(vec![left, right]),
+        Op::Or => SmtExpr::Or(vec![left, right]),
         Op::Not | Op::Neg => SmtExpr::Not(Box::new(left)), // unary misuse — handled below
     }
 }
@@ -122,7 +134,12 @@ pub fn execute_symbolically(instrs: &[Instr], state: &mut SymbolicState) {
                 let val = state.read_operand(src);
                 state.write_operand(dest, val);
             }
-            Instr::Binary { dest, op, left, right } => {
+            Instr::Binary {
+                dest,
+                op,
+                left,
+                right,
+            } => {
                 let l = state.read_operand(left);
                 let r = state.read_operand(right);
                 let result = symbolic_binop(op, l, r);
@@ -143,7 +160,10 @@ pub fn execute_symbolically(instrs: &[Instr], state: &mut SymbolicState) {
                 state.add_constraint(cond_expr);
             }
             Instr::FieldLoad { dest, obj, field } => {
-                let sym = state.memory.get(&(obj.0, field.0)).cloned()
+                let sym = state
+                    .memory
+                    .get(&(obj.0, field.0))
+                    .cloned()
                     .unwrap_or_else(|| {
                         let var = SmtVar {
                             name: format!("field_{}_{}", obj.0, field.0),

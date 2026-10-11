@@ -1,5 +1,5 @@
 use ndarray::ArrayD;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Interval Bound Propagation (IBP) Configuration
 #[derive(Debug, Serialize, Deserialize)]
@@ -24,13 +24,13 @@ impl RobustnessVerifier {
         // Simple IBP Logic (Placeholder):
         // Lower = x - epsilon, Upper = x + epsilon
         // In a real implementation, this would propagate through weights.
-        
+
         let lower = input_data.mapv(|x| x - config.epsilon);
         let upper = input_data.mapv(|x| x + config.epsilon);
-        
+
         LayerBounds { lower, upper }
     }
-    
+
     pub fn verify_safety(bounds: &LayerBounds, safety_threshold: f32) -> bool {
         // Check if worst-case (upper bound of loss, or specific node) violates threshold
         bounds.upper.iter().all(|&x| x < safety_threshold)
