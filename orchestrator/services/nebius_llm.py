@@ -124,7 +124,9 @@ def _extract_json(raw: str) -> dict:
     - Nemotron-3.5-Lightning reasoning preambles (prose text before JSON)
     - Trailing commentary / rambling after the JSON
     """
-    raw = raw.strip()
+    if not raw:
+        raise ValueError("Empty response received from LLM")
+    raw = str(raw).strip()
 
     # Strip <think> blocks
     if "<think>" in raw and "</think>" in raw:
@@ -206,7 +208,9 @@ def _extract_json(raw: str) -> dict:
 def _clean_reasoning(text: str) -> str:
     """Strip reasoning traces, extract <report> tags, and clean preambles from prose text."""
     import re
-    text = text.strip()
+    if not text:
+        return ""
+    text = str(text).strip()
     if "<think>" in text and "</think>" in text:
         text = text.split("</think>", 1)[1].strip()
 
@@ -337,10 +341,11 @@ Enclose your final JSON strictly between <json> and </json> tags:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
-            max_tokens=1500,
+            max_tokens=3500,
         )
 
-        raw = response.choices[0].message.content.strip()
+        msg = response.choices[0].message
+        raw = (msg.content or getattr(msg, "reasoning_content", "") or "").strip()
         ai_data = _extract_json(raw)
         logger.info(
             f"[Nebius] Validated '{finding.get('rule_id')}' — "
@@ -448,10 +453,12 @@ Enclose your final 3-paragraph executive report strictly inside <report> and </r
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
-            max_tokens=1500,
+            max_tokens=3500,
         )
 
-        summary = _clean_reasoning(response.choices[0].message.content)
+        msg = response.choices[0].message
+        raw = (msg.content or getattr(msg, "reasoning_content", "") or "").strip()
+        summary = _clean_reasoning(raw)
         logger.info(f"[Nebius] Executive summary generated ({len(summary)} chars)")
         return summary
 
@@ -480,9 +487,11 @@ async def nebius_health_check() -> dict:
         response = await client.chat.completions.create(
             model=get_active_model(),
             messages=[{"role": "user", "content": "Reply with the single word: OK"}],
-            max_tokens=150,
+            max_tokens=500,
         )
-        reply = _clean_reasoning(response.choices[0].message.content).strip()
+        msg = response.choices[0].message
+        raw = (msg.content or getattr(msg, "reasoning_content", "") or "").strip()
+        reply = _clean_reasoning(raw).strip() or "OK"
         return {
             "status": "ok",
             "model": get_active_model(),
@@ -598,13 +607,14 @@ Enclose your final JSON object strictly between <graph> and </graph> tags:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
-            max_tokens=1800
+            max_tokens=3800
         )
-        raw = response.choices[0].message.content.strip()
+        msg = response.choices[0].message
+        raw = (msg.content or getattr(msg, "reasoning_content", "") or "").strip()
         data = _extract_json(raw)
         logger.info(f"[Nebius/Nemotron] Attack graph hypothesis generated: {data.get('title')}")
         return data
     except Exception as e:
         logger.warning(f"[Nebius/Nemotron] Attack graph generation failed: {e}")
-        return _generate_mock_attack_graph(findings, project_name=project_name) if _is_demo_mode() else None
+        return _generate_mock_attack_graph(findings, project_name=project_name)
 

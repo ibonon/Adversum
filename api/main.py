@@ -71,6 +71,15 @@ except Exception as _e:
     logging.getLogger("adversum.api").warning(f"[Tavily] Module not loaded: {_e}")
     _TAVILY_LOADED = False
 
+# ── Phase 1: Live Fork & Self-Healing Engines ──────────────────────────────
+try:
+    from modules.live_fork.engine import LiveForkEngine
+    from orchestrator.services.self_healing import TriPartiteSelfHealingEngine
+    _PHASE1_ENGINES_LOADED = True
+except Exception as _e:
+    logging.getLogger("adversum.api").warning(f"[Phase 1] Modules not loaded: {_e}")
+    _PHASE1_ENGINES_LOADED = False
+
 # Setup Rate Limiter
 limiter = Limiter(key_func=get_remote_address)
 
@@ -186,8 +195,11 @@ class JobDetailResponse(JobResponse):
     page_size: int = 100
 
 class ScanAllRequest(BaseModel):
-    target_path: str
+    target_path: Optional[str] = None
+    target: Optional[List[str]] = None
     modules: Optional[List[str]] = None
+    all_modules: bool = True
+    min_severity: str = "INFO"
 
 class FindingFixRequest(BaseModel):
     file: str
@@ -197,7 +209,17 @@ class FindingFixRequest(BaseModel):
     recommendation: Optional[str] = None
 
 class RemediateRequest(BaseModel):
-    findings: List[FindingFixRequest]
+    findings: List[Dict[str, Any]]
+
+class LiveForkRequest(BaseModel):
+    finding: Dict[str, Any]
+    initial_vault_eth: Optional[float] = 100.0
+    network: Optional[str] = "ethereum-mainnet-fork"
+
+class SelfHealingPRRequest(BaseModel):
+    finding: Dict[str, Any]
+    repo_url: Optional[str] = ""
+    apply_to_disk: Optional[bool] = False
 
 async def process_audit(job_id: int, target_path: str):
     # We need a new session for the background task
@@ -397,48 +419,6 @@ async def apply_batch_fix(job_id: int, request: Request, session: AsyncSession =
             
     await session.commit()
     return results
-
-@app.post("/api/v1/scan/all", tags=["Scanner"], dependencies=[Depends(get_api_key)])
-@limiter.limit("5/minute")
-async def scan_all(request: Request, payload: ScanAllRequest):
-    """Lance scan_all.py sur un dossier."""
-    script_path = os.path.join(os.path.dirname(__file__), "../modules/scan_all.py")
-    cmd = ["python", script_path, "--target", payload.target_path, "--format", "json"]
-    if payload.modules:
-        cmd.extend(["--modules"] + payload.modules)
-        
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if result.returncode not in (0, 1):
-             raise Exception(result.stderr or result.stdout)
-             
-        # Extract JSON from output in case of preamble
-        raw_output = result.stdout
-        json_start = raw_output.find("{")
-        if json_start != -1:
-            data = json.loads(raw_output[json_start:])
-            return data
-        else:
-            raise Exception("No JSON output found")
-    except Exception as e:
-        logger.error(f"scan_all failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/v1/scan/remediate", tags=["Remediation"], dependencies=[Depends(get_api_key)])
-@limiter.limit("5/minute")
-async def remediate_findings(request: Request, payload: RemediateRequest):
-    """Prend une liste de findings et génère/applique les diffs de correction."""
-    results = []
-    for f in payload.findings:
-        # Generate fake diffs for the UI preview
-        diff = f"--- a/{os.path.basename(f.file)}\n+++ b/{os.path.basename(f.file)}\n@@ -{f.line},1 +{f.line},1 @@\n-{f.snippet}\n+# TODO: Apply {f.recommendation or 'Security Fix'}"
-        results.append({
-            "file": f.file,
-            "rule_id": f.rule_id,
-            "status": "diff_generated",
-            "diff": diff
-        })
-    return {"status": "success", "remediations": results}
 
 @app.post("/audit", response_model=JobResponse, dependencies=[Depends(get_api_key)])
 @limiter.limit("10/minute")
@@ -1037,7 +1017,8 @@ async def scan_all_endpoint(
     Returns unified JSON findings.
     """
     script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
-    cmd = [sys.executable, script_path, "--format", "json", "--target"] + payload.target
+    targets = payload.target or ([payload.target_path] if payload.target_path else ["./"])
+    cmd = [sys.executable, script_path, "--format", "json", "--target"] + targets
     if payload.all_modules:
         cmd.append("--all")
     if payload.modules:
@@ -1086,5 +1067,56 @@ async def remediate_endpoint(
     except Exception as e:
         logger.error(f"Remediation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Remediation error: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 1 FLAGSHIP ENDPOINTS: LIVE FORK EXPLOIT & TRI-PARTITE SELF-HEALING PR
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/v1/exploit/live-fork", tags=["Live Fork Exploitation"])
+async def live_fork_exploit_endpoint(
+    payload: LiveForkRequest,
+    api_key: str = Depends(get_api_key)
+):
+    """
+    Executes an empirical on-chain fork exploit simulation for a detected finding.
+    Returns verified EVM call traces, gas metrics, and Proof of Exploit (PoE) certificate.
+    """
+    try:
+        from modules.live_fork.engine import LiveForkEngine
+        engine = LiveForkEngine()
+        proof = engine.execute_live_exploit(
+            finding=payload.finding,
+            initial_vault_eth=payload.initial_vault_eth or 100.0,
+            network=payload.network or "ethereum-mainnet-fork"
+        )
+        return proof.to_dict()
+    except Exception as e:
+        logger.error(f"Live fork exploit execution failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Live fork exploit failed: {str(e)}")
+
+
+@app.post("/api/v1/remediation/self-healing-pr", tags=["Self-Healing PR"])
+async def self_healing_pr_endpoint(
+    payload: SelfHealingPRRequest,
+    api_key: str = Depends(get_api_key)
+):
+    """
+    Coordinates the Tri-Partite Security Committee (Attacker vs Defender vs Rust Judge)
+    to generate a mathematically proven GitHub Pull Request package.
+    """
+    try:
+        from orchestrator.services.self_healing import TriPartiteSelfHealingEngine
+        engine = TriPartiteSelfHealingEngine()
+        pr_package = engine.generate_verified_pr(
+            finding=payload.finding,
+            repo_url=payload.repo_url or "",
+            apply_to_disk=bool(payload.apply_to_disk)
+        )
+        return pr_package.to_dict()
+    except Exception as e:
+        logger.error(f"Self-healing PR generation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Self-healing PR failed: {str(e)}")
+
 
 

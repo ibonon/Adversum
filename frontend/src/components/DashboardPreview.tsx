@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import {
   AlertTriangle, Clock, TrendingUp, Download, FileCode, Copy, Check, Globe,
   Wrench, Loader2, Zap, Shield, Building2, FileText, ChevronDown, ChevronUp, CheckCircle2, Terminal,
-  Code2, GitPullRequest, Sparkles, Play
+  Code2, GitPullRequest, Sparkles, Play, Cpu, Flame
 } from 'lucide-react';
 
 const SCAN_PROFILES = [
@@ -301,6 +301,92 @@ const DashboardPreview = () => {
   const [copiedPocIdx, setCopiedPocIdx] = useState<number | null>(null);
   const [copiedPatchIdx, setCopiedPatchIdx] = useState<number | null>(null);
   const [findingActiveTab, setFindingActiveTab] = useState<{ [key: number]: 'poc' | 'patch' }>({});
+  const [forkResults, setForkResults] = useState<{ [key: number]: any }>({});
+  const [executingForkIdx, setExecutingForkIdx] = useState<number | null>(null);
+  const [prResults, setPrResults] = useState<{ [key: number]: any }>({});
+  const [generatingPrIdx, setGeneratingPrIdx] = useState<number | null>(null);
+
+  const handleRunLiveFork = async (vuln: any, idx: number) => {
+    setExecutingForkIdx(idx);
+    try {
+      const payload = {
+        finding: {
+          id: vuln.name,
+          rule_id: vuln.name.split(':')[0].trim(),
+          title: vuln.name,
+          file: vuln.file,
+          snippet: vuln.snippet,
+          severity: vuln.severity,
+          cwe: vuln.cwe,
+        },
+        initial_vault_eth: 100.0,
+        network: 'ethereum-mainnet-fork'
+      };
+      let res;
+      try {
+        res = await fetch('/api/v1/exploit/live-fork', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        res = await fetch('http://127.0.0.1:8000/api/v1/exploit/live-fork', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
+          body: JSON.stringify(payload)
+        });
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        setForkResults(prev => ({ ...prev, [idx]: data }));
+      }
+    } catch (err) {
+      console.error('Live fork error:', err);
+    } finally {
+      setExecutingForkIdx(null);
+    }
+  };
+
+  const handleGeneratePr = async (vuln: any, idx: number) => {
+    setGeneratingPrIdx(idx);
+    try {
+      const payload = {
+        finding: {
+          id: vuln.name,
+          rule_id: vuln.name.split(':')[0].trim(),
+          file: vuln.file,
+          snippet: vuln.snippet,
+          severity: vuln.severity,
+          cwe: vuln.cwe,
+          description: vuln.description
+        },
+        repo_url: repoUrl || 'https://github.com/organization/digital-assets-vault',
+        apply_to_disk: false
+      };
+      let res;
+      try {
+        res = await fetch('/api/v1/remediation/self-healing-pr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        res = await fetch('http://127.0.0.1:8000/api/v1/remediation/self-healing-pr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
+          body: JSON.stringify(payload)
+        });
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        setPrResults(prev => ({ ...prev, [idx]: data }));
+      }
+    } catch (err) {
+      console.error('Self healing PR error:', err);
+    } finally {
+      setGeneratingPrIdx(null);
+    }
+  };
 
   const profile = SCAN_PROFILES.find(p => p.id === selectedProfile) || SCAN_PROFILES[0];
 
@@ -1220,6 +1306,121 @@ const DashboardPreview = () => {
                               <pre className="rounded-lg bg-black/60 border border-emerald-500/20 p-3 font-mono text-[11px] text-emerald-100/90 overflow-x-auto max-h-60 leading-relaxed">
                                 <code>{(vuln as any).diff_patch}</code>
                               </pre>
+                            </div>
+                          )}
+
+                          {/* ════ PHASE 1 SINGULARITY: LIVE FORK EXPLOIT & TRI-PARTITE AUTO-PR ════ */}
+                          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/20">
+                            <button
+                              disabled={executingForkIdx === i}
+                              onClick={(e) => { e.stopPropagation(); handleRunLiveFork(vuln, i); }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-all shadow-sm"
+                            >
+                              {executingForkIdx === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Flame className="w-3.5 h-3.5 text-red-500" />}
+                              <span>{executingForkIdx === i ? 'Exécution sur Fork...' : '⚡ Exécuter Fork Mainnet (Proof of Exploit)'}</span>
+                            </button>
+
+                            <button
+                              disabled={generatingPrIdx === i}
+                              onClick={(e) => { e.stopPropagation(); handleGeneratePr(vuln, i); }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold transition-all shadow-sm"
+                            >
+                              {generatingPrIdx === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitPullRequest className="w-3.5 h-3.5 text-emerald-400" />}
+                              <span>{generatingPrIdx === i ? 'Génération PR...' : '🛠️ Auto-PR Tri-Partite (AVR)'}</span>
+                            </button>
+                          </div>
+
+                          {/* ── LIVE FORK PROOF OF EXPLOIT RESULT CARD ── */}
+                          {forkResults[i] && (
+                            <div className="rounded-xl border border-red-500/40 bg-red-950/20 p-3.5 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-bold text-red-400">
+                                  <Flame className="w-4 h-4 text-red-400" />
+                                  <span>Preuve d'Exploitation Empirique sur Fork (0% Faux Positif)</span>
+                                </div>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-red-500/50 bg-red-500/20 text-red-200 font-bold">
+                                  {forkResults[i].status}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] font-mono">
+                                <div className="p-2 rounded bg-black/40 border border-red-500/20">
+                                  <div className="text-muted-foreground text-[10px]">Trésorerie Avant</div>
+                                  <div className="font-semibold text-foreground">{forkResults[i].initial_vault_balance_eth?.toFixed(2)} ETH</div>
+                                </div>
+                                <div className="p-2 rounded bg-black/40 border border-red-500/20">
+                                  <div className="text-muted-foreground text-[10px]">Trésorerie Après</div>
+                                  <div className="font-semibold text-foreground">{forkResults[i].final_vault_balance_eth?.toFixed(2)} ETH</div>
+                                </div>
+                                <div className="p-2 rounded bg-black/40 border border-red-500/20">
+                                  <div className="text-muted-foreground text-[10px]">Siphonné (Attaquant)</div>
+                                  <div className="font-bold text-red-400">+{forkResults[i].attacker_profit_eth?.toFixed(2)} ETH</div>
+                                </div>
+                                <div className="p-2 rounded bg-black/40 border border-red-500/20">
+                                  <div className="text-muted-foreground text-[10px]">Valeur USD</div>
+                                  <div className="font-bold text-red-400">${forkResults[i].attacker_profit_usd?.toLocaleString()}</div>
+                                </div>
+                              </div>
+
+                              <div className="text-[10px] text-muted-foreground font-mono flex items-center justify-between">
+                                <span>Tx Hash: <span className="text-foreground">{forkResults[i].tx_hash?.slice(0, 22)}...</span></span>
+                                <span>Gas Utilisé: <span className="text-foreground">{forkResults[i].gas_consumed?.toLocaleString()}</span></span>
+                              </div>
+
+                              {forkResults[i].traces && (
+                                <div className="space-y-1">
+                                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Trace d'Exécution EVM (Foundry / RPC) :</div>
+                                  <div className="rounded-lg bg-black/70 border border-red-500/20 p-2 font-mono text-[10px] space-y-1 max-h-36 overflow-y-auto">
+                                    {forkResults[i].traces.map((tr: any, ti: number) => (
+                                      <div key={ti} className="flex items-center gap-2">
+                                        <span className="text-muted-foreground">[{ti}]</span>
+                                        <span className="text-blue-400 font-semibold">{tr.call_type}</span>
+                                        <span className="text-muted-foreground">depth={tr.depth}</span>
+                                        <span className={tr.status?.includes('DRAIN') ? 'text-red-400 font-bold' : tr.status?.includes('SUCCESS') ? 'text-emerald-400' : 'text-amber-300'}>
+                                          {tr.status}
+                                        </span>
+                                        <span className="text-muted-foreground ml-auto">gas={tr.gas_cost}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* ── TRI-PARTITE SELF-HEALING PR RESULT CARD ── */}
+                          {prResults[i] && (
+                            <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-3.5 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                                  <GitPullRequest className="w-4 h-4 text-emerald-400" />
+                                  <span>Pull Request Autonome Prête — Comité Tri-Partite Adversum</span>
+                                </div>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/50 bg-emerald-500/20 text-emerald-200 font-bold">
+                                  {prResults[i].verification_status}
+                                </span>
+                              </div>
+
+                              <div className="text-xs font-semibold text-foreground">
+                                {prResults[i].pr_title}
+                              </div>
+
+                              <div className="flex items-center gap-3 text-[10px] font-mono text-muted-foreground">
+                                <span>Branche: <span className="text-emerald-300">{prResults[i].branch_name}</span></span>
+                                <span>Preuve: <span className="text-emerald-300">{prResults[i].formal_proof_badge}</span></span>
+                                <span>Gaz: <span className="text-amber-300">{prResults[i].gas_delta}</span></span>
+                              </div>
+
+                              <pre className="rounded-lg bg-black/60 border border-emerald-500/20 p-2 font-mono text-[10px] text-emerald-200 overflow-x-auto max-h-40">
+                                <code>{prResults[i].unified_diff}</code>
+                              </pre>
+
+                              <div className="rounded bg-black/40 p-2 border border-border/30 font-mono text-[10px] text-muted-foreground space-y-1">
+                                <div className="text-foreground font-semibold">Commandes pour appliquer et soumettre la PR :</div>
+                                {prResults[i].git_cli_commands?.map((cmd: string, ci: number) => (
+                                  <div key={ci} className="text-blue-300">$ {cmd}</div>
+                                ))}
+                              </div>
                             </div>
                           )}
                         </div>

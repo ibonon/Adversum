@@ -67,7 +67,7 @@ jobs:
     - name: Run Test Suite
       run: |
         export PYTHONPATH=$PYTHONPATH:$(pwd)
-        pytest orchestrator/tests modules/solidity/tests -v
+        pytest orchestrator/tests modules/solidity/tests tests -v
 
   # --- FRONTEND ---
   frontend-build:

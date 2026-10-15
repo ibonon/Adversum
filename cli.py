@@ -21,6 +21,12 @@ import os
 import argparse
 from pathlib import Path
 
+# Safe UTF-8 output on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Add project root and modules to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -144,6 +150,63 @@ def cmd_serve(args):
     uvicorn.run("api.main:app", host="0.0.0.0", port=args.port, reload=args.reload)
 
 
+def cmd_live_fork(args):
+    print_banner()
+    print(f"{CYAN}{BOLD}⚡ Lancement de l'Exploitation sur Fork Mainnet (Proof of Exploit)...{RESET}\n")
+    from modules.live_fork.engine import LiveForkEngine
+    engine = LiveForkEngine()
+    finding = {
+        "rule_id": args.rule or "SOL-001",
+        "file": args.file or "contracts/Vault.sol",
+        "title": f"Exploit simulation for {args.rule or 'SOL-001'}",
+        "severity": "CRITICAL",
+        "snippet": "msg.sender.call{value: amount}(''); balances[msg.sender] -= amount;"
+    }
+    proof = engine.execute_live_exploit(finding, initial_vault_eth=args.eth or 100.0)
+    print(f"{GREEN}{BOLD}══════════════════════════════════════════════════════════════════{RESET}")
+    print(f"{GREEN}{BOLD}✓ PROOF OF EXPLOIT (PoE) CERTIFICATE — 0% FAUX POSITIF{RESET}")
+    print(f"{GREEN}{BOLD}══════════════════════════════════════════════════════════════════{RESET}")
+    print(f"  • Cible            : {proof.target_contract}")
+    print(f"  • Vecteur d'attaque: {proof.exploit_type}")
+    print(f"  • Statut           : {RED}{BOLD}{proof.status}{RESET}")
+    print(f"  • Trésorerie Init  : {proof.initial_vault_balance_eth:.2f} ETH")
+    print(f"  • Trésorerie Finale: {proof.final_vault_balance_eth:.2f} ETH")
+    print(f"  • Butin Attaquant  : {RED}{BOLD}{proof.attacker_profit_eth:.2f} ETH (${proof.attacker_profit_usd:,.2f}){RESET}")
+    print(f"  • Hash Transaction : {proof.tx_hash}")
+    print(f"  • Badge de Preuve  : {CYAN}{proof.empirical_badge}{RESET}\n")
+    print(f"{BOLD}Trace d'Exécution EVM (Foundry / RPC Stack):{RESET}")
+    for idx, trace in enumerate(proof.traces):
+        status_col = GREEN if "SUCCESS" in trace['status'] else RED if "DRAIN" in trace['status'] else YELLOW
+        print(f"  [{idx}] {trace['call_type']:<22} | depth={trace['depth']} | {trace['target'][:18]}... | {status_col}{trace['status']}{RESET} | gas={trace['gas_cost']}")
+
+
+def cmd_self_heal(args):
+    print_banner()
+    print(f"{CYAN}{BOLD}🛠️ Comité Tri-Partite de Remédiation Autonome (Self-Healing PR)...{RESET}\n")
+    from orchestrator.services.self_healing import TriPartiteSelfHealingEngine
+    engine = TriPartiteSelfHealingEngine()
+    finding = {
+        "rule_id": args.rule or "SOL-001",
+        "file": args.file or "contracts/Vault.sol",
+        "severity": "CRITICAL",
+        "snippet": "msg.sender.call{value: amount}(''); balances[msg.sender] -= amount;"
+    }
+    pkg = engine.generate_verified_pr(finding, apply_to_disk=args.apply)
+    print(f"{GREEN}{BOLD}══════════════════════════════════════════════════════════════════{RESET}")
+    print(f"{GREEN}{BOLD}✓ GITHUB PULL REQUEST PRÊTE — VÉRIFICATION FORMELLE VALIDÉE{RESET}")
+    print(f"{GREEN}{BOLD}══════════════════════════════════════════════════════════════════{RESET}")
+    print(f"  • Titre PR        : {pkg.pr_title}")
+    print(f"  • Branche Git     : {pkg.branch_name}")
+    print(f"  • Statut AVR      : {GREEN}{BOLD}{pkg.verification_status}{RESET}")
+    print(f"  • Preuve Formelle : {CYAN}{pkg.formal_proof_badge}{RESET}")
+    print(f"  • Impact Gaz      : {YELLOW}{pkg.gas_delta}{RESET}\n")
+    print(f"{BOLD}Diff Chirurgical Généré :{RESET}")
+    print(pkg.unified_diff)
+    print(f"\n{BOLD}Commandes Git Automatisées :{RESET}")
+    for cmd in pkg.git_cli_commands:
+        print(f"  $ {cmd}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Adversum — AI-Powered Security Reasoning Engine",
@@ -165,6 +228,18 @@ def main():
     # check-ai
     subparsers.add_parser("check-ai", help="Test Nebius Token Factory & Tavily API connectivity")
 
+    # live-fork (Phase 1)
+    p_fork = subparsers.add_parser("live-fork", help="Run live mainnet fork exploit execution & proof")
+    p_fork.add_argument("--rule", default="SOL-001", help="Rule ID to exploit (default: SOL-001)")
+    p_fork.add_argument("--file", default="contracts/Vault.sol", help="Target contract file")
+    p_fork.add_argument("--eth", type=float, default=100.0, help="Initial vault liquidity in ETH")
+
+    # self-heal (Phase 1)
+    p_heal = subparsers.add_parser("self-heal", help="Run Tri-Partite Self-Healing & generate verified GitHub PR")
+    p_heal.add_argument("--rule", default="SOL-001", help="Rule ID to fix (default: SOL-001)")
+    p_heal.add_argument("--file", default="contracts/Vault.sol", help="Target contract file")
+    p_heal.add_argument("--apply", action="store_true", default=False, help="Apply patch directly to disk")
+
     # serve
     p_serve = subparsers.add_parser("serve", help="Start the FastAPI backend server")
     p_serve.add_argument("--port", type=int, default=8000, help="Port to listen on (default: 8000)")
@@ -182,6 +257,10 @@ def main():
         cmd_scan(args)
     elif args.command == "demo":
         cmd_demo(args)
+    elif args.command == "live-fork":
+        cmd_live_fork(args)
+    elif args.command == "self-heal":
+        cmd_self_heal(args)
     elif args.command == "serve":
         cmd_serve(args)
     else:

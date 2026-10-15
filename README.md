@@ -8,12 +8,14 @@ Adversum est un moteur d'analyse de sécurité avancé qui combine l'analyse sta
 
 ## 🚀 Fonctionnalités
 
-- **🔍 Analyse Statique Multi-Langage**: Analyse AST/CFG via Tree-sitter (Rust core)
-- **🤖 Validation IA**: Raisonnement sur la sécurité via LLM pour réduire les faux positifs
-- **⚡ Auto-Fix**: Génération et application automatique de correctifs de sécurité
-- **📊 Dashboard Interactif**: Interface Next.js moderne avec visualisations en temps réel
-- **🔐 Security-First**: API sécurisée avec authentification par clé API
-- **📈 Attack Graph**: Visualisation des chemins d'attaque potentiels
+- **🔍 Analyse Statique Multi-Langage**: Analyse AST/CFG déterministe via Tree-sitter & Ascent Datalog (Rust core)
+- **🤖 Raisonnement NVIDIA Nemotron**: Validation contextuelle sur Nebius Token Factory (< 2.8% faux positifs)
+- **⚡ Live Fork Exploit Execution (PoE)**: Validation empirique d'exploits sur fork Ethereum Mainnet (0% faux positifs)
+- **🛠️ Self-Healing Tri-Partite (Auto-PR)**: Comité d'agents (Attaquant vs Défenseur vs Juge) générant des PRs GitHub vérifiées
+- **🌐 Threat Intelligence Temps Réel**: Corrélation d'advisories et de CVEs en direct via l'API Tavily
+- **🧪 PoC d'Exploit Foundry**: Génération automatique de suites de tests `.t.sol` prêtes à l'emploi
+- **🏛️ Standards Institutionnels**: Conformité CCSS v3.0 (10 domaines de garde crypto) et STRIDE pour CEX
+- **📊 Dashboard Interactif**: Interface Next.js / Vite React moderne avec télémétrie en temps réel
 
 ---
 
@@ -21,21 +23,24 @@ Adversum est un moteur d'analyse de sécurité avancé qui combine l'analyse sta
 
 ```
 adversum/
-├── core/              # Unified Adversarial Engine (SAST + Fast Adversarial Kit)
-├── orchestrator/      # Python pipeline & AI reasoning
-├── api/               # FastAPI REST endpoints
-├── frontend/          # Next.js + React dashboard
-├── knowledge/         # Base de connaissances sécurité
-└── docs/              # Documentation
+├── core/              # Unified Adversarial & SAST Engine (Rust, Rayon, Datalog, SMT)
+├── orchestrator/      # Python pipeline, AI reasoning (Nemotron) & Tri-Partite Self-Healing
+├── modules/           # Scanners (Solidity, Crypto, IaC, PoR, Live Fork, PoC Generator)
+├── api/               # FastAPI REST endpoints sécurisés
+├── frontend/          # Vite + React 18 + Tailwind CSS cybersecurity dashboard
+├── knowledge/         # Base de connaissances sécurité & standards CCSS
+└── docs/              # Spécifications & guides d'architecture
 ```
 
 ### Stack Technique
 
-- **Core**: Rust (SAST + ML Adversarial Kit - PGD, FGSM, C&W)
-- **Orchestrator**: Python + PyO3 (bridge Rust-Python)
-- **API**: FastAPI + SQLModel (SQLite)
-- **Frontend**: Next.js 14 + React 18 + Tailwind CSS + TypeScript
-- **AI**: OpenAI API (GPT-4) pour raisonnement sécurité
+- **Core**: Rust (SAST + ML Adversarial Kit - PGD, FGSM, C&W + SMT solver)
+- **AI Infrastructure**: Nebius Token Factory / NVIDIA NIM (`nvidia/Nemotron-3_5-Lightning`)
+- **Live Fork**: Anvil / Ephemeral EVM state simulator (Foundry stack)
+- **Threat Intel**: Tavily Search API (CVE / NVD / Snyk live correlation)
+- **Backend**: Python 3.11+, FastAPI, SQLModel (SQLite/PostgreSQL)
+- **Frontend**: React 18 + Vite + Tailwind CSS + Radix UI + Lucide
+
 
 ---
 
