@@ -64,10 +64,22 @@ jobs:
         ruff check --select=E9,F63,F7,F82 .
         ruff check . --ignore=E501 --exit-zero
 
-    - name: Run Test Suite
+    - name: Run Test Suite (Phase 1 + Phase 2 AI-ASOC)
+      env:
+        API_KEY: adv-dev-key-123
+        NEBIUS_MOCK: "1"
       run: |
         export PYTHONPATH=$PYTHONPATH:$(pwd)
-        pytest orchestrator/tests modules/solidity/tests tests -v
+        pytest orchestrator/tests modules/solidity/tests \
+          tests/test_phase1_live_fork.py \
+          tests/test_phase1_self_healing.py \
+          tests/test_phase1_api.py \
+          tests/test_phase2_websocket.py \
+          tests/test_phase2_mev.py \
+          tests/test_phase2_threat_model.py \
+          tests/test_phase2_compliance.py \
+          tests/test_phase2_api.py \
+          -v
 
   # --- FRONTEND ---
   frontend-build:

@@ -1120,3 +1120,260 @@ async def self_healing_pr_endpoint(
 
 
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 2: AI-ASOC — WEBSOCKET, MEV, THREAT MODEL, COMPLIANCE
+# ═══════════════════════════════════════════════════════════════════════════
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+
+class MEVAnalysisRequest(BaseModel):
+    transactions: List[Dict[str, Any]]
+    chain: str = "ethereum"
+    block_number: Optional[int] = None
+    pool_liquidity_eth: float = 1000.0
+    eth_price_usd: float = 2650.0
+
+
+class ThreatModelRequest(BaseModel):
+    source_code: str
+    target: str = "Unknown Target"
+    component_names: Optional[List[str]] = None
+
+
+class ComplianceReportRequest(BaseModel):
+    findings: List[Dict[str, Any]]
+    target: str = "Unknown System"
+    frameworks: List[str] = ["soc2", "iso27001", "sarif"]
+
+
+# ── WebSocket Threat Stream ─────────────────────────────────────────────────
+
+@app.websocket("/ws/threat-stream")
+async def websocket_threat_stream(websocket: WebSocket):
+    """
+    Real-time WebSocket threat stream.
+    Clients receive push notifications for all security events:
+    findings, exploits, MEV attacks, CVE correlations, patches, compliance.
+    """
+    await websocket.accept()
+    from orchestrator.services.threat_stream import get_event_bus
+    bus = get_event_bus()
+    sub_id = f"ws-{id(websocket)}"
+
+    try:
+        async with await bus.subscribe(sub_id) as ctx:
+            logger.info("WebSocket client connected: %s", sub_id)
+            history = bus.get_history(limit=20)
+            await websocket.send_json({
+                "type": "welcome",
+                "subscriber_count": bus.subscriber_count,
+                "recent_events": history,
+                "stats": bus.get_stats(),
+            })
+            while True:
+                event = await ctx.get(timeout=25.0)
+                if event is not None:
+                    await websocket.send_json(event.to_dict())
+                else:
+                    await websocket.send_json({
+                        "type": "heartbeat",
+                        "subscriber_count": bus.subscriber_count,
+                        "stats": bus.get_stats(),
+                    })
+    except WebSocketDisconnect:
+        logger.info("WebSocket client disconnected: %s", sub_id)
+    except Exception as e:
+        logger.error("WebSocket error for %s: %s", sub_id, e)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
+
+
+@app.get("/api/v1/threat-stream/history", tags=["AI-ASOC Threat Stream"])
+async def get_threat_history(
+    limit: int = Query(default=50, le=200),
+    severity: Optional[str] = None,
+    api_key: str = Depends(get_api_key),
+):
+    """Returns recent threat events from the in-memory event history."""
+    from orchestrator.services.threat_stream import get_event_bus
+    bus = get_event_bus()
+    return {"events": bus.get_history(limit=limit, severity=severity), "stats": bus.get_stats()}
+
+
+@app.get("/api/v1/threat-stream/stats", tags=["AI-ASOC Threat Stream"])
+async def get_threat_stream_stats(api_key: str = Depends(get_api_key)):
+    """Returns WebSocket bus statistics."""
+    from orchestrator.services.threat_stream import get_event_bus
+    return get_event_bus().get_stats()
+
+
+# ── MEV Intelligence ────────────────────────────────────────────────────────
+
+@app.post("/api/v1/intelligence/mev-analyze", tags=["MEV Intelligence"])
+async def mev_analyze_endpoint(
+    payload: MEVAnalysisRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Analyzes a block or mempool snapshot for MEV attack patterns.
+    Detects Sandwich, Front-Running, Flash Loan, Rug Pull, Oracle Manipulation.
+    """
+    try:
+        from modules.mev_intelligence.engine import (
+            MEVIntelligenceEngine, MEVTransaction, MEVChain
+        )
+        engine = MEVIntelligenceEngine(eth_price_usd=payload.eth_price_usd)
+        try:
+            chain_enum = MEVChain(payload.chain.lower())
+        except ValueError:
+            chain_enum = MEVChain.ETHEREUM
+
+        txs = [
+            MEVTransaction(
+                tx_hash      = tx.get("tx_hash", f"0x{i:064x}"),
+                from_address = tx.get("from_address", "0x" + "0" * 40),
+                to_address   = tx.get("to_address",   "0x" + "0" * 40),
+                value_wei    = int(tx.get("value_wei", 0)),
+                gas_price    = int(tx.get("gas_price", 30_000_000_000)),
+                gas_limit    = int(tx.get("gas_limit", 200_000)),
+                input_data   = tx.get("input_data", "0x"),
+                position     = i,
+            )
+            for i, tx in enumerate(payload.transactions)
+        ]
+
+        result = await engine.analyze_block(
+            transactions       = txs,
+            chain              = chain_enum,
+            block_number       = payload.block_number,
+            pool_liquidity_eth = payload.pool_liquidity_eth,
+        )
+
+        if result.has_critical:
+            from orchestrator.services.threat_stream import emit_mev_attack
+            for pattern in result.patterns_found:
+                if pattern.risk_level.value == "CRITICAL":
+                    await emit_mev_attack(
+                        attack_type       = pattern.attack_type.value,
+                        chain             = pattern.chain.value,
+                        value_at_risk_usd = pattern.value_at_risk_usd,
+                        tx_hash           = pattern.tx_hashes[0] if pattern.tx_hashes else "0x",
+                        payload           = pattern.to_dict(),
+                    )
+
+        return result.to_dict()
+
+    except Exception as e:
+        logger.error("MEV analysis failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"MEV analysis error: {str(e)}")
+
+
+# ── Autonomous Threat Modeling ──────────────────────────────────────────────
+
+@app.post("/api/v1/intelligence/threat-model", tags=["Autonomous Threat Modeling"])
+async def threat_model_endpoint(
+    payload: ThreatModelRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Generates a complete STRIDE + PASTA + MITRE ATT&CK threat model from source code.
+    Replaces 40h of manual consultant work with <60s autonomous analysis.
+    """
+    try:
+        from modules.threat_model.autonomous_modeler import AutonomousThreatModeler
+        modeler = AutonomousThreatModeler()
+        report  = await modeler.analyze(
+            source_code     = payload.source_code,
+            target          = payload.target,
+            component_names = payload.component_names,
+        )
+
+        from orchestrator.services.threat_stream import get_event_bus, ThreatEvent, ThreatEventType, ThreatSeverity
+        bus = get_event_bus()
+        sev_map = {"CRITICAL": ThreatSeverity.CRITICAL, "HIGH": ThreatSeverity.HIGH,
+                   "MEDIUM": ThreatSeverity.MEDIUM, "LOW": ThreatSeverity.LOW}
+        await bus.publish(ThreatEvent(
+            event_type  = ThreatEventType.THREAT_MODEL_READY,
+            severity    = sev_map.get(report.overall_risk, ThreatSeverity.HIGH),
+            title       = f"Threat Model: {payload.target} ({report.overall_risk})",
+            description = report.executive_summary,
+            payload     = {"report_id": report.report_id, "threat_count": len(report.stride_threats)},
+            source      = "threat-modeler",
+        ))
+
+        return report.to_dict()
+
+    except Exception as e:
+        logger.error("Threat modeling failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Threat model error: {str(e)}")
+
+
+# ── Compliance Report Generation ────────────────────────────────────────────
+
+@app.post("/api/v1/compliance/report", tags=["Compliance Engine"])
+async def compliance_report_endpoint(
+    payload: ComplianceReportRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Generates SOC2 Type II, ISO 27001:2022, and SARIF 2.1 compliance reports.
+    Produces audit-ready evidence artifacts from Adversum findings.
+    """
+    try:
+        response: Dict[str, Any] = {"target": payload.target, "frameworks": {}}
+
+        if "soc2" in payload.frameworks:
+            from modules.compliance.soc2_mapper import SOC2Mapper
+            response["frameworks"]["soc2"] = SOC2Mapper().generate_report(
+                payload.findings, target=payload.target
+            ).to_dict()
+
+        if "iso27001" in payload.frameworks:
+            from modules.compliance.iso27001_mapper import ISO27001Mapper
+            response["frameworks"]["iso27001"] = ISO27001Mapper().generate_report(
+                payload.findings, target=payload.target
+            ).to_dict()
+
+        if "sarif" in payload.frameworks:
+            from modules.compliance.sarif_v2 import SARIFv2Exporter
+            response["frameworks"]["sarif"] = SARIFv2Exporter().export(
+                payload.findings, tool_name="Adversum Security Engine"
+            ).to_sarif()
+
+        from orchestrator.services.threat_stream import get_event_bus, ThreatEvent, ThreatEventType, ThreatSeverity
+        bus = get_event_bus()
+        soc2_score = response.get("frameworks", {}).get("soc2", {}).get("compliance_score", 100)
+        await bus.publish(ThreatEvent(
+            event_type  = ThreatEventType.COMPLIANCE_REPORT,
+            severity    = ThreatSeverity.HIGH if soc2_score < 70 else ThreatSeverity.INFO,
+            title       = f"Compliance Report: {payload.target}",
+            description = f"SOC2 score: {soc2_score:.1f}% | {', '.join(payload.frameworks)}",
+            payload     = {"target": payload.target, "soc2_score": soc2_score},
+            source      = "compliance-engine",
+        ))
+
+        return response
+
+    except Exception as e:
+        logger.error("Compliance report failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Compliance report error: {str(e)}")
+
+
+@app.get("/api/v1/compliance/sarif/{job_id}", tags=["Compliance Engine"])
+async def export_sarif_for_job(
+    job_id: int,
+    api_key: str = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+):
+    """Export SARIF 2.1 report for an existing audit job."""
+    job = await session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    findings = json.loads(job.result_json or "[]")
+    from modules.compliance.sarif_v2 import SARIFv2Exporter
+    return SARIFv2Exporter().export(findings, tool_name="Adversum Security Engine").to_sarif()
