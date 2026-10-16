@@ -1,0 +1,31 @@
+# ==============================================================================
+# Adversum Production Frontend Container (Multi-stage)
+# ==============================================================================
+
+# Stage 1: Build Vite React application
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY frontend/package*.json ./
+RUN npm ci
+
+# Copy frontend source
+COPY frontend/ ./
+
+# Build production bundle
+RUN npm run build
+
+# Stage 2: Serve via Nginx
+FROM nginx:1.27-alpine
+
+# Copy custom Nginx configuration
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+
+# Copy compiled SPA bundle from builder
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

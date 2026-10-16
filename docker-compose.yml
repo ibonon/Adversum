@@ -1,95 +1,85 @@
-version: '3.8'
+# ==============================================================================
+# Adversum Institutional Production Stack — Docker Compose
+# ==============================================================================
+version: "3.8"
 
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+  # ── 1. Redis Event Bus & Pub/Sub Broker ─────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: adversum-redis
+    restart: unless-stopped
     ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://adversum:adversum_password@db:5432/adversum_db
-      - REDIS_URL=redis://redis:6379
-      - NEBIUS_API_KEY=${NEBIUS_API_KEY}
-      - NEBIUS_BASE_URL=${NEBIUS_BASE_URL:-https://api.tokenfactory.nebius.com/v1/}
-      - NEBIUS_MODEL=${NEBIUS_MODEL:-nvidia/Nemotron-3_5-Lightning}
-      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
-      - API_KEY=${API_KEY:-adv-dev-key-123}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost}
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      - "6379:6379"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock  # Allow spawning isolated scanner containers
-
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    ports:
-      - "3000:80"
-    depends_on:
-      backend:
-        condition: service_healthy
-
-  db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: adversum
-      POSTGRES_PASSWORD: adversum_password
-      POSTGRES_DB: adversum_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
+      - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U adversum -d adversum_db"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - adversum-net
 
-  redis:
-    image: redis:7-alpine
+  # ── 2. Local EVM Node (Anvil Fork Engine) ───────────────────────────────────
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: adversum-anvil
+    restart: unless-stopped
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545", "--block-time", "1"]
     ports:
-      - "6379:6379"
+      - "8545:8545"
+    networks:
+      - adversum-net
 
-  worker:
+  # ── 3. FastAPI Security Core & Threat Hunter ────────────────────────────────
+  backend:
     build:
       context: .
-      dockerfile: Dockerfile.backend
-    command: arq orchestrator.workers.llm_worker.WorkerSettings
+      dockerfile: docker/Dockerfile.api
+    container_name: adversum-backend
+    restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://adversum:adversum_password@db:5432/adversum_db
-      - REDIS_URL=redis://redis:6379
-      - NEBIUS_API_KEY=${NEBIUS_API_KEY}
-      - NEBIUS_BASE_URL=${NEBIUS_BASE_URL:-https://api.tokenfactory.nebius.com/v1/}
-      - NEBIUS_MODEL=${NEBIUS_MODEL:-nvidia/Nemotron-3_5-Lightning}
-      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - PORT=8000
+      - REDIS_URL=redis://redis:6379/0
+      - ANVIL_RPC_URL=http://anvil:8545
+      - NEBIUS_MOCK=1
+      - API_KEY=adv-dev-key-123
+      - DATABASE_URL=sqlite+aiosqlite:///./adversum_prod.db
+    ports:
+      - "8000:8000"
     depends_on:
-      db:
-        condition: service_healthy
       redis:
+        condition: service_healthy
+      anvil:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - adversum-net
 
-  scanner:
+  # ── 4. Nginx Reverse Proxy & Frontend SPA ───────────────────────────────────
+  frontend:
     build:
       context: .
-      dockerfile: Dockerfile.scanner
-    image: adversum-scanner:latest
-    profiles:
-      - scanner
-    environment:
-      - REPO_URL=${REPO_URL:-}
-      - OUTPUT_FORMAT=${OUTPUT_FORMAT:-json}
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      dockerfile: docker/Dockerfile.frontend
+    container_name: adversum-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - adversum-net
+
+networks:
+  adversum-net:
+    driver: bridge
 
 volumes:
-  db_data:
+  redis_data:
+    driver: local

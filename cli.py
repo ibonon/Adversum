@@ -309,6 +309,15 @@ def main():
     p_cb.add_argument("--output", "-o", default=None, help="File path to save the generated Solidity code")
     p_cb.add_argument("--json", action="store_true", help="Output result as JSON")
 
+    # ── Phase 5 commands ────────────────────────────────────────────────────
+
+    # hunt (Phase 5)
+    p_hunt = subparsers.add_parser("hunt", help="[Phase 5] Autonomous EVM Threat Hunting Watchtower")
+    p_hunt.add_argument("--chain", default="ethereum", help="Target blockchain (default: ethereum)")
+    p_hunt.add_argument("--blocks", "-b", type=int, default=5, help="Number of blocks to scan (default: 5)")
+    p_hunt.add_argument("--status", action="store_true", help="Display current threat hunter status")
+    p_hunt.add_argument("--json", action="store_true", help="Output result as JSON")
+
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
@@ -343,6 +352,8 @@ def main():
         cmd_wargame(args)
     elif args.command == "circuit-breaker":
         cmd_circuit_breaker(args)
+    elif args.command == "hunt":
+        cmd_hunt(args)
     else:
         parser.print_help()
 
@@ -794,6 +805,69 @@ def cmd_circuit_breaker(args: argparse.Namespace) -> None:
     else:
         print(f"\n  {DIM}Run with --output <file.sol> to save Solidity contract.{RESET}")
     print()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# Phase 5 — Threat Hunting Watchtower CLI commands
+# ════════════════════════════════════════════════════════════════════════════════
+
+def cmd_hunt(args: argparse.Namespace) -> None:
+    """Run EVM threat hunting watchtower scan."""
+    import asyncio
+    import json as _json
+    from modules.threat_hunter.daemon import ThreatHuntingDaemon
+
+    hunter = ThreatHuntingDaemon(chain=args.chain)
+
+    if args.status:
+        st = hunter.status().to_dict()
+        if args.json:
+            print(_json.dumps(st, indent=2))
+        else:
+            print(f"\n{CYAN}{BOLD}[Threat Hunter Status]{RESET}")
+            print(f"  Chain:              {st['chain']}")
+            print(f"  Running:            {'YES' if st['is_running'] else 'NO'}")
+            print(f"  Blocks Scanned:     {st['blocks_scanned']}")
+            print(f"  Contracts Analyzed: {st['contracts_analyzed']}")
+            print(f"  Threats Detected:   {st['threats_detected']}")
+            print(f"  Last Block:         #{st['last_block_number']}")
+            print()
+        return
+
+    print(f"\n{CYAN}{BOLD}[Threat Hunter Watchtower]{RESET} Scanning {args.blocks} blocks on {args.chain}...")
+
+    async def _scan():
+        all_threats = []
+        for i in range(args.blocks):
+            findings = await hunter.scan_single_block()
+            all_threats.extend(findings)
+        return all_threats
+
+    threats = asyncio.run(_scan())
+    st = hunter.status().to_dict()
+
+    if args.json:
+        print(_json.dumps({
+            "status": st,
+            "threats": [t.to_dict() for t in threats],
+        }, indent=2))
+        return
+
+    print(f"\n  Blocks Scanned:     {st['blocks_scanned']}")
+    print(f"  Contracts Triage:   {st['contracts_analyzed']}")
+    threat_color = RED if len(threats) > 0 else GREEN
+    print(f"  Threats Flagged:    {threat_color}{BOLD}{len(threats)}{RESET}\n")
+
+    if threats:
+        print(f"  {BOLD}Detections in Block Stream:{RESET}")
+        for t in threats:
+            sev_color = RED if t.severity == "CRITICAL" else (YELLOW if t.severity == "HIGH" else CYAN)
+            print(f"    • {sev_color}[{t.severity}] {t.detector_id}{RESET} {t.title}")
+            print(f"      Target: {DIM}{t.target_address}{RESET} (Block #{t.block_number})")
+            print(f"      Impact: ${t.estimated_impact_usd:,.0f} | Confidence: {t.confidence * 100:.0f}%")
+            print(f"      Fix:    {DIM}{t.remediation}{RESET}\n")
+    else:
+        print(f"  {GREEN}No anomalous bytecode patterns detected in scanned blocks.{RESET}\n")
 
 
 if __name__ == "__main__":

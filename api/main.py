@@ -1626,3 +1626,125 @@ async def evaluate_protocol_invariants(
         protocol_name=payload.protocol_name,
     )
     return report.to_dict()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 5 — Autonomous Threat Hunting Watchtower & Enterprise Readiness
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from modules.threat_hunter.daemon import ThreatHuntingDaemon
+
+_threat_hunter = ThreatHuntingDaemon(chain="ethereum")
+try:
+    from orchestrator.services.threat_stream import get_event_bus
+    _threat_hunter.attach_event_bus(get_event_bus())
+except Exception:
+    pass
+
+
+class HunterStartRequest(BaseModel):
+    chain: str = "ethereum"
+
+
+class HunterScanBlockRequest(BaseModel):
+    block_number: Optional[int] = None
+
+
+@app.post("/api/v1/hunter/start", tags=["Autonomous Threat Hunter"])
+async def start_threat_hunter(
+    payload: Optional[HunterStartRequest] = None,
+    api_key: str = Depends(get_api_key),
+):
+    """Start the autonomous 24/7 background EVM threat hunter watchtower."""
+    if payload and payload.chain:
+        _threat_hunter.chain = payload.chain
+    status = await _threat_hunter.start()
+    return status.to_dict()
+
+
+@app.post("/api/v1/hunter/stop", tags=["Autonomous Threat Hunter"])
+async def stop_threat_hunter(api_key: str = Depends(get_api_key)):
+    """Stop the autonomous background threat hunter watchtower."""
+    status = await _threat_hunter.stop()
+    return status.to_dict()
+
+
+@app.get("/api/v1/hunter/status", tags=["Autonomous Threat Hunter"])
+async def get_threat_hunter_status(api_key: str = Depends(get_api_key)):
+    """Retrieve operational metrics and status of the Threat Hunter."""
+    return _threat_hunter.status().to_dict()
+
+
+@app.get("/api/v1/hunter/findings", tags=["Autonomous Threat Hunter"])
+async def get_threat_hunter_findings(
+    limit: int = 50,
+    api_key: str = Depends(get_api_key),
+):
+    """Retrieve recent autonomous threat hunting detections."""
+    return {
+        "findings": _threat_hunter.get_findings(limit=limit),
+        "count": len(_threat_hunter.get_findings(limit=limit)),
+    }
+
+
+@app.post("/api/v1/hunter/scan-block", tags=["Autonomous Threat Hunter"])
+async def manual_scan_block(
+    payload: Optional[HunterScanBlockRequest] = None,
+    api_key: str = Depends(get_api_key),
+):
+    """Manually triggers triage on an individual block."""
+    block_num = payload.block_number if payload else None
+    findings = await _threat_hunter.scan_single_block(block_num=block_num)
+    return {
+        "block_number": _threat_hunter._current_block,
+        "findings": [f.to_dict() for f in findings],
+        "threats_count": len(findings),
+    }
+
+
+# ── Enterprise Healthcheck & Readiness Probes ────────────────────────────────
+
+@app.get("/health/live", tags=["Health & Readiness"])
+async def liveness_probe():
+    """Kubernetes / Docker container liveness probe."""
+    return {"status": "alive", "timestamp": time.time()}
+
+
+@app.get("/health/ready", tags=["Health & Readiness"])
+async def readiness_probe(session: AsyncSession = Depends(get_session)):
+    """Enterprise deep readiness probe checking database, event bus, and AI engine."""
+    checks = {
+        "api": "ok",
+        "database": "unknown",
+        "threat_stream_bus": "unknown",
+        "threat_hunter": "active" if _threat_hunter.is_running else "idle",
+    }
+
+    # DB check
+    try:
+        from sqlmodel import text
+        await session.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"unhealthy: {str(e)[:40]}"
+
+    # Threat stream check
+    try:
+        from orchestrator.services.threat_stream import get_event_bus
+        bus = get_event_bus()
+        checks["threat_stream_bus"] = "ok"
+    except Exception as e:
+        checks["threat_stream_bus"] = "degraded"
+
+    is_healthy = checks["database"] == "ok"
+    status_code = 200 if is_healthy else 503
+
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "ready": is_healthy,
+            "version": "5.0.0",
+            "checks": checks,
+            "timestamp": time.time(),
+        },
+    )
