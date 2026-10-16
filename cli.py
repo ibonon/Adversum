@@ -289,6 +289,26 @@ def main():
     p_risk.add_argument("--matrix", "-m", action="store_true", help="Show full DeFi risk matrix")
     p_risk.add_argument("--json", action="store_true", help="Output result as JSON")
 
+    # ── Phase 4 commands ────────────────────────────────────────────────────
+
+    # wargame (Phase 4)
+    p_war = subparsers.add_parser("wargame", help="[Phase 4] Run Resilience Arena clash or benchmark")
+    p_war.add_argument("--protocol", "-p", default="Euler Finance", help="Target protocol name")
+    p_war.add_argument("--scenario", "-s", default="flashloan_drain", choices=["flashloan_drain", "oracle_desync", "reentrancy_wave", "bridge_forgery"], help="Scenario key")
+    p_war.add_argument("--exposure", type=float, default=None, help="Custom exposure amount in USD")
+    p_war.add_argument("--benchmark", "-b", action="store_true", help="Run multi-scenario resilience benchmark")
+    p_war.add_argument("--json", action="store_true", help="Output result as JSON")
+
+    # circuit-breaker (Phase 4)
+    p_cb = subparsers.add_parser("circuit-breaker", help="[Phase 4] Synthesize custom Solidity Circuit Breaker & policies")
+    p_cb.add_argument("--protocol", "-p", default="CustomVault", help="Protocol/Contract name")
+    p_cb.add_argument("--token", default="USDC", help="Monitored token symbol")
+    p_cb.add_argument("--outflow-cap", type=float, default=5.0, help="Max TVL outflow %% per window (default: 5.0)")
+    p_cb.add_argument("--window-blocks", type=int, default=10, help="Rolling window in blocks (default: 10)")
+    p_cb.add_argument("--oracle-dev", type=float, default=3.5, help="Max oracle divergence %% (default: 3.5)")
+    p_cb.add_argument("--output", "-o", default=None, help="File path to save the generated Solidity code")
+    p_cb.add_argument("--json", action="store_true", help="Output result as JSON")
+
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
@@ -319,8 +339,13 @@ def main():
         cmd_simulate(args)
     elif args.command == "risk-score":
         cmd_risk_score(args)
+    elif args.command == "wargame":
+        cmd_wargame(args)
+    elif args.command == "circuit-breaker":
+        cmd_circuit_breaker(args)
     else:
         parser.print_help()
+
 
 
 # ── Phase 2 CLI Command Implementations ─────────────────────────────────────
@@ -672,5 +697,105 @@ def cmd_risk_score(args: argparse.Namespace) -> None:
     print()
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# Phase 4 — Resilience Arena & Circuit Breaker CLI commands
+# ════════════════════════════════════════════════════════════════════════════════
+
+def cmd_wargame(args: argparse.Namespace) -> None:
+    """Run an incident clash simulation or resilience benchmark."""
+    import json as _json
+    from modules.incident_response.resilience_arena import ResilienceArena
+
+    arena = ResilienceArena()
+
+    if args.benchmark:
+        print(f"\n{CYAN}{BOLD}[Resilience Benchmark]{RESET} Running full suite on: {BOLD}{args.protocol}{RESET}")
+        bench = arena.run_benchmark(protocol=args.protocol)
+        if args.json:
+            print(_json.dumps(bench, indent=2))
+            return
+
+        print(f"  Scenarios Evaluated : {bench['scenarios_evaluated']}")
+        print(f"  Avg Salvage Rate    : {GREEN}{BOLD}{bench['average_salvage_rate_pct']:.1f}%{RESET}")
+        print(f"  Avg Time-To-Detect  : {YELLOW}{bench['average_ttd_ms']:.2f} ms{RESET}")
+        print(f"  Avg Time-To-Mitigate: {YELLOW}{bench['average_ttm_ms']:.2f} ms{RESET}")
+        print(f"  Total Capital Saved : {GREEN}${bench['total_capital_saved_usd']:,.0f}{RESET}\n")
+
+        print(f"  {BOLD}Scenario Clash Breakdown:{RESET}")
+        for sc in bench['scenario_details']:
+            print(f"    • {sc['scenario_type']:<35} Saved: {GREEN}{sc['salvage_rate_pct']:.1f}%{RESET} (TTM: {sc['ttm_ms']:.1f}ms)")
+        print()
+        return
+
+    print(f"\n{CYAN}{BOLD}[Resilience Arena Clash]{RESET} Protocol: {args.protocol} | Scenario: {args.scenario}")
+    res = arena.simulate_clash(
+        protocol=args.protocol,
+        scenario_key=args.scenario,
+        custom_exposure_usd=args.exposure,
+    )
+    d = res.to_dict()
+
+    if args.json:
+        print(_json.dumps(d, indent=2))
+        return
+
+    print(f"  Clash ID         : {d['clash_id'][:16]}...")
+    print(f"  Scenario         : {d['scenario_type']}")
+    print(f"  Total Exposure   : {RED}${d['total_exposure_usd']:,.0f}{RESET}")
+    print(f"  Capital Saved    : {GREEN}${d['capital_saved_usd']:,.0f} ({d['salvage_rate_pct']:.1f}%){RESET}")
+    print(f"  Residual Loss    : ${d['capital_loss_usd']:,.0f}")
+    print(f"  Time-To-Detect   : {YELLOW}{d['ttd_ms']:.2f} ms{RESET}")
+    print(f"  Time-To-Mitigate : {YELLOW}{d['ttm_ms']:.2f} ms{RESET}")
+    print(f"  Defense Action   : {CYAN}{d['defense_action']}{RESET}")
+    print(f"  Breaker Status   : {GREEN}{d['circuit_breaker_status']}{RESET}\n")
+
+    print(f"  {BOLD}Incident Timeline Rounds:{RESET}")
+    for rnd in d['incident_rounds']:
+        print(f"    Round #{rnd['round']} (+{rnd['block_offset']} blk): {rnd['event']} [{CYAN}{rnd['state']}{RESET}]")
+    print()
+
+
+def cmd_circuit_breaker(args: argparse.Namespace) -> None:
+    """Synthesize custom Solidity circuit breaker and monitoring policies."""
+    import json as _json
+    from modules.incident_response.circuit_breaker import (
+        CircuitBreakerConfig, CircuitBreakerSynthesizer
+    )
+
+    cfg = CircuitBreakerConfig(
+        protocol_name=args.protocol,
+        target_token=args.token,
+        max_tvl_outflow_pct_per_window=args.outflow_cap,
+        window_blocks=args.window_blocks,
+        max_oracle_divergence_pct=args.oracle_dev,
+    )
+
+    synth = CircuitBreakerSynthesizer().synthesize(cfg)
+    d = synth.to_dict()
+
+    if args.json:
+        print(_json.dumps(d, indent=2))
+        return
+
+    print(f"\n{CYAN}{BOLD}[Circuit Breaker Synthesizer]{RESET} Protocol: {args.protocol}")
+    print(f"  Monitored Token  : {args.token}")
+    print(f"  Outflow Limit    : {args.outflow_cap}% per {args.window_blocks} blocks")
+    print(f"  Oracle Deviation : {args.oracle_dev}%")
+    print(f"  Gas Overhead     : ~{d['estimated_gas_overhead']} gas per tx\n")
+
+    print(f"  {BOLD}Active Protections:{RESET}")
+    for prot in d['active_protections']:
+        print(f"    • {GREEN}{prot}{RESET}")
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(d['solidity_code'])
+        print(f"\n  {GREEN}[OK] Solidity guard written to: {args.output}{RESET}")
+    else:
+        print(f"\n  {DIM}Run with --output <file.sol> to save Solidity contract.{RESET}")
+    print()
+
+
 if __name__ == "__main__":
     main()
+

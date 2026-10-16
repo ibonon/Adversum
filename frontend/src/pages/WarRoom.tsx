@@ -2,6 +2,8 @@ import React, { useState, useCallback } from "react";
 import AttackFlow, { type AttackNode, type AttackEdge } from "@/components/AttackFlow";
 import AttackTimeline, { type TimelineStep } from "@/components/AttackTimeline";
 import RiskMatrix, { type RiskMatrixData } from "@/components/RiskMatrix";
+import ArenaClash from "@/components/ArenaClash";
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -134,7 +136,7 @@ function formatUSD(amount: number): string {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type ActiveTab = "replay" | "matrix";
+type ActiveTab = "replay" | "arena" | "matrix";
 
 export default function WarRoom() {
   const [selectedScenario, setSelectedScenario] = useState<string>("euler_finance");
@@ -223,139 +225,169 @@ export default function WarRoom() {
           <div className="flex items-center gap-3">
             <span className="text-red-500 text-xl">⚔️</span>
             <span className="font-bold text-white tracking-wider">ADVERSUM WAR ROOM</span>
-            <span className="text-xs text-gray-500 border border-gray-700 rounded px-2 py-0.5">PHASE 3</span>
+            <span className="text-xs text-gray-400 border border-cyan-800 bg-cyan-950/50 rounded px-2 py-0.5">PHASE 4</span>
           </div>
           <div className="text-xs text-gray-500">
-            Cross-Protocol Economic Attack Simulator
+            DeFi Attack Simulator & Autonomous Resilience Arena
           </div>
         </div>
       </div>
 
       <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-6">
-        {/* Scenario selector + controls */}
-        <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[260px]">
-            <label className="text-xs text-gray-500 mb-1.5 block uppercase tracking-wider">
-              Select Attack Scenario
-            </label>
-            <select
-              value={selectedScenario}
-              onChange={(e) => setSelectedScenario(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2.5
-                         text-sm focus:outline-none focus:border-red-500 cursor-pointer"
-            >
-              {OFFLINE_SCENARIOS.map((s) => (
-                <option key={s.scenario_id} value={s.scenario_id}>
-                  {s.name} — {formatUSD(s.loss_usd)} ({s.real_hack_ref})
-                </option>
-              ))}
-            </select>
-          </div>
-
+        {/* Navigation Tabs */}
+        <div className="flex gap-2 border-b border-white/10 pb-3 flex-wrap">
           <button
-            onClick={runSimulation}
-            disabled={loading}
-            className="px-6 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:bg-gray-700
-                       text-white text-sm font-bold transition-colors flex items-center gap-2"
+            onClick={() => setActiveTab("replay")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+              activeTab === "replay"
+                ? "bg-red-950/80 text-red-300 border border-red-800"
+                : "text-gray-400 hover:text-white"
+            }`}
           >
-            {loading ? (
-              <><span className="animate-spin">⟳</span> Simulating...</>
-            ) : (
-              <><span>▶</span> Run Simulation</>
-            )}
+            ⚔️ Attack Simulator & Replay
           </button>
-
-          {simulation && !replayRunning && (
-            <button
-              onClick={startReplay}
-              className="px-5 py-2.5 rounded-lg border border-orange-600 text-orange-400
-                         hover:bg-orange-950/30 text-sm font-bold transition-colors"
-            >
-              ⟳ Replay
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab("arena")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+              activeTab === "arena"
+                ? "bg-cyan-950/80 text-cyan-300 border border-cyan-800"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            🛡️ Resilience Arena (AI-AIRA)
+          </button>
+          <button
+            onClick={() => setActiveTab("matrix")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+              activeTab === "matrix"
+                ? "bg-purple-950/80 text-purple-300 border border-purple-800"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            📊 DeFi Risk Matrix
+          </button>
         </div>
 
-        {/* Scenario info */}
-        {selectedScenarioInfo && (
-          <div className="text-xs text-gray-500 bg-gray-900/40 border border-white/8 rounded-lg px-4 py-2">
-            {selectedScenarioInfo.description} · {selectedScenarioInfo.steps} attack steps ·{" "}
-            Ref: {selectedScenarioInfo.real_hack_ref}
+        {/* Tab 1: Resilience Arena */}
+        {activeTab === "arena" && <ArenaClash />}
+
+        {/* Tab 2: DeFi Risk Matrix */}
+        {activeTab === "matrix" && (
+          <div className="bg-gray-900/40 border border-white/8 rounded-xl p-5">
+            <div className="text-xs text-gray-500 uppercase tracking-wider mb-4">
+              DeFi Protocol × Attack Vector Risk Matrix
+            </div>
+            <RiskMatrix data={riskMatrix} />
           </div>
         )}
 
-        {/* Error */}
-        {error && (
-          <div className="bg-red-950/40 border border-red-800 rounded-lg p-4 text-red-400 text-sm">
-            ❌ {error}
-          </div>
-        )}
+        {/* Tab 3: Attack Replay */}
+        {activeTab === "replay" && (
+          <div className="space-y-6">
+            {/* Scenario selector + controls */}
+            <div className="flex flex-wrap gap-4 items-end">
+              <div className="flex-1 min-w-[260px]">
+                <label className="text-xs text-gray-500 mb-1.5 block uppercase tracking-wider">
+                  Select Attack Scenario
+                </label>
+                <select
+                  value={selectedScenario}
+                  onChange={(e) => setSelectedScenario(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 text-white rounded-lg px-3 py-2.5
+                             text-sm focus:outline-none focus:border-red-500 cursor-pointer"
+                >
+                  {OFFLINE_SCENARIOS.map((s) => (
+                    <option key={s.scenario_id} value={s.scenario_id}>
+                      {s.name} — {formatUSD(s.loss_usd)} ({s.real_hack_ref})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-        {/* Results */}
-        {simulation && (
-          <>
-            {/* KPI strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-6 gap-3">
-              {[
-                { label: "Protocol Loss", value: formatUSD(simulation.protocol_loss_usd), color: "text-red-400" },
-                { label: "Attacker Profit", value: formatUSD(simulation.attacker_profit_usd), color: "text-green-400" },
-                { label: "Gas Cost", value: formatUSD(simulation.total_gas_usd), color: "text-gray-400" },
-                { label: "Blocks Elapsed", value: simulation.block_span.toString(), color: "text-blue-400" },
-                { label: "Risk Index", value: `${simulation.risk_index.toFixed(0)}/100`, color: simulation.risk_index >= 75 ? "text-red-400" : "text-orange-400" },
-                { label: "Cascade", value: simulation.cascade_triggered ? `+${simulation.cascade_protocols.length} protocols` : "None", color: simulation.cascade_triggered ? "text-orange-400" : "text-gray-500" },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="bg-gray-900/50 border border-white/8 rounded-xl px-4 py-3">
-                  <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{label}</div>
-                  <div className={`text-base font-bold ${color}`}>{value}</div>
-                </div>
-              ))}
+              <button
+                onClick={runSimulation}
+                disabled={loading}
+                className="px-6 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:bg-gray-700
+                           text-white text-sm font-bold transition-colors flex items-center gap-2"
+              >
+                {loading ? (
+                  <><span className="animate-spin">⟳</span> Simulating...</>
+                ) : (
+                  <><span>▶</span> Run Simulation</>
+                )}
+              </button>
+
+              {simulation && !replayRunning && (
+                <button
+                  onClick={startReplay}
+                  className="px-5 py-2.5 rounded-lg border border-orange-600 text-orange-400
+                             hover:bg-orange-950/30 text-sm font-bold transition-colors"
+                >
+                  ⟳ Replay
+                </button>
+              )}
             </div>
 
-            {/* MITRE techniques */}
-            {simulation.mitre_techniques.length > 0 && (
-              <div className="bg-gray-900/30 border border-white/8 rounded-lg px-4 py-3">
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">
-                  MITRE ATT&CK Techniques
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {simulation.mitre_techniques.map((t) => (
-                    <span key={t} className="text-[10px] bg-purple-950/50 border border-purple-800 text-purple-300 rounded px-2 py-0.5">
-                      {t}
-                    </span>
+            {/* Scenario info */}
+            {selectedScenarioInfo && (
+              <div className="text-xs text-gray-500 bg-gray-900/40 border border-white/8 rounded-lg px-4 py-2">
+                {selectedScenarioInfo.description} · {selectedScenarioInfo.steps} attack steps ·{" "}
+                Ref: {selectedScenarioInfo.real_hack_ref}
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="bg-red-950/40 border border-red-800 rounded-lg p-4 text-red-400 text-sm">
+                ❌ {error}
+              </div>
+            )}
+
+            {/* Results */}
+            {simulation && (
+              <div className="space-y-6">
+                {/* KPI strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-6 gap-3">
+                  {[
+                    { label: "Protocol Loss", value: formatUSD(simulation.protocol_loss_usd), color: "text-red-400" },
+                    { label: "Attacker Profit", value: formatUSD(simulation.attacker_profit_usd), color: "text-green-400" },
+                    { label: "Gas Cost", value: formatUSD(simulation.total_gas_usd), color: "text-gray-400" },
+                    { label: "Blocks Elapsed", value: simulation.block_span.toString(), color: "text-blue-400" },
+                    { label: "Risk Index", value: `${simulation.risk_index.toFixed(0)}/100`, color: simulation.risk_index >= 75 ? "text-red-400" : "text-orange-400" },
+                    { label: "Cascade", value: simulation.cascade_triggered ? `+${simulation.cascade_protocols.length} protocols` : "None", color: simulation.cascade_triggered ? "text-orange-400" : "text-gray-500" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className="bg-gray-900/50 border border-white/8 rounded-xl px-4 py-3">
+                      <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{label}</div>
+                      <div className={`text-base font-bold ${color}`}>{value}</div>
+                    </div>
                   ))}
                 </div>
-              </div>
-            )}
 
-            {/* Cascade alert */}
-            {simulation.cascade_triggered && (
-              <div className="bg-orange-950/40 border border-orange-800 rounded-lg p-3 text-sm">
-                <span className="text-orange-400 font-bold">⚠ Cascade triggered</span>
-                <span className="text-gray-400"> — Attack propagates to: </span>
-                <span className="text-orange-300">{simulation.cascade_protocols.join(", ")}</span>
-              </div>
-            )}
+                {/* MITRE techniques */}
+                {simulation.mitre_techniques.length > 0 && (
+                  <div className="bg-gray-900/30 border border-white/8 rounded-lg px-4 py-3">
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">
+                      MITRE ATT&CK Techniques
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {simulation.mitre_techniques.map((t) => (
+                        <span key={t} className="text-[10px] bg-purple-950/50 border border-purple-800 text-purple-300 rounded px-2 py-0.5">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {/* Tabs */}
-            <div className="flex gap-1 border-b border-white/10">
-              {(["replay", "matrix"] as ActiveTab[]).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors
-                    ${activeTab === tab
-                      ? "border-b-2 border-red-500 text-white"
-                      : "text-gray-500 hover:text-gray-300"
-                    }`}
-                >
-                  {tab === "replay" ? "⚔️ Attack Replay" : "📊 Risk Matrix"}
-                </button>
-              ))}
-            </div>
+                {/* Cascade alert */}
+                {simulation.cascade_triggered && (
+                  <div className="bg-orange-950/40 border border-orange-800 rounded-lg p-3 text-sm">
+                    <span className="text-orange-400 font-bold">⚠ Cascade triggered</span>
+                    <span className="text-gray-400"> — Attack propagates to: </span>
+                    <span className="text-orange-300">{simulation.cascade_protocols.join(", ")}</span>
+                  </div>
+                )}
 
-            {/* Tab content */}
-            {activeTab === "replay" && (
-              <div className="space-y-6">
                 {/* Flow graph */}
                 <div className="bg-gray-950/60 border border-white/8 rounded-xl p-1 h-[440px]">
                   <AttackFlow
@@ -383,28 +415,20 @@ export default function WarRoom() {
               </div>
             )}
 
-            {activeTab === "matrix" && (
-              <div className="bg-gray-900/40 border border-white/8 rounded-xl p-5">
-                <div className="text-xs text-gray-500 uppercase tracking-wider mb-4">
-                  DeFi Protocol × Attack Vector Risk Matrix
+            {/* Idle state */}
+            {!simulation && !loading && (
+              <div className="flex flex-col items-center justify-center py-24 text-gray-600 space-y-3">
+                <span className="text-6xl">⚔️</span>
+                <div className="text-lg font-bold text-gray-500">Select a scenario and run simulation</div>
+                <div className="text-sm text-gray-600">
+                  Replay real DeFi hacks: Euler Finance ($197M), Ronin ($625M), Wormhole ($320M)...
                 </div>
-                <RiskMatrix data={riskMatrix} />
               </div>
             )}
-          </>
-        )}
-
-        {/* Idle state */}
-        {!simulation && !loading && (
-          <div className="flex flex-col items-center justify-center py-24 text-gray-600 space-y-3">
-            <span className="text-6xl">⚔️</span>
-            <div className="text-lg font-bold text-gray-500">Select a scenario and run simulation</div>
-            <div className="text-sm text-gray-600">
-              Replay real DeFi hacks: Euler Finance ($197M), Ronin ($625M), Wormhole ($320M)...
-            </div>
           </div>
         )}
       </div>
     </div>
   );
 }
+

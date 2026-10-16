@@ -1511,3 +1511,118 @@ async def get_risk_matrix(api_key: str = Depends(get_api_key)):
             "smart_contract_risk": "Smart Contract Exploit",
         }.values()),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 4 — Autonomous Incident Response & Resilience Arena (AI-AIRA)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from modules.incident_response.circuit_breaker import (
+    CircuitBreakerConfig, CircuitBreakerSynthesizer
+)
+from modules.incident_response.adversarial_evaluator import (
+    AdversarialInvariantEvaluator
+)
+from modules.incident_response.resilience_arena import (
+    ResilienceArena
+)
+
+_resilience_arena = ResilienceArena()
+_breaker_synthesizer = CircuitBreakerSynthesizer()
+_invariant_evaluator = AdversarialInvariantEvaluator()
+
+
+class IncidentClashRequest(BaseModel):
+    protocol: str = "Euler Finance"
+    scenario_key: str = "flashloan_drain"
+    custom_exposure_usd: Optional[float] = None
+
+
+class CircuitBreakerSynthesisRequest(BaseModel):
+    protocol_name: str = "DeFiProtocol"
+    target_token: str = "USDC"
+    max_tvl_outflow_pct_per_window: float = 5.0
+    window_blocks: int = 10
+    max_oracle_divergence_pct: float = 3.5
+    enable_flash_loan_guard: bool = True
+    emergency_multisig: str = "0x000000000000000000000000000000000000dEaD"
+
+
+class InvariantEvaluationRequest(BaseModel):
+    protocol_name: str = "TargetProtocol"
+    source_code: str
+
+
+@app.post("/api/v1/wargame/simulate-incident", tags=["Resilience Arena"])
+async def simulate_incident_clash(
+    payload: IncidentClashRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Simulate an adversarial incident clash against active autonomous circuit breaker defense.
+    Scenarios: flashloan_drain, oracle_desync, reentrancy_wave, bridge_forgery
+    """
+    result = _resilience_arena.simulate_clash(
+        protocol=payload.protocol,
+        scenario_key=payload.scenario_key,
+        custom_exposure_usd=payload.custom_exposure_usd,
+    )
+    return result.to_dict()
+
+
+@app.post("/api/v1/wargame/synthesize-circuit-breaker", tags=["Resilience Arena"])
+async def synthesize_circuit_breaker(
+    payload: CircuitBreakerSynthesisRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Synthesize tailor-made on-chain Solidity CircuitBreakerGuard.sol
+    and automated monitoring policies.
+    """
+    cfg = CircuitBreakerConfig(
+        protocol_name=payload.protocol_name,
+        target_token=payload.target_token,
+        max_tvl_outflow_pct_per_window=payload.max_tvl_outflow_pct_per_window,
+        window_blocks=payload.window_blocks,
+        max_oracle_divergence_pct=payload.max_oracle_divergence_pct,
+        enable_flash_loan_guard=payload.enable_flash_loan_guard,
+        emergency_multisig=payload.emergency_multisig,
+    )
+    synth = _breaker_synthesizer.synthesize(cfg)
+    return synth.to_dict()
+
+
+@app.get("/api/v1/wargame/resilience-benchmark", tags=["Resilience Arena"])
+async def get_resilience_benchmark(
+    protocol: str = "Euler Finance",
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Run full multi-scenario resilience benchmark (Flashloan, Oracle, Reentrancy, Bridge).
+    """
+    return _resilience_arena.run_benchmark(protocol=protocol)
+
+
+@app.get("/api/v1/wargame/arena-history", tags=["Resilience Arena"])
+async def get_arena_history(api_key: str = Depends(get_api_key)):
+    """Retrieve history of all incident clash simulations."""
+    history = _resilience_arena.get_history()
+    return {
+        "clashes": history,
+        "count": len(history),
+    }
+
+
+@app.post("/api/v1/wargame/evaluate-invariants", tags=["Resilience Arena"])
+async def evaluate_protocol_invariants(
+    payload: InvariantEvaluationRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Evaluates contract source code against 10 critical DeFi security invariants.
+    """
+    report = _invariant_evaluator.evaluate_code(
+        source_code=payload.source_code,
+        protocol_name=payload.protocol_name,
+    )
+    return report.to_dict()
