@@ -63,6 +63,7 @@ class AttackStep:
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
+        d["primitive"] = self.primitive.value if hasattr(self.primitive, "value") else str(self.primitive)
         d["net_impact"] = self.net_impact
         return d
 

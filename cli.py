@@ -273,6 +273,22 @@ def main():
     p_ws.add_argument("--port", type=int, default=8000, help="API port (default: 8000)")
     p_ws.add_argument("--duration", type=int, default=60, help="Listen duration in seconds (default: 60)")
 
+    # ── Phase 3 commands ────────────────────────────────────────────────────
+
+    # simulate (Phase 3)
+    p_sim = subparsers.add_parser("simulate", help="[Phase 3] Simulate a DeFi attack chain (Euler, Ronin, Mango, etc.)")
+    p_sim.add_argument("--scenario", "-s", default="euler_finance", help="Scenario ID (default: euler_finance)")
+    p_sim.add_argument("--list", "-l", action="store_true", help="List available scenarios")
+    p_sim.add_argument("--json", action="store_true", help="Output result as JSON")
+
+    # risk-score (Phase 3)
+    p_risk = subparsers.add_parser("risk-score", help="[Phase 3] Score DeFi protocol economic attack risk")
+    p_risk.add_argument("--protocol", "-p", default="Euler Finance", help="Protocol name to score")
+    p_risk.add_argument("--tvl", type=float, default=None, help="TVL in USD override")
+    p_risk.add_argument("--list", "-l", action="store_true", help="List known protocols")
+    p_risk.add_argument("--matrix", "-m", action="store_true", help="Show full DeFi risk matrix")
+    p_risk.add_argument("--json", action="store_true", help="Output result as JSON")
+
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
@@ -299,6 +315,10 @@ def main():
         cmd_compliance_report(args)
     elif args.command == "ws-listen":
         cmd_ws_listen(args)
+    elif args.command == "simulate":
+        cmd_simulate(args)
+    elif args.command == "risk-score":
+        cmd_risk_score(args)
     else:
         parser.print_help()
 

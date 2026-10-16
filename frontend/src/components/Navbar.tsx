@@ -15,10 +15,12 @@ const Navbar = () => {
   }, []);
 
   const navLinks = [
-    { name: 'Produit', href: '#features' },
-    { name: 'Fonctionnement', href: '#how-it-works' },
-    { name: 'Tarifs', href: '#pricing' },
-    { name: 'Entreprise', href: '#enterprise' },
+    { name: 'Produit', href: '/#features' },
+    { name: 'Fonctionnement', href: '/#how-it-works' },
+    { name: 'SOC Live', href: '/soc', badge: 'AI-ASOC' },
+    { name: 'War Room', href: '/war-room', badge: 'Simulateur' },
+    { name: 'Tarifs', href: '/#pricing' },
+    { name: 'Entreprise', href: '/#enterprise' },
   ];
 
   return (
@@ -42,14 +44,19 @@ const Navbar = () => {
         </a>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-10">
+        <div className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (
             <a
               key={link.name}
               href={link.href}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-300"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-300 flex items-center gap-1.5"
             >
               {link.name}
+              {link.badge && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/20 text-primary border border-primary/30">
+                  {link.badge}
+                </span>
+              )}
             </a>
           ))}
         </div>
@@ -84,10 +91,15 @@ const Navbar = () => {
               <a
                 key={link.name}
                 href={link.href}
-                className="text-lg text-muted-foreground hover:text-foreground transition-colors py-2"
+                className="text-lg text-muted-foreground hover:text-foreground transition-colors py-2 flex items-center justify-between"
                 onClick={() => setIsMobileMenuOpen(false)}
               >
-                {link.name}
+                <span>{link.name}</span>
+                {link.badge && (
+                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-primary/20 text-primary border border-primary/30">
+                    {link.badge}
+                  </span>
+                )}
               </a>
             ))}
             <div className="flex flex-col gap-3 pt-6 border-t border-border mt-4">
