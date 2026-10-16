@@ -521,5 +521,136 @@ def cmd_ws_listen(args):
     asyncio.run(_listen())
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# Phase 3 — Cross-Protocol Attack Simulator CLI commands
+# ════════════════════════════════════════════════════════════════════════════════
+
+def cmd_simulate(args: argparse.Namespace) -> None:
+    """Run a DeFi attack chain simulation."""
+    import json as _json
+    from modules.attack_simulator.chain_executor import AttackChainExecutor
+    from modules.attack_simulator.scenarios import SCENARIO_REGISTRY
+
+    if args.list:
+        print(f"\n{CYAN}{BOLD}Available Attack Scenarios:{RESET}\n")
+        for sid, fn in SCENARIO_REGISTRY.items():
+            c = fn()
+            loss = c.loss_usd
+            loss_str = f"${loss/1e6:.0f}M" if loss >= 1e6 else f"${loss:,.0f}"
+            print(f"  {BOLD}{sid:<30}{RESET} {RED}{loss_str:<12}{RESET} {DIM}{c.name}{RESET}")
+        print()
+        return
+
+    scenario_id = args.scenario
+    fn = SCENARIO_REGISTRY.get(scenario_id)
+    if fn is None:
+        print(f"{RED}[!] Unknown scenario: {scenario_id}{RESET}")
+        print(f"    Available: {', '.join(SCENARIO_REGISTRY.keys())}")
+        sys.exit(1)
+
+    print(f"\n{CYAN}{BOLD}[Attack Simulator]{RESET} Running scenario: {BOLD}{scenario_id}{RESET}")
+
+    chain = fn()
+    executor = AttackChainExecutor()
+    result = executor.execute(chain)
+
+    d = result.to_dict()
+
+    if args.json:
+        print(_json.dumps(d, indent=2))
+        return
+
+    print(f"\n  {BOLD}Scenario:{RESET}        {d['scenario_name']}")
+    print(f"  {BOLD}Simulation ID:{RESET}   {d['simulation_id'][:16]}...")
+    print(f"  {BOLD}Success:{RESET}         {'YES' if d['success'] else 'NO'}")
+    print()
+    profit_color = GREEN if d['attacker_profit_usd'] > 0 else RED
+    print(f"  {RED}Protocol Loss:    ${d['protocol_loss_usd']:>15,.0f}{RESET}")
+    print(f"  {profit_color}Attacker Profit:  ${d['attacker_profit_usd']:>15,.0f}{RESET}")
+    print(f"  {DIM}Gas Cost:         ${d['total_gas_usd']:>15,.2f}{RESET}")
+    print(f"  {DIM}Block Span:       {d['block_span']:>16} blocks{RESET}")
+    print(f"  {YELLOW}Risk Index:       {d['risk_index']:>15.1f}/100{RESET}")
+
+    if d['cascade_triggered']:
+        print(f"\n  {YELLOW}{BOLD}[!] CASCADE TRIGGERED → {', '.join(d['cascade_protocols'])}{RESET}")
+
+    print(f"\n  {DIM}MITRE Techniques:{RESET}")
+    for t in d['mitre_techniques']:
+        print(f"    • {t}")
+
+    print(f"\n  {BOLD}Attack Steps:{RESET}")
+    for step in d['steps']:
+        prim = step['primitive']
+        net = step.get('net_impact', 0)
+        net_str = f"+${net:,.0f}" if net > 0 else f"${net:,.0f}"
+        color = GREEN if net > 0 else (RED if net < 0 else DIM)
+        print(f"    #{step['step_index']+1} {BOLD}{prim:<18}{RESET} {step['protocol']:<25} {color}{net_str}{RESET}")
+    print()
+
+
+def cmd_risk_score(args: argparse.Namespace) -> None:
+    """Score a DeFi protocol's economic attack risk."""
+    import json as _json
+    from modules.attack_simulator.risk_scorer import DeFiRiskScorer
+
+    scorer = DeFiRiskScorer()
+
+    if args.list:
+        print(f"\n{CYAN}{BOLD}Known protocols:{RESET}")
+        for p in scorer.known_protocols():
+            print(f"  • {p}")
+        print()
+        return
+
+    if args.matrix:
+        matrix = scorer.risk_matrix()
+        if args.json:
+            print(_json.dumps(matrix, indent=2))
+            return
+        print(f"\n{CYAN}{BOLD}DeFi Risk Matrix (Protocol × Attack Vector){RESET}\n")
+        vectors = list(next(iter(matrix.values())).keys()) if matrix else []
+        header = f"{'Protocol':<22}" + "".join(f"{v[:16]:<18}" for v in vectors)
+        print(f"  {BOLD}{header}{RESET}")
+        print(f"  {DIM}{'─'*120}{RESET}")
+        for protocol, scores in matrix.items():
+            row = f"  {protocol:<22}"
+            for v in vectors:
+                s = scores.get(v, 0)
+                color = RED if s >= 80 else (YELLOW if s >= 60 else (DIM if s < 30 else ""))
+                row += f"{color}{s:<18.0f}{RESET}"
+            print(row)
+        print()
+        return
+
+    score = scorer.score_protocol(
+        protocol=args.protocol,
+        tvl_usd=args.tvl,
+    )
+    d = score.to_dict()
+
+    if args.json:
+        print(_json.dumps(d, indent=2))
+        return
+
+    grade_color = GREEN if d['grade'] == 'A' else (YELLOW if d['grade'] in ('B', 'C') else RED)
+    print(f"\n{CYAN}{BOLD}[Risk Score] {d['protocol']}{RESET}")
+    print(f"  Grade:          {grade_color}{BOLD}{d['grade']}{RESET}")
+    print(f"  Composite Risk: {d['composite_risk']:.1f}/100")
+    print(f"  Chain:          {d['chain']}")
+    print(f"  TVL:            ${d['tvl_usd']:,.0f}")
+    print(f"  Audits:         {d['audit_count']}")
+    print(f"\n  {BOLD}Vector Scores:{RESET}")
+    for vector, score_val in d['scores'].items():
+        bar = "█" * int(score_val / 5)
+        color = RED if score_val >= 80 else (YELLOW if score_val >= 60 else GREEN)
+        print(f"    {vector:<28} {color}{score_val:5.0f}/100  {bar}{RESET}")
+    if d.get('mitigations'):
+        print(f"\n  {BOLD}Recommended Mitigations:{RESET}")
+        for vector, mitigation in d['mitigations'].items():
+            print(f"    {YELLOW}• {vector}:{RESET}")
+            print(f"      {DIM}{mitigation}{RESET}")
+    print()
+
+
 if __name__ == "__main__":
     main()

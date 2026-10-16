@@ -1377,3 +1377,137 @@ async def export_sarif_for_job(
     findings = json.loads(job.result_json or "[]")
     from modules.compliance.sarif_v2 import SARIFv2Exporter
     return SARIFv2Exporter().export(findings, tool_name="Adversum Security Engine").to_sarif()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 3 — Cross-Protocol Attack Simulator & DeFi Risk Scorer
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Global executor instance (in-memory history)
+from modules.attack_simulator.chain_executor import AttackChainExecutor
+from modules.attack_simulator.risk_scorer import DeFiRiskScorer
+from modules.attack_simulator.scenarios import SCENARIO_REGISTRY
+
+_attack_executor = AttackChainExecutor()
+_risk_scorer = DeFiRiskScorer()
+
+
+class SimulatorRunRequest(BaseModel):
+    scenario_id: str
+    custom_params: Optional[Dict[str, Any]] = None
+
+
+class RiskScoreRequest(BaseModel):
+    protocol: str
+    tvl_usd: Optional[float] = None
+    custom_overrides: Optional[Dict[str, float]] = None
+
+
+@app.post("/api/v1/simulator/run-attack", tags=["Attack Simulator"])
+async def run_attack_simulation(
+    payload: SimulatorRunRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Run a named DeFi attack chain simulation.
+    Available scenarios: euler_finance, ronin_bridge, mango_markets, wormhole, generic_flashloan_cascade
+    """
+    scenario_fn = SCENARIO_REGISTRY.get(payload.scenario_id)
+    if scenario_fn is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown scenario '{payload.scenario_id}'. Available: {list(SCENARIO_REGISTRY.keys())}",
+        )
+
+    # Build chain — pass custom_params to configurable scenarios
+    try:
+        if payload.custom_params and payload.scenario_id == "generic_flashloan_cascade":
+            chain = scenario_fn(**payload.custom_params)
+        else:
+            chain = scenario_fn()
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=f"Invalid custom_params: {e}")
+
+    result = _attack_executor.execute(chain)
+    return result.to_dict()
+
+
+@app.get("/api/v1/simulator/scenarios", tags=["Attack Simulator"])
+async def list_scenarios(api_key: str = Depends(get_api_key)):
+    """List all available attack simulation scenarios."""
+    scenarios = []
+    for sid, fn in SCENARIO_REGISTRY.items():
+        chain = fn() if sid != "generic_flashloan_cascade" else fn()
+        scenarios.append({
+            "scenario_id":   sid,
+            "name":          chain.name,
+            "description":   chain.description,
+            "loss_usd":      chain.loss_usd,
+            "tags":          chain.tags,
+            "steps":         len(chain.steps),
+            "real_hack_ref": chain.real_hack_ref,
+        })
+    return {"scenarios": scenarios, "count": len(scenarios)}
+
+
+@app.get("/api/v1/simulator/replay/{simulation_id}", tags=["Attack Simulator"])
+async def get_simulation_replay(
+    simulation_id: str,
+    api_key: str = Depends(get_api_key),
+):
+    """Get step-by-step replay data for a completed simulation."""
+    result = _attack_executor.get_by_id(simulation_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Simulation '{simulation_id}' not found. Run /api/v1/simulator/run-attack first.",
+        )
+    return result.to_dict()
+
+
+@app.post("/api/v1/simulator/risk-score", tags=["Attack Simulator"])
+async def get_risk_score(
+    payload: RiskScoreRequest,
+    api_key: str = Depends(get_api_key),
+):
+    """
+    Get economic risk score for a DeFi protocol across 6 attack vectors.
+    Known protocols: Euler Finance, Ronin Bridge, Mango Markets, Wormhole,
+                     Compound, Aave, Curve Finance, Uniswap v3
+    """
+    score = _risk_scorer.score_protocol(
+        protocol=payload.protocol,
+        custom_overrides=payload.custom_overrides,
+        tvl_usd=payload.tvl_usd,
+    )
+    return score.to_dict()
+
+
+@app.get("/api/v1/simulator/history", tags=["Attack Simulator"])
+async def get_simulation_history(api_key: str = Depends(get_api_key)):
+    """Get all simulation results from the current session."""
+    history = _attack_executor.get_history()
+    return {
+        "simulations": history,
+        "count": len(history),
+        "total_protocol_loss_usd": sum(h["protocol_loss_usd"] for h in history),
+    }
+
+
+@app.get("/api/v1/simulator/risk-matrix", tags=["Attack Simulator"])
+async def get_risk_matrix(api_key: str = Depends(get_api_key)):
+    """Get full DeFi risk matrix: protocol × attack vector scores."""
+    matrix = _risk_scorer.risk_matrix()
+    protocols = _risk_scorer.known_protocols()
+    return {
+        "matrix": matrix,
+        "protocols": protocols,
+        "vectors": list({
+            "oracle_risk": "Oracle Manipulation",
+            "flash_loan_risk": "Flash Loan Attack",
+            "bridge_risk": "Cross-Chain Bridge",
+            "governance_risk": "Governance Takeover",
+            "liquidity_risk": "Liquidity Concentration",
+            "smart_contract_risk": "Smart Contract Exploit",
+        }.values()),
+    }
