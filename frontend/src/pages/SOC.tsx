@@ -272,7 +272,9 @@ export default function SOCDashboard() {
           setMevPatterns(prev => [...newPatterns, ...prev].slice(0, 10));
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.debug('Failed to fetch MEV patterns', err);
+    }
   };
 
   const runComplianceDemo = async () => {
@@ -296,7 +298,9 @@ export default function SOCDashboard() {
           });
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.debug('Failed to run compliance demo', err);
+    }
   };
 
   // ── Filtered events ────────────────────────────────────────────────────────
