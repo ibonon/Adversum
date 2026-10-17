@@ -23,6 +23,22 @@ Adversum est un moteur d'analyse de sécurité avancé qui combine l'analyse sta
 - **📋 Compliance SOC2/ISO27001/SARIF**: Rapports de conformité automatiques exportables GitHub/Azure DevOps/SIEM
 - **🖥️ Dashboard SOC Live**: Interface React 18 temps réel avec feed menaces, heatmap, et gauges de conformité
 
+### Phase 3 — Cross-Protocol Attack Simulator & Interactive War Room
+- **⚔️ Scénarios d'Exploits Réels**: Modélisation complète de hacks majeurs (Euler Finance $197M, Ronin Bridge $625M, Wormhole $320M, Mango Markets $116M)
+- **📊 Composite Risk Scorer**: Calcul déterministe du risque (exposition financière, complexité, impact systémique)
+- **🗺️ War Room Interactive**: Visualisation DAG des étapes d'attaque via React Flow (`@xyflow/react`), timeline chronologique et matrice de risque
+- **🧪 Intégration PoC Foundry**: Génération automatique des contrats d'attaque et des tests `.t.sol` pour rejouer l'attaque sur fork
+
+### Phase 4 — Autonomous Incident Response & Resilience Arena (AI-AIRA)
+- **⚡ Synthétiseur de Coupe-Circuit**: Génération automatique de contrats Solidity de circuit breaker multi-niveaux (Soft Pause, Hard Freeze, Rate Limit)
+- **📐 Évaluateur d'Invariants DeFi**: Vérification de 10 règles fondamentales (conservation des réserves, solvabilité, ancrage des prix)
+- **🛡️ Resilience Arena**: Simulateur de confrontation Attaquant vs Défenseur mesurant le taux d'atténuation des pertes, le capital préservé et le surcoût en gas
+
+### Phase 5 — Institutional Production Stack & Threat Hunting Watchtower
+- **🛰️ Daemon de Surveillance Active**: Scan continu des nouveaux blocs EVM et détection de bytecode suspect (`delegatecall`, `selfdestruct`, `tx.origin`, `CREATE2`)
+- **🏥 Enterprise Health Probes**: Endpoints `/health/live` et `/health/ready` compatibles Kubernetes et load-balancers
+- **🐳 Déploiement Production 1-Click**: Stack Docker Compose complète (FastAPI multi-workers, Nginx optimisé, Redis pub/sub, instance Anvil)
+
 ---
 
 ## 🏗️ Architecture
