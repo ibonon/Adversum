@@ -942,6 +942,9 @@ async def clone_and_scan_endpoint(
                     "--recurse-submodules=no",
                     "-c", "core.autocrlf=false",
                     "-c", "core.fscache=true",
+                    "-c", "http.postBuffer=524288000",
+                    "-c", "http.lowSpeedLimit=1000",
+                    "-c", "http.lowSpeedTime=120",
                     payload.repo_url,
                     temp_dir
                 ],
