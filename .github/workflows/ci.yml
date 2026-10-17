@@ -56,7 +56,7 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install ruff pytest pytest-asyncio respx httpx fastapi uvicorn websockets pydantic sqlmodel rich click
+        pip install ruff pytest pytest-asyncio respx httpx fastapi uvicorn websockets pydantic sqlmodel rich click greenlet
         pip install -r requirements.txt --ignore-requires-python || true
 
     - name: Lint with Ruff (Fatal Syntax & Import Errors)

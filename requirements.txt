@@ -13,6 +13,7 @@ python-multipart>=0.0.9
 # Database
 sqlmodel>=0.0.18
 SQLAlchemy>=2.0.0
+greenlet>=3.0.0
 # asyncpg — install separately if PostgreSQL is needed; no py3.14 wheel yet
 # asyncpg>=0.29.0
 
