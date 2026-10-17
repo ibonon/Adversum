@@ -70,7 +70,11 @@ jobs:
         NEBIUS_MOCK: "1"
       run: |
         export PYTHONPATH=$PYTHONPATH:$(pwd)
-        pytest tests/ -v
+        set -o pipefail
+        python -m pytest tests/ -v --tb=short 2>&1 | tee pytest_output.txt || {
+          echo "::error::$(grep -E 'FAILED|ERROR|Traceback|ImportError' pytest_output.txt | tr '\n' ' ')"
+          exit 1
+        }
 
   # --- FRONTEND ---
   frontend-build:
