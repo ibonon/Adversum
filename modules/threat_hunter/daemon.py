@@ -128,16 +128,20 @@ class ThreatHuntingDaemon:
         return new_findings
 
     async def _hunt_loop(self) -> None:
-        """Background continuous loop scanning blocks every interval."""
+        """Background continuous loop scanning blocks every interval with exponential backoff."""
+        consecutive_errors = 0
         while self._is_running:
             try:
                 await self.scan_single_block()
-                await asyncio.sleep(2.0)  # Scan block every 2 seconds
+                consecutive_errors = 0
+                await asyncio.sleep(2.0)  # Standard cadence: 2 seconds per block
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("[ThreatHunter] Scan error: %s", e)
-                await asyncio.sleep(5.0)
+                consecutive_errors += 1
+                backoff = min(30.0, 2.0 * (1.5 ** min(consecutive_errors, 5))) + random.uniform(0.1, 1.0)
+                logger.error("[ThreatHunter] Scan error (attempt %d, backoff %.1fs): %s", consecutive_errors, backoff, e)
+                await asyncio.sleep(backoff)
 
     async def _emit_to_stream(self, finding: HunterFinding) -> None:
         """Publishes threat finding to Phase 2 WebSocket ThreatStream."""
@@ -162,7 +166,7 @@ class ThreatHuntingDaemon:
         try:
             await self._event_bus.publish(event)
         except Exception as e:
-            logger.warning("[ThreatHunter] Failed to emit to WebSocket: %e", e)
+            logger.warning("[ThreatHunter] Failed to emit to WebSocket: %s", e)
 
     def _generate_block_contracts(self, block: int) -> List[tuple[str, str, str]]:
         """Generates synthetic contract deployment bytecode for block scanning."""

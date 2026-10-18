@@ -158,7 +158,9 @@ class AVREngine:
         Returns (success, remaining_relevant_findings)
         """
         bak_file = f"{file_path}.bak"
-        if os.path.exists(bak_file):
+        if not os.path.exists(bak_file) and os.path.exists(file_path):
+            shutil.copy2(file_path, bak_file)
+        elif os.path.exists(bak_file):
             shutil.copy2(bak_file, file_path)
 
         if not proof_anchor and old_snippet:

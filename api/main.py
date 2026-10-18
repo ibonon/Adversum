@@ -111,18 +111,33 @@ pipeline = AnalysisPipeline()
 async def on_startup():
     await create_db_and_tables()
 
+@app.on_event("shutdown")
+async def on_shutdown():
+    try:
+        from orchestrator.services.db import close_db
+        await close_db()
+    except Exception as e:
+        logger.warning(f"Error during shutdown: {e}")
+
 # --- Enterprise Security & Telemetry ---
-# Telemetry Logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("adversum.telemetry")
 
-# Middleware: Telemetry
+# Maximum allowed payload size: 25 MB
+MAX_REQUEST_SIZE = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(25 * 1024 * 1024)))
+
 @app.middleware("http")
 async def telemetry_middleware(request: Request, call_next):
-    request_id = str(uuid.uuid4())
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_REQUEST_SIZE:
+        return JSONResponse(
+            status_code=413,
+            content={"error": "PayloadTooLarge", "detail": f"Request body exceeds maximum size limit of {MAX_REQUEST_SIZE // (1024 * 1024)} MB"}
+        )
+
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     start_time = time.time()
     
-    # Contextualize
     response = await call_next(request)
     
     process_time = (time.time() - start_time) * 1000
@@ -137,11 +152,38 @@ async def telemetry_middleware(request: Request, call_next):
         "client_ip": request.client.host if request.client else "unknown"
     }
     
-    # Structured JSON Log (GAFAM style)
     logger.info(json.dumps(log_entry))
     
+    # OWASP Recommended Security Headers
     response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=getattr(exc, "headers", None)
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    logger.error(f"[Unhandled Exception] req_id={req_id} path={request.url.path} error={exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "InternalServerError",
+            "detail": f"An unexpected server error occurred. (ref: {req_id[:8]})",
+            "request_id": req_id
+        }
+    )
 
 # Security: API Key Auth
 # Default to dev key for local development, but require explicit setting in production
@@ -163,7 +205,8 @@ async def get_api_key(api_key_header: str = Depends(api_key_header)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing API Key",
         )
-    if api_key_header != API_KEY:
+    import secrets
+    if not secrets.compare_digest(api_key_header, API_KEY):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid API Key",
@@ -462,7 +505,7 @@ async def start_immunization(finding_id: int, request: Request, session: AsyncSe
     result = await orchestrator.run_immunization_cycle(
         finding_id=finding.id,
         file_path=finding.file_path,
-        line_number=finding.line_number,
+        line_number=finding.line,
         current_snippet=finding.snippet,
         fix_code=finding.fix_code
     )
@@ -697,7 +740,7 @@ class GithubScanRequest(BaseModel):
 async def scan_github_repo(
     request: Request,
     payload: GithubScanRequest,
-    api_key: str = Depends(api_key_header),
+    api_key: str = Depends(get_api_key),
 ):
     """
     Clone a GitHub repository and run the SAST engine inside an isolated
@@ -707,8 +750,6 @@ async def scan_github_repo(
     - **github_token**: Optional GitHub PAT for private repos
     - **output_format**: "json" (default) or "text"
     """
-    if api_key != os.getenv("API_KEY", "adv-prod-secret-key-change-me"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key.")
 
     try:
         import docker  # pip install docker
@@ -1377,7 +1418,21 @@ async def export_sarif_for_job(
     job = await session.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-    findings = json.loads(job.result_json or "[]")
+    stmt = select(FindingModel).where(FindingModel.job_id == job_id)
+    findings_db = (await session.execute(stmt)).scalars().all()
+    findings = [
+        {
+            "id": f"FINDING-{f.id}",
+            "rule_id": f.rule_id,
+            "message": f.message,
+            "severity": f.severity,
+            "file": f.file_path,
+            "line": f.line,
+            "snippet": f.snippet or "",
+            "recommendation": f.remediation_suggestion or f.reasoning_notes or ""
+        }
+        for f in findings_db
+    ]
     from modules.compliance.sarif_v2 import SARIFv2Exporter
     return SARIFv2Exporter().export(findings, tool_name="Adversum Security Engine").to_sarif()
 

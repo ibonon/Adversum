@@ -1,28 +1,71 @@
 # ==============================================================================
-# Adversum Production API Container
+# Adversum Production API Container — Multi-stage Build
+# Rust Core (PyO3) + FastAPI Multi-Worker Engine + Non-Root Security
 # ==============================================================================
-FROM python:3.13-slim AS base
+
+# --- Stage 1: Rust Core Builder ---
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchain
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install maturin for PyO3 wheel building
+RUN pip install --no-cache-dir maturin
 
 WORKDIR /app
 
+# Copy Rust core source and build wheel
+COPY core/ /app/core/
+WORKDIR /app/core
+RUN maturin build --release --out /app/dist
+
+
+# --- Stage 2: Final Production Runtime ---
+FROM python:3.11-slim AS runtime
+
+LABEL maintainer="Adversum Security Team"
+LABEL description="Adversum AI Security Engine & Autonomous SOC"
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PORT=8000
+    PYTHONPATH=/app \
+    PORT=8000 \
+    APP_ENV=production
 
-# Install system dependencies (build essentials, curl for healthchecks)
+WORKDIR /app
+
+# System runtime dependencies (git, curl for healthchecks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
     git \
-    build-essential \
+    curl \
+    sqlite3 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Create unprivileged application user
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser -m -d /home/appuser appuser
+
+# Install compiled Rust core wheel
+COPY --from=builder /app/dist /app/dist
+RUN pip install --no-cache-dir /app/dist/*.whl && rm -rf /app/dist
 
 # Install Python requirements
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir tavily-python
 
-# Copy source code
+# Copy application code
 COPY api/ api/
 COPY orchestrator/ orchestrator/
 COPY modules/ modules/
@@ -30,7 +73,10 @@ COPY contracts/ contracts/
 COPY cli.py .
 COPY pytest.ini .
 
-# Expose API port
+# Set permissions for non-root user
+RUN chown -R appuser:appuser /app /home/appuser
+USER appuser
+
 EXPOSE 8000
 
 # Healthcheck

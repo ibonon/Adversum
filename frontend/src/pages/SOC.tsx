@@ -158,6 +158,7 @@ export default function SOCDashboard() {
   const [filterSev, setFilterSev]     = useState<string | null>(null);
   const wsRef                         = useRef<WebSocket | null>(null);
   const feedRef                       = useRef<HTMLDivElement>(null);
+  const reconnectTimerRef             = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── WebSocket connection ───────────────────────────────────────────────────
 
@@ -219,8 +220,8 @@ export default function SOCDashboard() {
 
     ws.onclose = () => {
       setWsStatus("disconnected");
-      // Auto-reconnect after 5s
-      setTimeout(connect, 5000);
+      // Auto-reconnect after 5s with cancellation tracking
+      reconnectTimerRef.current = setTimeout(connect, 5000);
     };
 
     ws.onerror = () => {
@@ -232,6 +233,9 @@ export default function SOCDashboard() {
   useEffect(() => {
     connect();
     return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
       wsRef.current?.close();
     };
   }, [connect]);
