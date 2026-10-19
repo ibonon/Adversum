@@ -9,8 +9,9 @@ services:
     image: redis:7-alpine
     container_name: adversum-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # Port intentionally NOT exposed to host — internal network only
+    # ports:
+    #   - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -27,8 +28,9 @@ services:
     container_name: adversum-anvil
     restart: unless-stopped
     entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545", "--block-time", "1"]
-    ports:
-      - "8545:8545"
+    # Port intentionally NOT exposed to host — backend connects via adversum-net
+    # ports:
+    #   - "8545:8545"
     networks:
       - adversum-net
 

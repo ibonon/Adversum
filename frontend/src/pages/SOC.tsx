@@ -159,6 +159,8 @@ export default function SOCDashboard() {
   const wsRef                         = useRef<WebSocket | null>(null);
   const feedRef                       = useRef<HTMLDivElement>(null);
   const reconnectTimerRef             = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptsRef          = useRef<number>(0);
+  const reconnectAttemptsRef          = useRef<number>(0);
 
   // ── WebSocket connection ───────────────────────────────────────────────────
 
@@ -171,6 +173,7 @@ export default function SOCDashboard() {
 
     ws.onopen = () => {
       setWsStatus("connected");
+      reconnectAttemptsRef.current = 0; // reset backoff on successful connection
     };
 
     ws.onmessage = (e) => {
@@ -220,8 +223,12 @@ export default function SOCDashboard() {
 
     ws.onclose = () => {
       setWsStatus("disconnected");
-      // Auto-reconnect after 5s with cancellation tracking
-      reconnectTimerRef.current = setTimeout(connect, 5000);
+      // Exponential backoff: 1s → 2s → 4s → … capped at 30s + ±500ms jitter
+      const attempts = reconnectAttemptsRef.current;
+      const baseDelay = Math.min(1000 * Math.pow(2, attempts), 30_000);
+      const jitter = Math.random() * 500;
+      reconnectAttemptsRef.current = attempts + 1;
+      reconnectTimerRef.current = setTimeout(connect, baseDelay + jitter);
     };
 
     ws.onerror = () => {

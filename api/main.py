@@ -32,6 +32,50 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+# -- Prometheus Metrics --------------------------------------------------------
+try:
+    from prometheus_client import (
+        Counter, Histogram,
+        generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry,
+    )
+    _PROMETHEUS_AVAILABLE = True
+except ImportError:
+    _PROMETHEUS_AVAILABLE = False
+
+_metrics_registry = None
+
+def _get_registry():
+    global _metrics_registry
+    if _metrics_registry is None:
+        _metrics_registry = CollectorRegistry()
+    return _metrics_registry
+
+def _make_counter(name, doc, labels=()):
+    if not _PROMETHEUS_AVAILABLE:
+        return None
+    try:
+        return Counter(name, doc, labels, registry=_get_registry())
+    except ValueError:
+        return None
+
+def _make_histogram(name, doc, labels=(), buckets=None):
+    if not _PROMETHEUS_AVAILABLE:
+        return None
+    kwargs = {"registry": _get_registry()}
+    if buckets:
+        kwargs["buckets"] = buckets
+    try:
+        return Histogram(name, doc, labels, **kwargs)
+    except ValueError:
+        return None
+
+_http_requests_total   = _make_counter(  "adversum_http_requests_total",   "Total HTTP requests", ["method", "path", "status"])
+_http_errors_total     = _make_counter(  "adversum_http_errors_total",      "Total HTTP 5xx errors", ["path"])
+_http_duration_seconds = _make_histogram("adversum_http_duration_seconds",  "HTTP request latency seconds", ["method", "path"],
+                                         buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0])
+_scans_total           = _make_counter(  "adversum_scans_total",            "Total audit scans started")
+_findings_total        = _make_counter(  "adversum_findings_total",         "Total security findings", ["severity"])
+
 # Orchestrator imports
 
 from orchestrator.pipeline.analysis_pipeline import AnalysisPipeline
@@ -153,7 +197,22 @@ async def telemetry_middleware(request: Request, call_next):
     }
     
     logger.info(json.dumps(log_entry))
-    
+
+    # Prometheus counters
+    if _PROMETHEUS_AVAILABLE and _http_requests_total:
+        _http_requests_total.labels(
+            method=request.method,
+            path=request.url.path,
+            status=str(response.status_code),
+        ).inc()
+    if _PROMETHEUS_AVAILABLE and _http_duration_seconds:
+        _http_duration_seconds.labels(
+            method=request.method,
+            path=request.url.path,
+        ).observe(process_time / 1000)
+    if _PROMETHEUS_AVAILABLE and _http_errors_total and response.status_code >= 500:
+        _http_errors_total.labels(path=request.url.path).inc()
+
     # OWASP Recommended Security Headers
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -184,6 +243,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             "request_id": req_id
         }
     )
+
+# -- Prometheus /metrics endpoint ---------------------------------------------
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics():
+    """Expose Prometheus metrics (text/plain Prometheus format)."""
+    if not _PROMETHEUS_AVAILABLE:
+        return JSONResponse(status_code=501, content={"detail": "prometheus_client not installed"})
+    from fastapi.responses import Response
+    return Response(content=generate_latest(_get_registry()), media_type=CONTENT_TYPE_LATEST)
 
 # Security: API Key Auth
 # Default to dev key for local development, but require explicit setting in production
@@ -217,8 +285,23 @@ async def get_api_key(api_key_header: str = Depends(api_key_header)):
 # usage: @app.get(..., dependencies=[Depends(get_api_key)])
 
 class AuditRequest(BaseModel):
-    target_path: str 
+    target_path: str
     project_name: str = "default_project"
+
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    model_config = {"str_strip_whitespace": True}
+
+    def model_post_init(self, __context: Any) -> None:
+        # Block path-traversal attempts at the model layer
+        if ".." in self.target_path:
+            raise ValueError("target_path must not contain '..' (path traversal attempt)")
+        if len(self.target_path) > 500:
+            raise ValueError("target_path too long (max 500 chars)")
+        if len(self.project_name) > 128:
+            raise ValueError("project_name too long (max 128 chars)")
 
 class JobResponse(BaseModel):
     id: int
@@ -228,7 +311,7 @@ class JobResponse(BaseModel):
     robustness_score: float = 1.0
     created_at: datetime
     findings_count: int = 0 # Added for dashboard metrics
-    # We explicitly exclude 'result' list here for list views to save bandwidth, 
+    # We explicitly exclude 'result' list here for list views to save bandwidth,
     # but could include it if needed. The Dashboard fetches /audit/{id} for details.
 
 class JobDetailResponse(JobResponse):
@@ -244,6 +327,13 @@ class ScanAllRequest(BaseModel):
     all_modules: bool = True
     min_severity: str = "INFO"
 
+    def model_post_init(self, __context: Any) -> None:
+        valid_severities = {"INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"}
+        if self.min_severity not in valid_severities:
+            raise ValueError(f"min_severity must be one of {valid_severities}")
+        if self.target_path and ".." in self.target_path:
+            raise ValueError("target_path must not contain '..' (path traversal attempt)")
+
 class FindingFixRequest(BaseModel):
     file: str
     line: int
@@ -251,18 +341,40 @@ class FindingFixRequest(BaseModel):
     snippet: str
     recommendation: Optional[str] = None
 
+    def model_post_init(self, __context: Any) -> None:
+        if ".." in self.file:
+            raise ValueError("file must not contain '..' (path traversal attempt)")
+        if self.line < 1:
+            raise ValueError("line must be >= 1")
+        if len(self.rule_id) > 128:
+            raise ValueError("rule_id too long")
+
 class RemediateRequest(BaseModel):
     findings: List[Dict[str, Any]]
+
+    def model_post_init(self, __context: Any) -> None:
+        if len(self.findings) > 500:
+            raise ValueError("findings list too large (max 500 items)")
 
 class LiveForkRequest(BaseModel):
     finding: Dict[str, Any]
     initial_vault_eth: Optional[float] = 100.0
     network: Optional[str] = "ethereum-mainnet-fork"
 
+    def model_post_init(self, __context: Any) -> None:
+        if self.initial_vault_eth is not None and not (0 < self.initial_vault_eth <= 10_000):
+            raise ValueError("initial_vault_eth must be between 0 and 10000")
+
 class SelfHealingPRRequest(BaseModel):
     finding: Dict[str, Any]
     repo_url: Optional[str] = ""
     apply_to_disk: Optional[bool] = False
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.repo_url:
+            url = self.repo_url.strip()
+            if not (url.startswith("https://github.com/") or url.startswith("https://gitlab.com/")):
+                raise ValueError("repo_url must be a GitHub or GitLab HTTPS URL")
 
 async def process_audit(job_id: int, target_path: str):
     # We need a new session for the background task

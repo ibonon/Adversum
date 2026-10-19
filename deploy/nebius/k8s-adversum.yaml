@@ -23,7 +23,7 @@ metadata:
 data:
   NEBIUS_BASE_URL: "https://api.tokenfactory.nebius.com/v1/"
   NEBIUS_MODEL: "nvidia/Nemotron-3_5-Lightning"
-  ALLOWED_ORIGINS: "*"
+  ALLOWED_ORIGINS: "https://adversum.app,https://www.adversum.app"
   APP_ENV: "production"
 ---
 # ─── BACKEND DEPLOYMENT ────────────────────────────────────────────────────────

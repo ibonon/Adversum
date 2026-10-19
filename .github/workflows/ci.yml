@@ -70,7 +70,10 @@ jobs:
         NEBIUS_MOCK: "1"
       run: |
         export PYTHONPATH=$PYTHONPATH:$(pwd)
-        python -m pytest tests/ -v --tb=short 2>&1 | tee pytest_output.txt || {
+        python -m pytest tests/ -v --tb=short \
+          --cov=api --cov=orchestrator --cov=modules \
+          --cov-report=term-missing --cov-fail-under=50 \
+          2>&1 | tee pytest_output.txt || {
           tail -n 50 pytest_output.txt
           exit 1
         }
