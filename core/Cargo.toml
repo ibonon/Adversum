@@ -16,7 +16,7 @@ tree-sitter = "0.22"
 tree-sitter-python = "0.21"
 tree-sitter-javascript = "0.21"
 tree-sitter-java = "0.21"
-ndarray = { version = "0.15", features = ["serde"] }
+ndarray = { version = "0.17", features = ["serde"] }
 thiserror = "1.0"
 rayon = "1.7"
 walkdir = "2.3"
