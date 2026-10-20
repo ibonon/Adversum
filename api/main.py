@@ -85,6 +85,7 @@ from orchestrator.services.db import create_db_and_tables, get_session
 
 # Security utilities
 from api.security import validate_scan_path, is_git_url
+from api.cache import api_cache
 
 # ── Nebius (NVIDIA Nemotron) + Tavily integrations ─────────────────────────
 # Lazy-imported so the API starts even without the keys configured.
@@ -154,14 +155,22 @@ pipeline = AnalysisPipeline()
 @app.on_event("startup")
 async def on_startup():
     await create_db_and_tables()
+    from orchestrator.services.job_queue import job_queue
+    await job_queue.start()
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    try:
+        from orchestrator.services.job_queue import job_queue as jq
+        await jq.stop()
+    except Exception as e:
+        logger.warning(f"Error stopping job queue: {e}")
     try:
         from orchestrator.services.db import close_db
         await close_db()
     except Exception as e:
         logger.warning(f"Error during shutdown: {e}")
+
 
 # --- Enterprise Security & Telemetry ---
 logging.basicConfig(level=logging.INFO)
@@ -694,8 +703,11 @@ async def get_audit_status(
     )
 
 @app.get("/audits", response_model=List[JobResponse], dependencies=[Depends(get_api_key)])
-async def list_audits(session: AsyncSession = Depends(get_session)):
-    """List all audit jobs."""
+async def list_audits(
+    session: AsyncSession = Depends(get_session),
+    since_id: Optional[int] = Query(None, description="Cursor for keyset pagination — returns only jobs with id > since_id"),
+):
+    """List all audit jobs. Use since_id for efficient cursor-based pagination."""
     # FIX: Use subquery to avoid N+1 query problem
     # Instead of loading job.findings for each job (N+1), we count in a single query
     stmt = (
@@ -707,9 +719,12 @@ async def list_audits(session: AsyncSession = Depends(get_session)):
         .group_by(Job.id)
         .order_by(Job.created_at.desc())
     )
-    
+
+    if since_id is not None:
+        stmt = stmt.where(Job.id > since_id)
+
     results = (await session.execute(stmt)).all()
-    
+
     # Manual mapping to JobResponse
     return [
         JobResponse(
@@ -733,20 +748,26 @@ async def get_dashboard_stats(session: AsyncSession = Depends(get_session)):
     """
     Optimized aggregation for dashboard metrics.
     Replaces heavy client-side processing with efficient SQL queries.
+    Results are cached in-memory for 30 seconds (LRU cache).
     """
+    cache_key = "dashboard:stats"
+    cached = await api_cache.get(cache_key)
+    if cached:
+        return cached.value
+
     # Total Audits
     total_audits = (await session.execute(select(func.count(Job.id)))).scalar_one()
-    
+
     # Total Findings (Threats)
     total_threats = (await session.execute(select(func.count(FindingModel.id)))).scalar_one()
-    
+
     # Average Robustness
     avg_robustness = (await session.execute(select(func.avg(Job.robustness_score)))).scalar_one() or 0.0
-    
+
     # Recent Activity (Last 7 Days)
     # Using SQLite specific syntax for date grouping
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    
+
     activity_query = (
         select(
             func.strftime('%Y-%m-%d', Job.created_at).label("date"),
@@ -755,22 +776,30 @@ async def get_dashboard_stats(session: AsyncSession = Depends(get_session)):
         )
         .where(Job.created_at >= seven_days_ago)
         .group_by(func.strftime('%Y-%m-%d', Job.created_at))
-        .order_by("date") # text sorting works for ISO dates
+        .order_by("date")  # text sorting works for ISO dates
     )
-    
+
     activity = (await session.execute(activity_query)).all()
-    
+
     recent_activity = [
         {"date": row.date, "count": row.count, "avg_robustness": row.avg_robustness}
         for row in activity
     ]
-    
-    return {
+
+    result = {
         "total_audits": total_audits,
         "total_threats": total_threats,
         "average_robustness": round(avg_robustness, 2),
-        "recent_activity": recent_activity
+        "recent_activity": recent_activity,
     }
+    await api_cache.set(cache_key, result)
+    return result
+
+
+@app.get("/api/v1/cache/stats", include_in_schema=False)
+async def cache_stats():
+    """Internal monitoring endpoint — returns LRU cache hit/miss statistics."""
+    return api_cache.stats
 
 @app.get("/audit/{id1}/compare/{id2}", dependencies=[Depends(get_api_key)])
 async def compare_audits(id1: int, id2: int, session: AsyncSession = Depends(get_session)):
@@ -1303,6 +1332,41 @@ class ComplianceReportRequest(BaseModel):
     findings: List[Dict[str, Any]]
     target: str = "Unknown System"
     frameworks: List[str] = ["soc2", "iso27001", "sarif"]
+
+
+# ── AI Intelligence Triage ──────────────────────────────────────────────────
+
+@app.post("/api/v1/intelligence/triage", tags=["AI Intelligence"])
+@limiter.limit("20/minute")
+async def ai_triage_findings(request: Request, payload: RemediateRequest, _key: str = Depends(get_api_key)):
+    """
+    AI Triage Engine — Scores and prioritizes a batch of findings.
+    Returns findings sorted by risk tier (P0_CRITICAL first).
+    """
+    from orchestrator.services.ai_triage import triage_engine
+    results = triage_engine.triage_batch([dict(f) for f in payload.findings])
+    return {
+        "total": len(results),
+        "triaged": [
+            {
+                "finding_id": r.finding_id,
+                "risk_tier": r.risk_tier.value,
+                "triage_score": r.triage_score,
+                "original_severity": r.original_severity,
+                "signals": r.signals,
+                "recommended_action": r.recommended_action,
+                "confidence": r.confidence,
+            }
+            for r in results
+        ],
+        "summary": {
+            "P0": sum(1 for r in results if r.risk_tier.value == "P0_CRITICAL"),
+            "P1": sum(1 for r in results if r.risk_tier.value == "P1_HIGH"),
+            "P2": sum(1 for r in results if r.risk_tier.value == "P2_MEDIUM"),
+            "P3": sum(1 for r in results if r.risk_tier.value == "P3_LOW"),
+            "P4": sum(1 for r in results if r.risk_tier.value == "P4_INFORMATIONAL"),
+        }
+    }
 
 
 # ── WebSocket Threat Stream ─────────────────────────────────────────────────
@@ -1873,6 +1937,79 @@ async def manual_scan_block(
 
 
 # ── Enterprise Healthcheck & Readiness Probes ────────────────────────────────
+
+@app.get("/api/v1/queue/stats", include_in_schema=False)
+async def queue_stats():
+    """Internal: job queue stats for monitoring."""
+    from orchestrator.services.job_queue import job_queue
+    return job_queue.stats
+
+
+# ── Threat Graph & Heuristics v2 ──────────────────────────────────────────────
+
+@app.post("/api/v1/intelligence/threat-graph", tags=["AI Intelligence"])
+@limiter.limit("10/minute")
+async def build_threat_graph(
+    request: Request,
+    payload: RemediateRequest,
+    _key: str = Depends(get_api_key),
+):
+    """Build a NetworkX threat dependency graph from findings. Returns nodes, edges, centrality."""
+    from orchestrator.services.threat_graph import ThreatGraph
+    graph = ThreatGraph()
+    graph.build_from_findings([dict(f) for f in payload.findings])
+    return graph.to_dict()
+
+
+@app.post("/api/v1/intelligence/blast-radius", tags=["AI Intelligence"])
+@limiter.limit("10/minute")
+async def compute_blast_radius(
+    request: Request,
+    payload: RemediateRequest,
+    root_node_id: str = Query(..., description="Node ID to compute blast radius from"),
+    _key: str = Depends(get_api_key),
+):
+    """Compute blast radius from root_node_id: affected nodes, protocols, critical paths."""
+    from orchestrator.services.threat_graph import ThreatGraph
+    graph = ThreatGraph()
+    graph.build_from_findings([dict(f) for f in payload.findings])
+    result = graph.blast_radius(root_node_id)
+    return {
+        "root_node": result.root_node,
+        "affected_nodes": result.affected_nodes,
+        "affected_protocols": result.affected_protocols,
+        "depth": result.depth,
+        "total_value_at_risk_usd": result.total_value_at_risk_usd,
+        "critical_paths": result.critical_paths,
+    }
+
+
+@app.post("/api/v1/intelligence/heuristics-scan", tags=["AI Intelligence"])
+@limiter.limit("20/minute")
+async def heuristics_v2_scan(
+    request: Request,
+    payload: RemediateRequest,
+    _key: str = Depends(get_api_key),
+):
+    """Run 17-rule bytecode/source heuristics engine v2. Returns findings sorted CRITICAL first."""
+    from modules.threat_hunter.heuristics_v2 import heuristics_v2
+    files = [
+        {
+            "path": str(f.get("file", "")),
+            "content": str(f.get("snippet", "")) + " " + str(f.get("description", "")),
+        }
+        for f in payload.findings
+    ]
+    results = heuristics_v2.scan_files(files)
+    if _PROMETHEUS_AVAILABLE and _findings_total:
+        for r in results:
+            _findings_total.labels(severity=r.get("severity", "INFO")).inc()
+    return {
+        "rule_count": heuristics_v2.rule_count,
+        "findings_count": len(results),
+        "findings": results,
+    }
+
 
 @app.get("/health/live", tags=["Health & Readiness"])
 async def liveness_probe():

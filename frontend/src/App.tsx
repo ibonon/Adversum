@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SOCDashboard from "./pages/SOC";
 import WarRoom from "./pages/WarRoom";
+import Analytics from "./pages/Analytics";
 
 
 const queryClient = new QueryClient();
@@ -25,6 +26,8 @@ const App = () => (
             <Route path="/soc" element={<SOCDashboard />} />
             {/* Phase 3: Cross-Protocol Attack Simulator War Room */}
             <Route path="/war-room" element={<WarRoom />} />
+            {/* Analytics & Observability Dashboard */}
+            <Route path="/analytics" element={<Analytics />} />
 
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
