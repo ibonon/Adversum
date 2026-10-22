@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Compteur global pour générer des noms de variables symboliques frais
+#[allow(dead_code)]
 static FRESH_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-fn fresh_var(prefix: &str, sort: Sort) -> SmtExpr {
+#[allow(dead_code)]
+pub fn fresh_var(prefix: &str, sort: Sort) -> SmtExpr {
     let id = FRESH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     SmtExpr::Var(SmtVar {
         name: format!("{}_{}", prefix, id),

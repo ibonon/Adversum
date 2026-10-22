@@ -71,11 +71,16 @@ impl<'a> TaintAnalysis<'a> {
             worklist.push_back(entry_blk.id);
         }
 
-        // Iteration
-        let mut visited_count = 0; // Guard against infinite loops? Only needed if non-monotonic transfer (not the case here)
+        // Iteration: Guard against infinite loops with bounded iterations
+        let max_iterations = (self.cfg.blocks.len() * 100).max(10_000);
+        let mut visited_count = 0;
 
         while let Some(block_id) = worklist.pop_front() {
             visited_count += 1;
+            if visited_count > max_iterations {
+                eprintln!("[WARN] TaintAnalysis exceeded max iteration threshold ({}), breaking to prevent hang.", max_iterations);
+                break;
+            }
 
             // 1. Compute IN[B] = Union(OUT[P]) for preds P
             // For entry block, IN is initialized. For others:

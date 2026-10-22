@@ -266,7 +266,7 @@ impl CvssV4 {
             ) => 8.2,
             (
                 AttackVector::Network,
-                AttackComplexity::Low,
+                AttackComplexity::High,
                 AttackRequirements::None,
                 PrivilegesRequired::None,
                 UserInteraction::None,

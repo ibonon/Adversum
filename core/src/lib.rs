@@ -646,9 +646,14 @@ fn compute_hashes(
         .filter_map(|path_str| {
             let path = Path::new(path_str);
             let file = fs::File::open(path).ok()?;
-            let mmap = unsafe { Mmap::map(&file).ok()? };
-            let hash = xxh3_64(&mmap);
-            Some((path_str.clone(), format!("{:x}", hash)))
+            let metadata = file.metadata().ok()?;
+            let hash = if metadata.len() == 0 {
+                format!("{:x}", xxh3_64(&[]))
+            } else {
+                let mmap = unsafe { Mmap::map(&file).ok()? };
+                format!("{:x}", xxh3_64(&mmap))
+            };
+            Some((path_str.clone(), hash))
         })
         .collect();
 
@@ -662,11 +667,22 @@ fn inspect_files(_py: Python<'_>, paths: Vec<String>) -> PyResult<AnalysisResult
         .map(|path_str| {
             let path = Path::new(path_str);
 
-            // --- Open & Mmap (single pass for hash + pre-filter + analysis) ---
+            // --- Open & Safe Mmap (single pass for hash + pre-filter + analysis) ---
             let file = match fs::File::open(path) {
                 Ok(f) => f,
                 Err(_) => return (Vec::new(), None),
             };
+            let metadata = match file.metadata() {
+                Ok(m) => m,
+                Err(_) => return (Vec::new(), None),
+            };
+
+            // Handle empty files safely (mmap panics or fails on 0-length files)
+            if metadata.len() == 0 {
+                let hash = format!("{:x}", xxh3_64(&[]));
+                return (Vec::new(), Some((path_str.clone(), hash)));
+            }
+
             let mmap = match unsafe { Mmap::map(&file) } {
                 Ok(m) => m,
                 Err(_) => return (Vec::new(), None),
@@ -732,6 +748,17 @@ fn inspect_targeted(
                 Ok(f) => f,
                 Err(_) => return (Vec::new(), None),
             };
+            let metadata = match file.metadata() {
+                Ok(m) => m,
+                Err(_) => return (Vec::new(), None),
+            };
+
+            // Handle empty files safely
+            if metadata.len() == 0 {
+                let hash = format!("{:x}", xxh3_64(&[]));
+                return (Vec::new(), Some((path_str.clone(), hash)));
+            }
+
             let mmap = match unsafe { Mmap::map(&file) } {
                 Ok(m) => m,
                 Err(_) => return (Vec::new(), None),
@@ -739,7 +766,6 @@ fn inspect_targeted(
             let hash = format!("{:x}", xxh3_64(&mmap));
 
             // --- Tier-0 Pre-Filter (targeted) ---
-            // Even in targeted mode, skip the full pipeline if no relevant patterns exist.
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             let lang = Tier0Lang::from_ext(ext);
             if !should_analyze(&mmap, lang) {
@@ -784,7 +810,18 @@ fn inspect_project(_py: Python<'_>, root_path: String) -> PyResult<AnalysisResul
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().map(|s| s == "py").unwrap_or(false))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|ext| {
+                    matches!(
+                        ext,
+                        "py" | "pyw" | "js" | "mjs" | "cjs" | "ts" | "tsx" | "jsx" | "java" | "sol"
+                    )
+                })
+                .unwrap_or(false)
+        })
         .map(|e| e.path().to_string_lossy().to_string())
         .collect();
 

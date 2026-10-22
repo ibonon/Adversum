@@ -44,7 +44,7 @@ impl CombinedLoss {
 mod tests {
     use super::*;
     use crate::learning::ewc::FisherInformation;
-    use ndarray::{arr1, IxDyn};
+    use ndarray::arr1;
 
     #[test]
     fn test_combined_gradient() {

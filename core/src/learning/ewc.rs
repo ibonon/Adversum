@@ -23,7 +23,7 @@ impl FisherInformation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{arr1, IxDyn};
+    use ndarray::arr1;
 
     #[test]
     fn test_ewc_gradient() {

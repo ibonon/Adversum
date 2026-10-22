@@ -108,6 +108,30 @@ const JAVA_TRIGGERS: &[&[u8]] = &[
     b"System.out.println(",
 ];
 
+/// Solidity / Smart Contract sink trigger patterns (SIMD accelerated).
+const SOLIDITY_TRIGGERS: &[&[u8]] = &[
+    b"selfdestruct(",
+    b"suicide(",
+    b"delegatecall(",
+    b"tx.origin",
+    b"CREATE2",
+    b"call{value:",
+    b"call.value(",
+    b"assembly {",
+    b"assembly{",
+    b"unchecked {",
+    b"unchecked{",
+    b"block.timestamp",
+    b"block.number",
+    b"now",
+    b"ecrecover(",
+    b"flashloan",
+    b"flashLoan",
+    b"FlashLoan",
+    b"getPrice(",
+    b"oracle",
+];
+
 // ---------------------------------------------------------------------------
 // Compiled automata (initialized once, shared across all Rayon threads)
 // ---------------------------------------------------------------------------
@@ -135,6 +159,13 @@ static AC_JAVA: Lazy<AhoCorasick> = Lazy::new(|| {
         .expect("Java trigger patterns are valid")
 });
 
+static AC_SOLIDITY: Lazy<AhoCorasick> = Lazy::new(|| {
+    AhoCorasickBuilder::new()
+        .match_kind(MatchKind::LeftmostFirst)
+        .build(SOLIDITY_TRIGGERS)
+        .expect("Solidity trigger patterns are valid")
+});
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -145,6 +176,7 @@ pub enum Lang {
     Python,
     JavaScript,
     Java,
+    Solidity,
     /// Unknown extension — always pass through to the full pipeline.
     Unknown,
 }
@@ -156,6 +188,7 @@ impl Lang {
             "py" | "pyw" | "pyi" => Self::Python,
             "js" | "mjs" | "cjs" | "ts" | "tsx" | "jsx" => Self::JavaScript,
             "java" => Self::Java,
+            "sol" => Self::Solidity,
             _ => Self::Unknown,
         }
     }
@@ -186,6 +219,7 @@ pub fn should_analyze(bytes: &[u8], lang: Lang) -> bool {
         Lang::Python => AC_PYTHON.is_match(bytes),
         Lang::JavaScript => AC_JS.is_match(bytes),
         Lang::Java => AC_JAVA.is_match(bytes),
+        Lang::Solidity => AC_SOLIDITY.is_match(bytes),
     }
 }
 
@@ -196,6 +230,7 @@ pub fn count_triggers(bytes: &[u8], lang: Lang) -> usize {
         Lang::Python => &*AC_PYTHON,
         Lang::JavaScript => &*AC_JS,
         Lang::Java => &*AC_JAVA,
+        Lang::Solidity => &*AC_SOLIDITY,
         Lang::Unknown => return 1,
     };
     ac.find_iter(bytes).count()
@@ -255,6 +290,31 @@ mod tests {
     #[test]
     fn empty_file_is_skipped() {
         assert!(!should_analyze(b"", Lang::Python));
+    }
+
+    #[test]
+    fn clean_solidity_file_is_skipped() {
+        let clean = b"contract SafeMath { function add(uint a, uint b) pure returns (uint) { return a + b; } }";
+        assert!(!should_analyze(clean, Lang::Solidity));
+    }
+
+    #[test]
+    fn selfdestruct_triggers_solidity() {
+        let dangerous =
+            b"contract Vault { function kill() external { selfdestruct(payable(msg.sender)); } }";
+        assert!(should_analyze(dangerous, Lang::Solidity));
+    }
+
+    #[test]
+    fn delegatecall_triggers_solidity() {
+        let dangerous = b"function exec(address target, bytes memory data) external { target.delegatecall(data); }";
+        assert!(should_analyze(dangerous, Lang::Solidity));
+    }
+
+    #[test]
+    fn tx_origin_triggers_solidity() {
+        let dangerous = b"require(tx.origin == owner, 'Unauthorized');";
+        assert!(should_analyze(dangerous, Lang::Solidity));
     }
 
     #[test]
