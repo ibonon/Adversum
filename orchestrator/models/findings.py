@@ -57,6 +57,16 @@ class ValidatedFinding(BaseModel):
     fix_description: Optional[str] = Field(None, description="Description of the auto-fix")
     fix_code: Optional[str] = Field(None, description="Code for the auto-fix")
 
+    # -- Provenance & preuve formelle (SOL-004), exposés en champs structurés --
+    # Mêmes informations que le rapport HTML, pour qu'un client de l'API n'ait
+    # pas à re-parser `reasoning_notes` (texte libre).
+    proof_anchor: Optional[str] = Field(None, description="Preuve Z3 brute / ancre de robustesse")
+    provenance: Optional[str] = Field(None, description="Origine de la détection : nemotron | regex_fallback")
+    nemotron_line: Optional[int] = Field(None, description="Ligne rapportée par Nemotron (non fiable, pour comparaison)")
+    resolved_line: Optional[int] = Field(None, description="Ligne réellement ancrée dans le source (None si ancrage échoué)")
+    anchor_status: Optional[str] = Field(None, description="ANCRAGE_OK | ANCRAGE_ECHOUE")
+    z3_verdict: Optional[str] = Field(None, description="Verdict Z3 : SAT | UNSAT | UNPARSED | UNKNOWN")
+
 # The final "Finding" exposed to API could be just ValidatedFinding or a flattened version.
 # For modularity, we expose ValidatedFinding as the main result.
 Finding = ValidatedFinding

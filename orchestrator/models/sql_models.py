@@ -50,6 +50,13 @@ class FindingModel(SQLModel, table=True):
     proof_anchor: Optional[str] = Field(None, index=True)
     is_fixed: bool = Field(default=False, index=True)
 
+    # -- Provenance & preuve formelle (SOL-004) : champs structurés, pas du texte --
+    provenance: Optional[str] = Field(None, index=True)
+    nemotron_line: Optional[int] = None
+    resolved_line: Optional[int] = None
+    anchor_status: Optional[str] = None
+    z3_verdict: Optional[str] = Field(None, index=True)
+
 class AuditLog(SQLModel, table=True):
     __table_args__ = {'extend_existing': True}
     

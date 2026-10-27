@@ -904,13 +904,44 @@ class HTMLReportGenerator:
     <!-- TAB 9: SMT VALIDATED PATCHES -->
     <div id="tab-patches" class="tab-content">
       <div class="card">
-        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;">🧬 Correctifs AST Validés par Preuve Formelle SMT</h3>
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-          Synthèse automatique de patchs de code validés syntaxiquement et formellement prouvés contre les régressions par le solveur SMT.
+        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem;">🧬 Correctifs Validés — Preuve Formelle &amp; Règle Statique</h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+          Chaque correctif est étiqueté selon son verdict réel du solveur Z3 : SAT (débordement
+          représentable), UNSAT (non représentable ou garde vérifiée), ou sans conclusion
+          formelle. Un contrat protégé (SafeMath / pragma &ge; 0.8) est explicitement signalé
+          comme reconnu protégé — et non comme une simple absence de résultat.
+        </p>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+          Portée de chaque preuve : le solveur établit la <em>représentabilité</em> du débordement
+          pour l'opération détectée, jamais son <em>accessibilité</em> depuis l'extérieur
+          (représentabilité &ne; accessibilité).
         </p>
 """
         patches_list = (intelligence_data or {}).get("validated_patches", [])
+        smt_verified_count = sum(1 for pt in patches_list if pt.get("is_smt_verified"))
+        # Les patchs sont synthétisés avant le dédoublonnage du correlation engine,
+        # alors que `findings` est post-dédoublonné : sans max() le ratio peut
+        # dépasser 100%. On prend donc l'ensemble le plus large comme dénominateur.
+        total_findings = max(len(findings), len(patches_list))
+        smt_verified_pct = (smt_verified_count / total_findings) * 100 if total_findings else 0.0
+
+        # Répartition des verdicts Z3 : distingue explicitement un finding
+        # exploitable (SAT) d'un contrat reconnu protégé (UNSAT / garde).
+        sat_count      = sum(1 for pt in patches_list if str(pt.get("verdict")) == "SAT")
+        unsat_count    = sum(1 for pt in patches_list if str(pt.get("verdict")) == "UNSAT")
+        unproven_count = sum(1 for pt in patches_list if str(pt.get("verdict")) in ("UNPARSED", "UNKNOWN", "ERROR"))
+        static_count   = sum(1 for pt in patches_list if str(pt.get("verdict", "N/A")) == "N/A")
+
         if patches_list:
+            html_content += f"""
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+          <span class="badge" style="color: var(--high); border: 1px solid var(--high);">🧬 Z3 SAT — débordement représentable (exploitable) : {sat_count}</span>
+          <span class="badge" style="color: var(--success); border: 1px solid var(--success);">🛡️ Z3 UNSAT — protégé / non représentable : {unsat_count}</span>
+          <span class="badge" style="color: var(--text-muted); border: 1px solid var(--text-muted);">⚠️ Z3 sans conclusion (UNPARSED/UNKNOWN/ERROR) : {unproven_count}</span>
+          <span class="badge" style="color: var(--text-muted); border: 1px solid var(--text-muted);">Règle statique (sans Z3) : {static_count}</span>
+          <span class="badge" style="color: var(--primary); border: 1px solid var(--primary);">Couverture Z3 : {smt_verified_count}/{total_findings} ({smt_verified_pct:.0f}%)</span>
+        </div>
+"""
             for pt in patches_list:
                 pid = html.escape(str(pt.get("patch_id", "")))
                 pfile = html.escape(str(pt.get("file", "")))
@@ -918,17 +949,54 @@ class HTMLReportGenerator:
                 pdiff = html.escape(str(pt.get("diff", "")))
                 pproof = html.escape(str(pt.get("verification_proof", "")))
 
+                pverdict = str(pt.get("verdict", "N/A"))
+                pguarded = bool(pt.get("guarded", False))
+                pscope = html.escape(str(pt.get("scope", "")))
+
+                if pverdict == "SAT":
+                    pbadge = "🧬 Z3 SAT — débordement représentable (exploitable)"
+                    pbadge_style = "color: var(--high); border: 1px solid var(--high);"
+                elif pverdict == "UNSAT" and pguarded:
+                    pbadge = "🛡️ Z3 UNSAT — protégé : garde (SafeMath / pragma ≥0.8) vérifiée"
+                    pbadge_style = "color: var(--success); border: 1px solid var(--success);"
+                elif pverdict == "UNSAT":
+                    pbadge = "🛡️ Z3 UNSAT — non représentable sur le domaine contraint"
+                    pbadge_style = "color: var(--success); border: 1px solid var(--success);"
+                elif pverdict in ("UNPARSED", "UNKNOWN") and pguarded:
+                    pbadge = f"🛡️ Protégé — garde modélisée (SafeMath / pragma ≥0.8) ; Z3 {pverdict}"
+                    pbadge_style = "color: var(--success); border: 1px solid var(--success);"
+                elif pverdict in ("UNPARSED", "UNKNOWN", "ERROR"):
+                    pbadge = f"⚠️ Z3 {pverdict} — aucune conclusion formelle"
+                    pbadge_style = "color: var(--text-muted); border: 1px solid var(--text-muted);"
+                else:
+                    pbadge = "Détection par règle statique (sans preuve Z3)"
+                    pbadge_style = "color: var(--text-muted); border: 1px solid var(--text-muted);"
+
+                # Portée explicite : la preuve porte sur la représentabilité de
+                # l'opération, jamais sur sa reachability depuis l'extérieur.
+                if pscope:
+                    scope_html = (
+                        f'<div style="font-size: 0.72rem; font-family: monospace; color: var(--text-muted); '
+                        f'margin-bottom: 0.75rem;">Portée de la preuve : {pscope}</div>'
+                    )
+                else:
+                    scope_html = (
+                        '<div style="font-size: 0.72rem; font-family: monospace; color: var(--text-muted); '
+                        'margin-bottom: 0.75rem;">Portée : aucune preuve formelle (règle statique, hors périmètre Z3).</div>'
+                    )
+
                 html_content += f"""
         <div class="card" style="background: rgba(0,0,0,0.3); margin-bottom: 1.25rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
             <div style="font-weight: 700; font-size: 0.95rem; color: var(--success);">
               {pid} &bull; <span style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">{pfile}:{pline}</span>
             </div>
-            <span class="badge" style="color: var(--success); border: 1px solid var(--success);">100% SMT Verified</span>
+            <span class="badge" style="{pbadge_style}">{pbadge}</span>
           </div>
-          <div style="font-size: 0.8rem; color: #a7f3d0; margin-bottom: 0.75rem;">
+          <div style="font-size: 0.8rem; color: #a7f3d0; margin-bottom: 0.5rem;">
             {pproof}
           </div>
+          {scope_html}
           <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted);">Diff Unifié Validé :</div>
           <pre><code>{pdiff}</code></pre>
         </div>

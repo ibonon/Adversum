@@ -160,7 +160,6 @@ export default function SOCDashboard() {
   const feedRef                       = useRef<HTMLDivElement>(null);
   const reconnectTimerRef             = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef          = useRef<number>(0);
-  const reconnectAttemptsRef          = useRef<number>(0);
 
   // ── WebSocket connection ───────────────────────────────────────────────────
 

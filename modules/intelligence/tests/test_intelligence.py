@@ -136,7 +136,12 @@ class TestIntelligenceEngine(unittest.TestCase):
         self.assertIn("graph TD", report.mermaid_flowchart)
 
     def test_smart_patch_validator(self):
-        """Tests AST patch synthesis and SMT verification of vulnerability elimination."""
+        """Tests AST patch synthesis and honest labelling of the validation mode.
+
+        SOL-002 n'est pas adossée à Z3 (SUPPORTED_RULES = {"SOL-004"}) : le patch
+        doit être étiqueté « règle statique », sans aucune revendication de preuve
+        formelle.
+        """
         finding = {
             "rule_id": "SOL-002",
             "file": "contracts/LiquidityVault.sol",
@@ -149,8 +154,11 @@ class TestIntelligenceEngine(unittest.TestCase):
         self.assertIsNotNone(patch)
         self.assertTrue(patch.syntax_valid)
         self.assertTrue(patch.vulnerability_eliminated)
-        self.assertTrue(patch.is_smt_verified)
-        self.assertIn("SMT FORMAL PROOF", patch.verification_proof)
+        # SOL-002 est une règle statique : aucune preuve Z3 ne doit être revendiquée.
+        self.assertFalse(patch.is_smt_verified)
+        self.assertEqual(patch.verdict, "N/A")
+        self.assertNotIn("SMT FORMAL PROOF", patch.verification_proof)
+        self.assertIn("règle statique", patch.verification_proof)
         self.assertIn("msg.sender", patch.diff)
 
 

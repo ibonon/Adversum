@@ -147,7 +147,7 @@ contract ReentrancyExploitPoCTest is Test {
 const AGENT_STEPS = [
   { sec: 0, title: "Initialisation Sandbox", desc: "Isolation des processus & chargement des politiques de sécurité", icon: "📡" },
   { sec: 8, title: "Acquisition du Code Source", desc: "Clonage Git shallow & extraction de l'arbre syntaxique (AST)", icon: "🐙" },
-  { sec: 35, title: "Analyse SAST Multi-Moteurs", desc: "Moteur Rust PyO3 : Taint analysis, SMT solver & conformité CCSS", icon: "🛡️" },
+  { sec: 35, title: "Analyse SAST Multi-Moteurs", desc: "Moteur Rust PyO3 : Taint analysis & conformité CCSS", icon: "🛡️" },
   { sec: 85, title: "Raisonnement IA NVIDIA Nemotron", desc: "Inférence Nebius Token Factory pour élimination des faux positifs", icon: "🧠" },
   { sec: 130, title: "Threat Intelligence Tavily", desc: "Recherche temps-réel d'exploits publics et corrélations CVE", icon: "🔍" },
   { sec: 165, title: "Génération PoC Foundry & Patches", desc: "Synthèse des exploits .t.sol et remédiations Git vérifiées", icon: "⚡" },
@@ -294,6 +294,9 @@ const DashboardPreview = () => {
   const [scanStatusMsg, setScanStatusMsg] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [selectedProfile, setSelectedProfile] = useState('quick');
+  // Override explicite du flag CEX (null = suivre le profil). Permet aux cibles 1-Clic non-CEX
+  // (ex: Sigui, lib Python) d'utiliser le profil "full" sans déclencher le modèle de menaces CEX.
+  const [cexAuditOverride, setCexAuditOverride] = useState<boolean | null>(null);
   const [expandedFinding, setExpandedFinding] = useState<number | null>(null);
   const [showCCSS, setShowCCSS] = useState(false);
   const [showAiSummary, setShowAiSummary] = useState(true);
@@ -389,6 +392,8 @@ const DashboardPreview = () => {
   };
 
   const profile = SCAN_PROFILES.find(p => p.id === selectedProfile) || SCAN_PROFILES[0];
+  // Le flag CEX effectif : override explicite sinon la valeur du profil sélectionné.
+  const effectiveCexAudit = cexAuditOverride ?? Boolean(profile.cex_audit);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -423,7 +428,7 @@ const DashboardPreview = () => {
       repo_url: url,
       all_modules: profile.all_modules,
       modules: profile.modules,
-      cex_audit: profile.cex_audit,
+      cex_audit: effectiveCexAudit,
       format: profile.format,
       poc: profile.poc,
       project_name: 'Digital Asset Platform Audit'
@@ -593,6 +598,9 @@ const DashboardPreview = () => {
   const findings = scanResult?.findings ?? [];
   const ccss = scanResult?.ccss_compliance ?? null;
   const threat = scanResult?.threat_model ?? null;
+  // STRIDE/DREAD = modèle de menaces CEX (généré uniquement si cex_audit) — ne l'afficher que
+  // lorsque l'audit est réellement CEX (profil cex/full, sauf override des cibles 1-Clic non-CEX).
+  const showThreatModel = effectiveCexAudit && Boolean(threat);
   const criticalCount = findings.filter((f: any) => (f.severity || '').toUpperCase() === 'CRITICAL').length;
   const highCount = findings.filter((f: any) => (f.severity || '').toUpperCase() === 'HIGH').length;
   const totalCount = findings.length;
@@ -810,7 +818,7 @@ const DashboardPreview = () => {
                   return (
                     <button
                       key={p.id}
-                      onClick={() => { setSelectedProfile(p.id); setScanResult(null); setScanStatusMsg(null); }}
+                      onClick={() => { setSelectedProfile(p.id); setCexAuditOverride(null); setScanResult(null); setScanStatusMsg(null); }}
                       disabled={isScanning}
                       className={`relative p-4 rounded-2xl border text-left transition-all duration-200 group ${active ? `bg-card/80 ${p.borderActive} shadow-lg` : 'bg-card/30 border-border/30 hover:border-border/60 hover:bg-card/50'}`}
                     >
@@ -860,7 +868,7 @@ const DashboardPreview = () => {
                     <button
                       type="button"
                       disabled={isScanning}
-                      onClick={() => { setRepoUrl('https://github.com/ibonon/Sigui'); setSelectedProfile('full'); }}
+                      onClick={() => { setRepoUrl('https://github.com/ibonon/Sigui'); setSelectedProfile('full'); setCexAuditOverride(false); }}
                       className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-background/60 hover:bg-muted text-foreground/80 hover:text-foreground border border-border/40 transition-colors flex items-center gap-1"
                     >
                       ⚡ ibonon/Sigui (GitHub)
@@ -868,7 +876,7 @@ const DashboardPreview = () => {
                     <button
                       type="button"
                       disabled={isScanning}
-                      onClick={() => { setRepoUrl('contracts/Vault.sol'); setSelectedProfile('smart_contract'); }}
+                      onClick={() => { setRepoUrl('contracts/Vault.sol'); setSelectedProfile('smart_contract'); setCexAuditOverride(null); }}
                       className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-background/60 hover:bg-muted text-foreground/80 hover:text-foreground border border-border/40 transition-colors flex items-center gap-1"
                     >
                       🛡️ Vault.sol (Reentrancy)
@@ -876,7 +884,7 @@ const DashboardPreview = () => {
                     <button
                       type="button"
                       disabled={isScanning}
-                      onClick={() => { setRepoUrl('contracts/CrossChainBridge.sol'); setSelectedProfile('cex'); }}
+                      onClick={() => { setRepoUrl('contracts/CrossChainBridge.sol'); setSelectedProfile('cex'); setCexAuditOverride(null); }}
                       className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-background/60 hover:bg-muted text-foreground/80 hover:text-foreground border border-border/40 transition-colors flex items-center gap-1"
                     >
                       🌉 Nomad Bridge (Zero-Root)
@@ -1121,7 +1129,7 @@ const DashboardPreview = () => {
               )}
 
               {/* THREAT MODEL MINI */}
-              {threat && (
+              {showThreatModel && (
                 <div className="rounded-2xl bg-card/40 border border-border/30 px-5 py-4">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2"><Shield className="w-3.5 h-3.5" />Modèle de Menaces Financières STRIDE</span>

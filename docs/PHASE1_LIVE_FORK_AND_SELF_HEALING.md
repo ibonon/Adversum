@@ -10,7 +10,7 @@ This document describes the architecture, operation, and verification of **Phase
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                              ADVERSUM SINGULARITY PIPELINE                             │
 │                                                                                        │
-│   Source Code ──► Rust SAST Core (Rayon + Tree-sitter + Datalog + SMT Invariants)      │
+│   Source Code ──► Rust SAST Core (Rayon + Tree-sitter + Datalog)                 │
 │                           │                                                            │
 │                           ▼ Finding Candidate (AST Sinks / Access Flaws)               │
 │               ┌──────────────────────────────────────────────────┐                     │

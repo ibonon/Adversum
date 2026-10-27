@@ -17,6 +17,15 @@ try:
 except (ImportError, ValueError):
     from remediation.patcher import RemediationPatcher
 
+try:
+    from ..formal_verification.z3_prover import SUPPORTED_RULES, prove_finding_in_source
+except (ImportError, ValueError):
+    try:
+        from formal_verification.z3_prover import SUPPORTED_RULES, prove_finding_in_source
+    except (ImportError, ValueError):
+        SUPPORTED_RULES = frozenset()
+        prove_finding_in_source = None
+
 @dataclass
 class ValidatedPatch:
     patch_id: str
@@ -29,6 +38,17 @@ class ValidatedPatch:
     vulnerability_eliminated: bool
     is_smt_verified: bool
     verification_proof: str
+    # Verdict réel du prover Z3 : SAT (débordement représentable), UNSAT
+    # (non représentable / garde valide), UNPARSED / UNKNOWN / ERROR, ou
+    # "N/A" pour une règle non adossée à Z3. Sert à distinguer explicitement
+    # un finding exploitable d'un contrat reconnu protégé dans le rapport.
+    verdict: str = "N/A"
+    # Portée honnête de la preuve, telle que retournée par le prover
+    # (« overflow representable ... not reachability-proven »).
+    scope: str = ""
+    # Vrai si une garde anti-débordement (SafeMath / pragma >= 0.8) a été
+    # détectée et modélisée comme contrainte.
+    guarded: bool = False
 
 class SmartPatchValidator:
     def __init__(self):
@@ -81,11 +101,39 @@ class SmartPatchValidator:
         elif "BRIDGE-003" in rule_id or "ZERO_ROOT" in rule_id:
             vuln_eliminated = "bytes32(0)" in fixed_content or "root != 0" in fixed_content
 
-        # 4. Formal SMT proof summary
-        proof_msg = (
-            f"SMT FORMAL PROOF: Post-patch state constraints verified. Invariant invariant_{rule_id}_eliminated holds "
-            f"under universal quantification: ∀ s ∈ States, ¬Vulnerable(s, {rule_id})."
-        )
+        # 4. Preuve formelle
+        # Seules les règles adossées à un vrai solveur Z3 obtiennent le badge
+        # de preuve. Tout le reste est étiqueté honnêtement (règle statique).
+        z3_proof = None
+        # Verdict/portée par défaut : "N/A" pour toute règle non adossée à Z3,
+        # afin qu'aucune assertion formelle ne soit affichée sans preuve réelle.
+        verdict = "N/A"
+        scope = ""
+        guarded = False
+        if prove_finding_in_source is not None and any(r in rule_id for r in SUPPORTED_RULES):
+            try:
+                z3_proof = prove_finding_in_source(finding, file_content)
+                proof_msg = z3_proof.get("proof", "")
+                smt_verified = bool(z3_proof.get("smt_verified"))
+                verdict = str(z3_proof.get("verdict", "UNKNOWN"))
+                scope = str(z3_proof.get("scope", ""))
+                guarded = bool(z3_proof.get("guarded", False))
+            except Exception as exc:
+                # Un prover qui plante ne doit jamais faire échouer le scan :
+                # on retombe sur une étiquette honnête, sans faux badge de preuve.
+                smt_verified = False
+                verdict = "ERROR"
+                proof_msg = (
+                    f"Preuve Z3 indisponible — le solveur a échoué sur {rule_id} "
+                    f"({type(exc).__name__}: {exc}). Aucune affirmation formelle."
+                )
+        else:
+            smt_verified = False
+            proof_msg = (
+                f"Détection par règle statique — aucune preuve formelle Z3 disponible "
+                f"pour {rule_id or 'ce type'}. Élimination vérifiée par comparaison "
+                f"de motifs sur le contenu patché : {vuln_eliminated}."
+            )
 
         return ValidatedPatch(
             patch_id=f"PATCH-{rule_id}-{finding.get('line', 1)}",
@@ -96,6 +144,9 @@ class SmartPatchValidator:
             diff=diff_text,
             syntax_valid=syntax_valid,
             vulnerability_eliminated=vuln_eliminated,
-            is_smt_verified=syntax_valid and vuln_eliminated,
-            verification_proof=proof_msg
+            is_smt_verified=smt_verified,
+            verification_proof=proof_msg,
+            verdict=verdict,
+            scope=scope,
+            guarded=guarded
         )

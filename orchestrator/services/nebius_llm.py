@@ -274,7 +274,7 @@ def _get_client():
             _client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=base_url,
-                timeout=60.0,
+                timeout=180.0,
                 max_retries=1,
             )
             logger.info(f"[Nebius/NVIDIA] Client initialized successfully")
@@ -617,4 +617,337 @@ Enclose your final JSON object strictly between <graph> and </graph> tags:
     except Exception as e:
         logger.warning(f"[Nebius/Nemotron] Attack graph generation failed: {e}")
         return _generate_mock_attack_graph(findings, project_name=project_name)
+
+
+# ---------------------------------------------------------------------------
+# Overflow / underflow hypothesis generation from RAW Solidity (SOL-004)
+# ---------------------------------------------------------------------------
+class NebiusOverflowGenerationError(RuntimeError):
+    """Levée quand la génération d'hypothèses overflow échoue réellement
+    (timeout, erreur API, JSON absent/tronqué). Distincte du retour `[]`, qui
+    signifie « le modèle n'a proposé aucune hypothèse ». Les appelants doivent
+    retomber sur la règle statique plutôt que d'afficher un résultat vide."""
+
+
+_OVERFLOW_SYSTEM_PROMPT = (
+    "You are a precise Solidity static-analysis engine. "
+    "Do your reasoning internally and then output ONLY the final compact JSON, "
+    "strictly enclosed between <json> and </json> tags, with no prose. "
+    "Never invent line numbers: every line number must exist in the provided source."
+)
+
+# Le gabarit ne contient AUCUNE valeur concrète : un exemple renseigné se
+# retrouverait recopié tel quel par le modèle (contamination observée en N2).
+_OVERFLOW_PROMPT = """Analyse ce contrat Solidity. Identifie chaque opération arithmétique (addition, soustraction, multiplication) qui pourrait causer un overflow ou underflow. Pour chacune, donne : le numéro de ligne, le nom de la variable résultat, le type d'opération, et si une protection (SafeMath, pragma >= 0.8.0, require explicite) semble présente autour. Réponds en JSON strict.
+
+Fichier : {file_path}
+
+Code source (brut) :
+<solidity>
+{source}
+</solidity>
+
+Réponds UNIQUEMENT avec un objet JSON entre <json> et </json>, au format exact suivant
+(ceci est un gabarit : remplace chaque valeur par ce que tu observes réellement dans
+le source ci-dessus ; ne recopie aucun texte du gabarit comme s'il s'agissait d'un résultat) :
+<json>
+{{
+  "hypotheses": [
+    {{
+      "line": "<numéro de ligne exact dans le source ci-dessus>",
+      "variable": "<nom de la variable qui reçoit le résultat de l'opération>",
+      "operation": "<un de : + , - , *>",
+      "protection_apparente": "<un de : aucune , SafeMath , pragma >= 0.8.0 , require>",
+      "guard_detail": "<justification courte citant l'élément observé>"
+    }}
+  ]
+}}
+</json>
+Si aucune opération à risque n'existe, renvoie exactement : {{"hypotheses": []}}"""
+
+
+def _normalize_overflow_hypotheses(data) -> list:
+    """Normalise la réponse JSON de Nemotron en liste structurée
+    (line, variable, operation, protection_apparente).
+    """
+    if isinstance(data, dict):
+        for key in ("hypotheses", "operations", "results", "arithmetic_operations"):
+            if isinstance(data.get(key), list):
+                items = data[key]
+                break
+        else:
+            items = [data] if ("line" in data or "ligne" in data) else []
+    elif isinstance(data, list):
+        items = data
+    else:
+        return []
+
+    normalized = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        raw_line = item.get("line", item.get("ligne"))
+        try:
+            line = int(raw_line)
+        except (TypeError, ValueError):
+            line = None
+        protection = item.get(
+            "protection_apparente",
+            item.get("guard_apparent", item.get("protection", "")),
+        )
+        normalized.append({
+            "line": line,
+            "variable": str(item.get("variable", item.get("result_variable", "")) or "").strip(),
+            "operation": str(item.get("operation", item.get("op", "")) or "").strip(),
+            "protection_apparente": str(protection or "").strip(),
+            "guard_detail": str(item.get("guard_detail", "") or "").strip(),
+            "raw": item,
+        })
+    return normalized
+
+
+async def generate_overflow_hypotheses(solidity_source: str, file_path: str = "") -> list:
+    """
+    Demande à NVIDIA Nemotron d'identifier les opérations arithmétiques à risque
+    d'overflow/underflow sur le code source Solidity **brut** (pas un extrait
+    pré-filtré par regex), tel que requis pour SOL-004.
+
+    Retourne une liste de dicts normalisés :
+        {line, variable, operation, protection_apparente, guard_detail, raw}
+
+    Contrat d'erreur explicite :
+      - `[]`  → l'appel a réussi et le modèle n'a proposé AUCUNE opération à risque.
+      - `NebiusOverflowGenerationError` → l'appel a échoué (API, timeout, JSON
+        absent ou tronqué). Aucun mock n'est jamais produit et un échec n'est
+        jamais déguisé en `[]` : les appelants doivent retomber sur la règle statique.
+    """
+    if not _is_available():
+        raise NebiusOverflowGenerationError("Nebius/NVIDIA NIM indisponible (_is_available() == False).")
+    if not (solidity_source or "").strip():
+        return []
+
+    if _is_demo_mode():
+        # Un mock ne prouverait rien sur la capacité réelle du modèle.
+        raise NebiusOverflowGenerationError(
+            "Mode démo actif (_is_demo_mode() == True) — génération d'hypothèses "
+            "overflow refusée (aucune hypothèse fabriquée)."
+        )
+
+    try:
+        client = _get_client()
+        response = await client.chat.completions.create(
+            model=get_active_model(),
+            messages=[
+                {"role": "system", "content": _OVERFLOW_SYSTEM_PROMPT},
+                {"role": "user", "content": _OVERFLOW_PROMPT.format(
+                    file_path=file_path or "contract.sol",
+                    source=solidity_source,
+                )},
+            ],
+            temperature=0.0,
+            # Nemotron-3.5-Lightning est un modèle à raisonnement : les
+            # reasoning_tokens comptent dans max_tokens (mesuré : ~6.5k tokens de
+            # raisonnement pour un contrat de 15 lignes). Une marge insuffisante
+            # tronque la réponse AVANT le content final (finish_reason=length,
+            # content vide) — observé à 8000. 16000 laisse la marge nécessaire.
+            max_tokens=16000,
+        )
+    except Exception as e:
+        raise NebiusOverflowGenerationError(f"Appel NVIDIA NIM échoué pour {file_path}: {e}") from e
+
+    msg = response.choices[0].message
+    finish_reason = response.choices[0].finish_reason
+    # On ne parse QUE le contenu final : parser `reasoning_content` récupérerait
+    # le gabarit du prompt recopié dans la trace de raisonnement (contamination).
+    content = (msg.content or "").strip()
+    if not content:
+        raise NebiusOverflowGenerationError(
+            f"Réponse vide de Nemotron pour {file_path} (finish_reason={finish_reason}). "
+            f"Aucune hypothèse ne peut être extraite."
+        )
+    try:
+        data = _extract_json(content)
+    except Exception as e:
+        raise NebiusOverflowGenerationError(
+            f"JSON inexploitable dans la réponse de Nemotron pour {file_path} "
+            f"(finish_reason={finish_reason}): {e}"
+        ) from e
+
+    hypotheses = _normalize_overflow_hypotheses(data)
+    logger.info(
+        f"[Nebius/Nemotron] {len(hypotheses)} hypothèse(s) overflow générée(s) pour {file_path}"
+    )
+    return hypotheses
+
+
+# ---------------------------------------------------------------------------
+# Reentrancy hypothesis generation from RAW Solidity (SOL-001)
+# ---------------------------------------------------------------------------
+class NebiusReentrancyGenerationError(RuntimeError):
+    """Levée quand la génération d'hypothèses reentrancy échoue réellement
+    (timeout, erreur API, JSON absent/tronqué). Distincte du retour `[]`, qui
+    signifie « le modèle n'a proposé aucune hypothèse ». Les appelants doivent
+    retomber sur la règle statique plutôt que d'afficher un résultat vide."""
+
+
+_REENTRANCY_SYSTEM_PROMPT = (
+    "You are a precise Solidity static-analysis engine specialised in "
+    "reentrancy (Checks-Effects-Interactions violations). "
+    "Do your reasoning internally and then output ONLY the final compact JSON, "
+    "strictly enclosed between <json> and </json> tags, with no prose. "
+    "Never invent line numbers: every line number must exist in the provided source."
+)
+
+# Le gabarit ne contient AUCUNE valeur concrète : un exemple renseigné se
+# retrouverait recopié tel quel par le modèle (contamination observée en N2).
+_REENTRANCY_PROMPT = """Analyse ce contrat Solidity du point de vue de la reentrancy (SOL-001). Pour chaque fonction qui effectue un appel externe (.call{{...}}, .transfer(...), .send(...), ou low-level call), identifie : le nom de la fonction, la ligne de l'appel externe, la ligne de la modification d'état qui protège le retrait (décrémentation de balance, mise à zéro, etc.), et l'ORDRE relatif de ces deux opérations tel qu'il apparaît dans le code (l'appel externe vient-il AVANT ou APRÈS la modification d'état ?). Indique aussi si un modificateur de garde (nonReentrant, mutex, verrou) protège la fonction. Réponds en JSON strict.
+
+Fichier : {file_path}
+
+Code source (brut) :
+<solidity>
+{source}
+</solidity>
+
+Réponds UNIQUEMENT avec un objet JSON entre <json> et </json>, au format exact suivant
+(ceci est un gabarit : remplace chaque valeur par ce que tu observes réellement dans
+le source ci-dessus ; ne recopie aucun texte du gabarit comme s'il s'agissait d'un résultat) :
+<json>
+{{
+  "hypotheses": [
+    {{
+      "function": "<nom de la fonction qui contient l'appel externe>",
+      "external_call_line": "<numéro de ligne exact de l'appel externe dans le source ci-dessus>",
+      "external_call_snippet": "<texte exact de l'appel externe, tel qu'écrit dans le source>",
+      "state_update_line": "<numéro de ligne exact de la modification d'état liée au retrait>",
+      "state_update_snippet": "<texte exact de la modification d'état, tel qu'écrit dans le source>",
+      "order": "<un de : call_before_update , update_before_call>",
+      "guard_present": "<un de : none , nonReentrant , mutex>"
+    }}
+  ]
+}}
+</json>
+Si aucune fonction à risque n'existe, renvoie exactement : {{"hypotheses": []}}"""
+
+
+def _normalize_reentrancy_hypotheses(data) -> list:
+    """Normalise la réponse JSON de Nemotron en liste structurée
+    (function, lignes/snippets appel & update, ordre, garde).
+    """
+    if isinstance(data, dict):
+        for key in ("hypotheses", "functions", "results", "reentrancy"):
+            if isinstance(data.get(key), list):
+                items = data[key]
+                break
+        else:
+            items = [data] if ("function" in data or "external_call_line" in data) else []
+    elif isinstance(data, list):
+        items = data
+    else:
+        return []
+
+    def _as_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    normalized = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        normalized.append({
+            "function": str(item.get("function", item.get("fn", "")) or "").strip(),
+            "external_call_line": _as_int(
+                item.get("external_call_line", item.get("call_line"))
+            ),
+            "external_call_snippet": str(
+                item.get("external_call_snippet", item.get("call_snippet", "")) or ""
+            ).strip(),
+            "state_update_line": _as_int(
+                item.get("state_update_line", item.get("update_line"))
+            ),
+            "state_update_snippet": str(
+                item.get("state_update_snippet", item.get("update_snippet", "")) or ""
+            ).strip(),
+            "order": str(item.get("order", "") or "").strip(),
+            "guard_present": str(
+                item.get("guard_present", item.get("guard", "")) or ""
+            ).strip(),
+            "raw": item,
+        })
+    return normalized
+
+
+async def generate_reentrancy_hypotheses(solidity_source: str, file_path: str = "") -> list:
+    """
+    Demande à NVIDIA Nemotron d'identifier les fonctions Solidity sujettes à
+    reentrancy (appel externe précédant la modification d'état) sur le code
+    source **brut**, tel que requis pour SOL-001.
+
+    Retourne une liste de dicts normalisés :
+        {function, external_call_line, external_call_snippet,
+         state_update_line, state_update_snippet, order, guard_present, raw}
+
+    Contrat d'erreur explicite :
+      - `[]`  → l'appel a réussi et le modèle n'a proposé AUCUNE fonction à risque.
+      - `NebiusReentrancyGenerationError` → l'appel a échoué (API, timeout, JSON
+        absent ou tronqué). Aucun mock n'est jamais produit et un échec n'est
+        jamais déguisé en `[]` : les appelants doivent retomber sur la règle statique.
+    """
+    if not _is_available():
+        raise NebiusReentrancyGenerationError("Nebius/NVIDIA NIM indisponible (_is_available() == False).")
+    if not (solidity_source or "").strip():
+        return []
+
+    if _is_demo_mode():
+        # Un mock ne prouverait rien sur la capacité réelle du modèle.
+        raise NebiusReentrancyGenerationError(
+            "Mode démo actif (_is_demo_mode() == True) — génération d'hypothèses "
+            "reentrancy refusée (aucune hypothèse fabriquée)."
+        )
+
+    try:
+        client = _get_client()
+        response = await client.chat.completions.create(
+            model=get_active_model(),
+            messages=[
+                {"role": "system", "content": _REENTRANCY_SYSTEM_PROMPT},
+                {"role": "user", "content": _REENTRANCY_PROMPT.format(
+                    file_path=file_path or "contract.sol",
+                    source=solidity_source,
+                )},
+            ],
+            temperature=0.0,
+            # Nemotron-3.5-Lightning est un modèle à raisonnement : les
+            # reasoning_tokens comptent dans max_tokens. Marge identique à
+            # generate_overflow_hypotheses() pour éviter une réponse tronquée.
+            max_tokens=16000,
+        )
+    except Exception as e:
+        raise NebiusReentrancyGenerationError(f"Appel NVIDIA NIM échoué pour {file_path}: {e}") from e
+
+    msg = response.choices[0].message
+    finish_reason = response.choices[0].finish_reason
+    # On ne parse QUE le contenu final : parser `reasoning_content` récupérerait
+    # le gabarit du prompt recopié dans la trace de raisonnement (contamination).
+    content = (msg.content or "").strip()
+    if not content:
+        raise NebiusReentrancyGenerationError(
+            f"Réponse vide de Nemotron pour {file_path} (finish_reason={finish_reason}). "
+            f"Aucune hypothèse ne peut être extraite."
+        )
+    try:
+        data = _extract_json(content)
+    except Exception as e:
+        raise NebiusReentrancyGenerationError(
+            f"JSON inexploitable dans la réponse de Nemotron pour {file_path} "
+            f"(finish_reason={finish_reason}): {e}"
+        ) from e
+
+    hypotheses = _normalize_reentrancy_hypotheses(data)
+    logger.info(
+        f"[Nebius/Nemotron] {len(hypotheses)} hypothèse(s) reentrancy générée(s) pour {file_path}"
+    )
+    return hypotheses
 

@@ -43,7 +43,14 @@ HASH_SAFE_CONTEXT_PATTERNS = re.compile(
     r'(?:shasum|checksum|cache|fingerprint|etag|content.address|artifact|'
     r'\.slice\s*\(\s*0\s*,|npm.*sha|sha.*npm|bundle.*hash|hash.*bundle|'
     r'write.*metadata|startup.*metadata|cli.*startup|file.*digest|digest.*file|'
-    r'file_hash|hash_md5|proof_anchor|clean_snippet|content_bytes|hashes\s*\[|hashes\b)',
+    r'file_hash|hash_md5|proof_anchor|clean_snippet|content_bytes|hashes\s*\[|hashes\b|'
+    # Layer 4b — usages explicitement non-sécuritaires (MD5/SHA1 comme identifiant) :
+    #   - PEP 456 : hashlib.md5(..., usedforsecurity=False) déclare l'usage non cryptographique ;
+    #   - troncature courte [:N] (N<=2 chiffres) = dérivation d'un identifiant, pas d'un digest ;
+    #   - nommage d'identifiant / d'empreinte (uuid, *_id, graph_hash) plutôt que secret/digest.
+    r'usedforsecurity\s*=\s*False|'
+    r'\[:\s*\d{1,2}\s*\]|'
+    r'\b(?:uuid|graph_hash|app_id|application_id|request_id|session_id|correlation_id|tx_id)\b)',
     re.IGNORECASE,
 )
 

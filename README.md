@@ -45,9 +45,9 @@ Adversum est un moteur d'analyse de sécurité avancé qui combine l'analyse sta
 
 ```
 adversum/
-├── core/              # Unified Adversarial & SAST Engine (Rust, Rayon, Datalog, SMT)
+├── core/              # Unified Adversarial & SAST Engine (Rust, Rayon, Datalog)
 ├── orchestrator/      # Python pipeline, AI reasoning (Nemotron) & Tri-Partite Self-Healing
-├── modules/           # Scanners (Solidity, Crypto, IaC, PoR, Live Fork, PoC Generator)
+├── modules/           # Scanners (Solidity, Crypto, IaC, PoR, Live Fork, PoC Generator) + Formal Verification (Z3)
 ├── api/               # FastAPI REST endpoints sécurisés
 ├── frontend/          # Vite + React 18 + Tailwind CSS cybersecurity dashboard
 ├── knowledge/         # Base de connaissances sécurité & standards CCSS
@@ -56,7 +56,8 @@ adversum/
 
 ### Stack Technique
 
-- **Core**: Rust (SAST + ML Adversarial Kit - PGD, FGSM, C&W + SMT solver)
+- **Core**: Rust (SAST + ML Adversarial Kit - PGD, FGSM, C&W)
+- **Formal Verification**: Python (`z3-solver`) — preuves SMT sur BitVec, règle SOL-004 (overflow/underflow)
 - **AI Infrastructure**: Nebius Token Factory / NVIDIA NIM (`nvidia/Nemotron-3_5-Lightning`)
 - **Live Fork**: Anvil / Ephemeral EVM state simulator (Foundry stack)
 - **Threat Intel**: Tavily Search API (CVE / NVD / Snyk live correlation)

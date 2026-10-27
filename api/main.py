@@ -440,6 +440,43 @@ async def process_audit(job_id: int, target_path: str):
                     proof_anchor=getattr(f.raw, 'proof_anchor', None)
                 )
                 session.add(db_finding)
+
+            # SOL-004 : audit Solidity spécifique (Nemotron -> ancrage -> Z3, repli regex).
+            # Provenance et verdict Z3 sont portés par reasoning_notes/proof_anchor.
+            try:
+                from orchestrator.services.solidity_overflow_audit import audit_solidity_path as audit_overflow
+                sol_overflow_findings = await audit_overflow(real_path)
+            except Exception as e:
+                logger.warning(f"[SOL-004] Solidity overflow pass skipped: {e}", exc_info=True)
+                sol_overflow_findings = []
+
+            # SOL-001 : audit Réentrance (Nemotron -> ancrage séquentiel -> Z3, repli regex).
+            try:
+                from orchestrator.services.solidity_reentrancy_audit import audit_solidity_path as audit_reentrancy
+                sol_reentrancy_findings = await audit_reentrancy(real_path)
+            except Exception as e:
+                logger.warning(f"[SOL-001] Solidity reentrancy pass skipped: {e}", exc_info=True)
+                sol_reentrancy_findings = []
+
+            for sf in sol_overflow_findings + sol_reentrancy_findings:
+                session.add(FindingModel(
+                    job_id=job.id,
+                    rule_id=sf["rule_id"],
+                    message=sf["message"],
+                    severity="HIGH" if sf.get("z3_verdict") == "SAT" else "MEDIUM",
+                    file_path=sf["file_path"],
+                    line=sf["line"] or 0,
+                    snippet=sf["snippet"],
+                    validation_status=sf["validation_status"],
+                    ai_confidence=sf["ai_confidence"],
+                    reasoning_notes=sf["reasoning_notes"],
+                    proof_anchor=sf["proof_anchor"],
+                    provenance=sf["provenance"],
+                    nemotron_line=sf["nemotron_line"],
+                    resolved_line=sf["resolved_line"],
+                    anchor_status=sf["anchor_status"],
+                    z3_verdict=sf["z3_verdict"],
+                ))
             
             # Update Job
             job.status = JobStatus.COMPLETED
@@ -686,6 +723,11 @@ async def get_audit_status(
             fix_description=f.fix_description,
             fix_code=f.fix_code,
             proof_anchor=f.proof_anchor,
+            provenance=f.provenance,
+            nemotron_line=f.nemotron_line,
+            resolved_line=f.resolved_line,
+            anchor_status=f.anchor_status,
+            z3_verdict=f.z3_verdict,
             is_fixed=f.is_fixed
         ))
 

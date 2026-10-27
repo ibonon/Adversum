@@ -62,6 +62,31 @@ async def create_db_and_tables():
     from ..models.sql_models import Job, JobStatus, FindingModel, AuditLog, FileHash, CachedFinding
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+        await conn.run_sync(_migrate_finding_columns)
+
+
+# Colonnes ajoutées après la création initiale de `findingmodel`. `create_all`
+# ne modifie pas une table existante : on les ajoute explicitement (nullable,
+# donc les lignes antérieures restent valides avec NULL).
+_FINDING_MIGRATION_COLUMNS = (
+    ("provenance", "VARCHAR"),
+    ("nemotron_line", "INTEGER"),
+    ("resolved_line", "INTEGER"),
+    ("anchor_status", "VARCHAR"),
+    ("z3_verdict", "VARCHAR"),
+)
+
+
+def _migrate_finding_columns(sync_conn):
+    from sqlalchemy import inspect, text
+    inspector = inspect(sync_conn)
+    if "findingmodel" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("findingmodel")}
+    for name, sql_type in _FINDING_MIGRATION_COLUMNS:
+        if name not in existing:
+            sync_conn.execute(text(f"ALTER TABLE findingmodel ADD COLUMN {name} {sql_type}"))
+            logger.info(f"[migration] findingmodel.{name} ajoutée.")
 
 
 async def get_session() -> AsyncSession:

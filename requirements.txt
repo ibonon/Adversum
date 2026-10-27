@@ -36,6 +36,9 @@ numpy>=2.0
 cryptography>=42.0.0
 slowapi>=0.1.9
 
+# Formal verification (SMT)
+z3-solver>=4.13.0
+
 # Background Tasks
 arq>=0.26.0
 redis>=5.0.0
