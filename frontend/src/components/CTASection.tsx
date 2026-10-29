@@ -41,16 +41,15 @@ const CTASection = () => {
             }`}
           >
             <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 tracking-tight">
-              Prêt à sécuriser
+              Ready to Secure
               <br />
               <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent bg-[length:200%_auto] animate-shimmer">
-                votre code ?
+                Your Code?
               </span>
             </h2>
 
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-12 leading-relaxed">
-              Rejoignez les équipes qui font confiance à Adversum. 
-              Commencez gratuitement, sans carte bancaire.
+              Join security teams and Web3 protocols that rely on Adversum. Start for free, zero credit card required.
             </p>
 
             {/* CTA Buttons */}

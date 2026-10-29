@@ -5,26 +5,26 @@ import Scene3D from './Scene3D';
 const features = [
   {
     icon: Cpu,
-    title: 'Analyse Hybride',
-    description: 'Moteur Rust ultra-rapide combiné à des modèles IA pour une détection précise des vulnérabilités.',
+    title: 'Hybrid Analysis Engine',
+    description: 'Ultra-fast Rust PyO3 core combined with NVIDIA Nemotron LLM for surgical vulnerability detection.',
     color: 'from-primary to-primary/50',
   },
   {
     icon: Bot,
-    title: 'Correction Automatique',
-    description: 'Génération et vérification automatique de patches sécurisés sans intervention humaine.',
+    title: 'Autonomous Patching',
+    description: 'Automatic synthesis and BitVec formal verification of secured patches with zero human latency.',
     color: 'from-accent to-accent/50',
   },
   {
     icon: LayoutDashboard,
-    title: 'Dashboard Intuitif',
-    description: 'Interface épurée pour visualiser et gérer vos audits de sécurité en temps réel.',
+    title: 'Real-Time Telemetry',
+    description: 'Institutional glassmorphism UI to monitor, trace, and inspect multi-tier security audits live.',
     color: 'from-success to-success/50',
   },
   {
     icon: ShieldAlert,
-    title: 'Système Immunitaire',
-    description: 'Technologie RBAT qui simule des attaques pour renforcer proactivement vos défenses.',
+    title: 'Autonomous Cyber Defense',
+    description: 'Cross-Protocol War Room simulating real adversarial payloads to preempt zero-day exploits.',
     color: 'from-warning to-warning/50',
   },
 ];
@@ -62,16 +62,16 @@ const FeaturesSection = () => {
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-20">
           <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground mb-4 block">
-            Fonctionnalités
+            Capabilities
           </span>
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 tracking-tight">
-            Une protection{' '}
+            Comprehensive{' '}
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              complète
+              Protection
             </span>
           </h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
-            Quatre technologies qui redéfinissent la sécurité applicative
+            Four core pillars redefining modern smart contract and cloud security
           </p>
         </div>
 

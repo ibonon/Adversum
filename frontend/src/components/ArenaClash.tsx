@@ -216,7 +216,7 @@ export default function ArenaClash() {
               Autonomous Defense Interception Sequence
             </div>
             <div className="space-y-2">
-              {clash.incident_rounds.map((rnd) => (
+              {(clash.incident_rounds || []).map((rnd) => (
                 <div
                   key={rnd.round}
                   className="flex items-center justify-between p-3 rounded-lg bg-gray-950/70 border border-white/5"
@@ -270,7 +270,7 @@ export default function ArenaClash() {
           </div>
 
           <div className="space-y-2 pt-2">
-            {benchmark.scenario_details.map((sc) => (
+            {(benchmark.scenario_details || []).map((sc) => (
               <div
                 key={sc.clash_id}
                 className="flex items-center justify-between p-3 rounded-lg bg-gray-950/50 border border-white/5"

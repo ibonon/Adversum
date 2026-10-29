@@ -15,12 +15,12 @@ const Navbar = () => {
   }, []);
 
   const navLinks = [
-    { name: 'Produit', href: '/#features' },
-    { name: 'Fonctionnement', href: '/#how-it-works' },
-    { name: 'SOC Live', href: '/soc', badge: 'AI-ASOC' },
-    { name: 'War Room', href: '/war-room', badge: 'Simulateur' },
-    { name: 'Tarifs', href: '/#pricing' },
-    { name: 'Entreprise', href: '/#enterprise' },
+    { name: 'Product', href: '/#features' },
+    { name: 'How It Works', href: '/#how-it-works' },
+    { name: 'Live SOC', href: '/soc', badge: 'AI-ASOC' },
+    { name: 'War Room', href: '/war-room', badge: 'Simulator' },
+    { name: 'Pricing', href: '/#pricing' },
+    { name: 'Enterprise', href: '/#enterprise' },
   ];
 
   return (
@@ -64,13 +64,13 @@ const Navbar = () => {
         {/* CTA Buttons */}
         <div className="hidden md:flex items-center gap-4">
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-            Connexion
+            Log In
           </Button>
           <Button 
             size="sm" 
             className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6"
           >
-            Démarrer
+            Get Started
           </Button>
         </div>
 
@@ -104,10 +104,10 @@ const Navbar = () => {
             ))}
             <div className="flex flex-col gap-3 pt-6 border-t border-border mt-4">
               <Button variant="ghost" className="justify-center">
-                Connexion
+                Log In
               </Button>
               <Button className="bg-foreground text-background hover:bg-foreground/90 rounded-full">
-                Démarrer
+                Get Started
               </Button>
             </div>
           </div>

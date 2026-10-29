@@ -115,7 +115,7 @@ export default function AttackFlow({
   className = "",
 }: AttackFlowProps) {
   const rfNodes: Node[] = useMemo(() =>
-    propNodes.map((n, i) => {
+    (propNodes || []).map((n, i) => {
       const colors = NODE_COLORS[n.type] || NODE_COLORS.target;
       return {
         id: n.id,
@@ -144,7 +144,7 @@ export default function AttackFlow({
   );
 
   const rfEdges: Edge[] = useMemo(() =>
-    propEdges.map((e, i) => ({
+    (propEdges || []).map((e, i) => ({
       id: `e-${i}-${e.from}-${e.to}`,
       source: e.from,
       target: e.to,

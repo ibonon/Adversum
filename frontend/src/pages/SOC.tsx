@@ -481,11 +481,11 @@ export default function SOCDashboard() {
                 label="ISO 27001:2022"
                 status={compliance.iso_status}
               />
-              {compliance.failing.length > 0 && (
+              {(compliance.failing || []).length > 0 && (
                 <div>
                   <p className="text-xs text-red-400 mb-1 font-semibold">Failing Controls:</p>
                   <div className="flex flex-wrap gap-1">
-                    {compliance.failing.slice(0, 8).map(c => (
+                    {(compliance.failing || []).slice(0, 8).map(c => (
                       <Badge key={c} className="bg-red-900 text-red-300 text-xs">{c}</Badge>
                     ))}
                   </div>

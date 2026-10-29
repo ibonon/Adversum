@@ -364,13 +364,13 @@ export default function WarRoom() {
                 </div>
 
                 {/* MITRE techniques */}
-                {simulation.mitre_techniques.length > 0 && (
+                {(simulation.mitre_techniques || []).length > 0 && (
                   <div className="bg-gray-900/30 border border-white/8 rounded-lg px-4 py-3">
                     <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">
                       MITRE ATT&CK Techniques
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {simulation.mitre_techniques.map((t) => (
+                      {(simulation.mitre_techniques || []).map((t) => (
                         <span key={t} className="text-[10px] bg-purple-950/50 border border-purple-800 text-purple-300 rounded px-2 py-0.5">
                           {t}
                         </span>

@@ -2,27 +2,27 @@ import { Github, Twitter, Linkedin, Shield } from 'lucide-react';
 
 const Footer = () => {
   const links = {
-    produit: [
-      { name: 'Fonctionnalités', href: '#features' },
-      { name: 'Tarifs', href: '#pricing' },
+    product: [
+      { name: 'Capabilities', href: '#features' },
+      { name: 'Pricing', href: '#pricing' },
       { name: 'Documentation', href: '#docs' },
       { name: 'Changelog', href: '#changelog' },
     ],
-    ressources: [
+    resources: [
       { name: 'Blog', href: '#blog' },
       { name: 'Guides', href: '#guides' },
-      { name: 'API', href: '#api' },
+      { name: 'API Docs', href: '#api' },
       { name: 'Status', href: '#status' },
     ],
-    entreprise: [
-      { name: 'À propos', href: '#about' },
-      { name: 'Carrières', href: '#careers' },
+    company: [
+      { name: 'About', href: '#about' },
+      { name: 'Careers', href: '#careers' },
       { name: 'Contact', href: '#contact' },
     ],
   };
 
   const socials = [
-    { icon: Github, href: '#', label: 'GitHub' },
+    { icon: Github, href: 'https://github.com/ibonon/Adversum', label: 'GitHub' },
     { icon: Twitter, href: '#', label: 'Twitter' },
     { icon: Linkedin, href: '#', label: 'LinkedIn' },
   ];
@@ -44,7 +44,7 @@ const Footer = () => {
               <span className="text-xl font-semibold">Adversum</span>
             </a>
             <p className="text-sm text-muted-foreground mb-6 max-w-xs leading-relaxed">
-              Sécurité applicative de nouvelle génération propulsée par Rust et l'intelligence artificielle.
+              Next-generation application and smart contract security powered by Rust, NVIDIA Nemotron, and Z3 Formal Verification.
             </p>
             {/* Social Links */}
             <div className="flex items-center gap-2">
@@ -63,9 +63,9 @@ const Footer = () => {
 
           {/* Links Columns */}
           <div>
-            <h4 className="text-sm font-semibold mb-4 uppercase tracking-wide">Produit</h4>
+            <h4 className="text-sm font-semibold mb-4 uppercase tracking-wide">Product</h4>
             <ul className="space-y-3">
-              {links.produit.map((link, i) => (
+              {(links.product || []).map((link, i) => (
                 <li key={i}>
                   <a
                     href={link.href}
@@ -79,9 +79,9 @@ const Footer = () => {
           </div>
 
           <div>
-            <h4 className="text-sm font-semibold mb-4 uppercase tracking-wide">Ressources</h4>
+            <h4 className="text-sm font-semibold mb-4 uppercase tracking-wide">Resources</h4>
             <ul className="space-y-3">
-              {links.ressources.map((link, i) => (
+              {(links.resources || []).map((link, i) => (
                 <li key={i}>
                   <a
                     href={link.href}
@@ -95,9 +95,9 @@ const Footer = () => {
           </div>
 
           <div>
-            <h4 className="text-sm font-semibold mb-4 uppercase tracking-wide">Entreprise</h4>
+            <h4 className="text-sm font-semibold mb-4 uppercase tracking-wide">Company</h4>
             <ul className="space-y-3">
-              {links.entreprise.map((link, i) => (
+              {(links.company || []).map((link, i) => (
                 <li key={i}>
                   <a
                     href={link.href}
@@ -114,12 +114,12 @@ const Footer = () => {
         {/* Bottom Bar */}
         <div className="py-6 border-t border-border/50 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            © 2024 Adversum. Tous droits réservés.
+            © 2026 Adversum. All rights reserved.
           </p>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <a href="#" className="hover:text-foreground transition-colors">Confidentialité</a>
-            <a href="#" className="hover:text-foreground transition-colors">CGU</a>
-            <a href="#" className="hover:text-foreground transition-colors">Cookies</a>
+            <a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a>
+            <a href="#" className="hover:text-foreground transition-colors">Terms of Service</a>
+            <a href="#" className="hover:text-foreground transition-colors">Security Policy</a>
           </div>
         </div>
       </div>

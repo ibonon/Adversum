@@ -19,7 +19,7 @@ import {
 // ── Sparkline mini-chart (pure CSS + SVG, no lib) ────────────────────────────
 
 function Sparkline({ values, color = "#22d3ee", height = 32 }: { values: number[]; color?: string; height?: number }) {
-  if (values.length < 2) return <div style={{ height }} className="flex items-center justify-center text-slate-600 text-xs">No data</div>;
+  if (!values || values.length < 2) return <div style={{ height }} className="flex items-center justify-center text-slate-600 text-xs">No data</div>;
   const max = Math.max(...values, 1);
   const w = 120;
   const pts = values.map((v, i) => {

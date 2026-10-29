@@ -64,7 +64,7 @@ export default function RiskMatrix({ data, className = "" }: RiskMatrixProps) {
 
   const handleMouseLeave = () => setTooltip((t) => ({ ...t, visible: false }));
 
-  if (!data || !data.protocols?.length) {
+  if (!data || !data.protocols?.length || !data.vectors?.length) {
     return (
       <div className={`p-8 text-center text-gray-500 ${className}`}>
         Loading risk matrix...

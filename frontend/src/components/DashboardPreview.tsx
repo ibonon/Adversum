@@ -9,9 +9,9 @@ const SCAN_PROFILES = [
   {
     id: 'quick',
     icon: Zap,
-    label: 'Rapide',
+    label: 'Fast SAST',
     desc: 'Secrets · Crypto · IaC',
-    detail: ['Mauvais usages cryptographiques', 'Clés / tokens hardcodés', 'Dockerfiles & Terraform'],
+    detail: ['Cryptographic misuse', 'Hardcoded API keys / secrets', 'Dockerfiles & Terraform IaC'],
     badge: '~30s',
     badgeClass: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
     borderActive: 'border-emerald-500/60 shadow-emerald-500/10',
@@ -26,7 +26,7 @@ const SCAN_PROFILES = [
     icon: FileCode,
     label: 'Smart Contract',
     desc: 'Solidity · Bridges · PoC',
-    detail: ['Reentrancy & Flash Loan', 'Ponts Cross-Chain & Replay', 'Preuve formelle SMT', 'Foundry Exploit PoC'],
+    detail: ['Reentrancy & Flash Loans', 'Cross-Chain Bridges & Replay', 'SMT Z3 Formal Proofs', 'Foundry Exploit PoC .t.sol'],
     badge: 'Foundry PoC',
     badgeClass: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
     borderActive: 'border-blue-500/60 shadow-blue-500/10',
@@ -39,9 +39,9 @@ const SCAN_PROFILES = [
   {
     id: 'cex',
     icon: Building2,
-    label: 'CEX / Custody',
+    label: 'CEX & Custody',
     desc: 'CCSS v3.0 · PoR · STRIDE',
-    detail: ['Conformité CCSS 10 aspects', 'Proof of Reserves Merkle Tree', 'STRIDE Threat Modeling', 'Sécurité API Trading'],
+    detail: ['CCSS 10-Aspect Compliance', 'Proof of Reserves Merkle Tree', 'STRIDE Threat Modeling', 'Trading API Security'],
     badge: 'Institutionnel',
     badgeClass: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
     borderActive: 'border-amber-500/60 shadow-amber-500/10',
@@ -54,9 +54,9 @@ const SCAN_PROFILES = [
   {
     id: 'full',
     icon: Shield,
-    label: 'Complet',
-    desc: 'Tous les modules · HTML · PoC',
-    detail: ['Tous les modules combinés', 'CCSS + STRIDE + SMT', 'Proof of Reserves & Bridges', 'Dashboard HTML Standalone'],
+    label: 'Full Spectrum',
+    desc: 'All Modules · HTML · PoC',
+    detail: ['All engines combined', 'CCSS + STRIDE + Z3 SMT', 'Proof of Reserves & Bridges', 'Standalone Executive HTML Report'],
     badge: '~2-3 min',
     badgeClass: 'text-violet-400 border-violet-500/30 bg-violet-500/10',
     borderActive: 'border-violet-500/60 shadow-violet-500/10',
@@ -145,10 +145,10 @@ contract ReentrancyExploitPoCTest is Test {
 }`;
 
 const AGENT_STEPS = [
-  { sec: 0, title: "Initialisation Sandbox", desc: "Isolation des processus & chargement des politiques de sécurité", icon: "📡" },
+  { sec: 0, title: "Sandbox Initialization", desc: "Process isolation & security policy loading", icon: "📡" },
   { sec: 8, title: "Acquisition du Code Source", desc: "Clonage Git shallow & extraction de l'arbre syntaxique (AST)", icon: "🐙" },
-  { sec: 35, title: "Analyse SAST Multi-Moteurs", desc: "Moteur Rust PyO3 : Taint analysis & conformité CCSS", icon: "🛡️" },
-  { sec: 85, title: "Raisonnement IA NVIDIA Nemotron", desc: "Inférence Nebius Token Factory pour élimination des faux positifs", icon: "🧠" },
+  { sec: 35, title: "Multi-Engine SAST Analysis", desc: "Native Rust PyO3 Core: Taint analysis & security rules", icon: "🛡️" },
+  { sec: 85, title: "NVIDIA Nemotron AI Reasoning", desc: "Hypothesis synthesis & false-positive elimination", icon: "🧠" },
   { sec: 130, title: "Threat Intelligence Tavily", desc: "Recherche temps-réel d'exploits publics et corrélations CVE", icon: "🔍" },
   { sec: 165, title: "Génération PoC Foundry & Patches", desc: "Synthèse des exploits .t.sol et remédiations Git vérifiées", icon: "⚡" },
 ];
@@ -165,7 +165,7 @@ const generateStandaloneHtmlReport = (opts: {
   tavilyEnabled: boolean;
 }): string => {
   const dateStr = new Date().toLocaleString();
-  const findingsRows = opts.findings.map((f, i) => `
+  const findingsRows = (opts.findings || []).map((f, i) => `
     <div style="background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:20px;margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div style="display:flex;align-items:center;gap:10px;">
@@ -181,7 +181,7 @@ const generateStandaloneHtmlReport = (opts: {
       <p style="color:#cbd5e1;font-size:13px;line-height:1.6;margin-bottom:12px;">${f.description}</p>
       ${f.nebius_ai ? `
         <div style="background:#2e1065;border:1px solid #7c3aed;border-radius:8px;padding:12px;margin-bottom:12px;">
-          <div style="font-size:11px;font-weight:700;color:#c4b5fd;margin-bottom:4px;">🟢 VALIDÉ PAR NVIDIA NEMOTRON (NEBIUS TOKEN FACTORY) — Confiance: ${Math.round((f.nebius_ai.confidence || 0.9) * 100)}%</div>
+          <div style="font-size:11px;font-weight:700;color:#c4b5fd;margin-bottom:4px;">🟢 VALIDATED BY NVIDIA NEMOTRON (NEBIUS TOKEN FACTORY) — Confiance: ${Math.round((f.nebius_ai.confidence || 0.9) * 100)}%</div>
           <p style="color:#e9d5ff;font-size:12px;margin:0;">${f.nebius_ai.ai_explanation || ''}</p>
           ${f.nebius_ai.ai_remediation ? `<p style="color:#a78bfa;font-size:12px;margin:4px 0 0 0;"><strong>Fix Recommandé :</strong> ${f.nebius_ai.ai_remediation}</p>` : ''}
         </div>
@@ -220,7 +220,7 @@ const generateStandaloneHtmlReport = (opts: {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
       <div>
         <h1 style="font-size:26px;margin:0 0 6px 0;">🛡️ Adversum Security Assessment Report</h1>
-        <div style="color:#94a3b8;font-size:13px;font-family:monospace;">Cible: ${opts.repoUrl} · Généré le ${dateStr}</div>
+        <div style="color:#94a3b8;font-size:13px;font-family:monospace;">Target: ${opts.repoUrl} · Generated on ${dateStr}</div>
       </div>
       <div>
         <span class="badge" style="background:#2e1065;color:#c4b5fd;border:1px solid #7c3aed;">🟢 NVIDIA Nemotron · Nebius Token Factory</span>
@@ -228,20 +228,20 @@ const generateStandaloneHtmlReport = (opts: {
     </div>
 
     <div class="grid">
-      <div class="stat-card"><div class="stat-num" style="color:#f8fafc;">${opts.totalCount}</div><div style="color:#64748b;font-size:12px;">Total Vulnérabilités</div></div>
-      <div class="stat-card"><div class="stat-num" style="color:#ef4444;">${opts.criticalCount}</div><div style="color:#64748b;font-size:12px;">Critiques</div></div>
-      <div class="stat-card"><div class="stat-num" style="color:#f59e0b;">${opts.highCount}</div><div style="color:#64748b;font-size:12px;">Élevées</div></div>
-      <div class="stat-card"><div class="stat-num" style="color:${opts.secScore > 70 ? '#10b981' : '#f59e0b'};">${opts.secScore}%</div><div style="color:#64748b;font-size:12px;">Score de Sécurité</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:#f8fafc;">${opts.totalCount}</div><div style="color:#64748b;font-size:12px;">Total Vulnerabilities</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:#ef4444;">${opts.criticalCount}</div><div style="color:#64748b;font-size:12px;">Critical</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:#f59e0b;">${opts.highCount}</div><div style="color:#64748b;font-size:12px;">High</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:${opts.secScore > 70 ? '#10b981' : '#f59e0b'};">${opts.secScore}%</div><div style="color:#64748b;font-size:12px;">Security Score</div></div>
     </div>
 
     ${opts.aiSummary ? `
       <div class="card" style="border-color:#7c3aed;background:#170f2e;">
-        <h3 style="color:#c4b5fd;margin:0 0 12px 0;font-size:16px;">🧠 Résumé Exécutif CISO (NVIDIA Nemotron-3.5-Lightning via Nebius)</h3>
+        <h3 style="color:#c4b5fd;margin:0 0 12px 0;font-size:16px;">🧠 CISO Executive Summary (NVIDIA Nemotron-3.5-Lightning via Nebius)</h3>
         <div style="color:#e2e8f0;font-size:14px;line-height:1.7;white-space:pre-wrap;">${opts.aiSummary}</div>
       </div>
     ` : ''}
 
-    <h2 style="font-size:20px;margin:32px 0 16px 0;">Résultats Détaillés de l'Audit (${opts.findings.length})</h2>
+    <h2 style="font-size:20px;margin:32px 0 16px 0;">Detailed Audit Findings (${opts.findings.length})</h2>
     ${findingsRows}
   </div>
 </body>
@@ -249,39 +249,39 @@ const generateStandaloneHtmlReport = (opts: {
 };
 
 const DEFAULT_ATTACK_GRAPH = {
-  title: "Chaine d'Attaque Multi-Contrats : Reentrancy Drain & Zero-Root Bridge Exfiltration",
-  threat_actor: "Attaquant Externe / Blackhat MEV Arbitrageur",
-  overall_impact: "Compromission totale de la trésorerie et émission de wrapped-tokens non garantis",
+  title: "Multi-Contract Attack Chain: Reentrancy Drain & Zero-Root Bridge Exfiltration",
+  threat_actor: "External Adversary / Blackhat MEV Arbitrageur",
+  overall_impact: "Total treasury drain and unbacked wrapped-token minting",
   complexity: "HIGH",
   steps: [
     {
       step: 1,
-      phase: "Accès Initial & Vol de Liquidité",
+      phase: "Initial Access & Liquidity Drain",
       finding_id: "SOL-001",
       file: "contracts/Vault.sol",
-      action: "Exploitation de réentrance récursive via msg.sender.call avant mise à jour des soldes.",
-      outcome: "Exfiltration immédiate des réserves de garantie (100+ ETH)."
+      action: "Recursive reentrancy exploit via msg.sender.call prior to balance state update.",
+      outcome: "Immediate exfiltration of collateral reserves (100+ ETH)."
     },
     {
       step: 2,
-      phase: "Escalade & Mouvement Latéral",
+      phase: "Privilege Escalation & Lateral Movement",
       finding_id: "BRIDGE-003",
       file: "contracts/CrossChainBridge.sol",
-      action: "Injection d'une preuve Merkle avec racine nulle bytes32(0) acceptée par le pont inter-chaînes.",
-      outcome: "Validation frauduleuse de dépôts pour émettre de faux tokens sur une seconde blockchain."
+      action: "Injection of zero-root bytes32(0) Merkle proof accepted by cross-chain bridge.",
+      outcome: "Fraudulent deposit validation minting synthetic tokens on destination chain."
     },
     {
       step: 3,
-      phase: "Dissimulation & Impact Final",
+      phase: "Evasion & Balance Concealment",
       finding_id: "POR-001",
       file: "custody/liabilities.py",
-      action: "Exploitation de l'absence de vérification de balance négative dans le Merkle Sum Tree.",
-      outcome: "Dissimulation comptable du déficit lors des attestations de Proof of Reserves."
+      action: "Exploitation of missing negative balance checks in Merkle Sum Tree.",
+      outcome: "Accounting concealment of solvency deficit during Proof of Reserves attestations."
     }
   ],
   edges: [
-    { from: "SOL-001", to: "BRIDGE-003", relation: "Finance le contournement du bridge avec la liquidité volée" },
-    { from: "BRIDGE-003", to: "POR-001", relation: "Crée un trou financier masqué dans l'arbre des passifs" }
+    { from: "SOL-001", to: "BRIDGE-003", relation: "Funds bridge exploit using drained liquidity" },
+    { from: "BRIDGE-003", to: "POR-001", relation: "Creates masked liability deficit in Proof of Reserves tree" }
   ]
 };
 
@@ -756,7 +756,7 @@ const DashboardPreview = () => {
     };
   };
 
-  const displayFindings = findings.length > 0
+  const displayFindings = Array.isArray(findings) && findings.length > 0
     ? findings.map((f: any) => {
         const cweRaw = f.cwe || (f.nebius_ai && f.nebius_ai.cwe_reference) || '';
         return {
@@ -950,8 +950,8 @@ const DashboardPreview = () => {
               <div className="grid grid-cols-4 gap-4">
                 {[
                   { label: 'Total', value: String(totalCount), icon: AlertTriangle, color: 'text-destructive' },
-                  { label: 'Critiques', value: String(criticalCount), icon: AlertTriangle, color: 'text-destructive' },
-                  { label: 'Élevées', value: String(highCount), icon: Clock, color: 'text-amber-400' },
+                  { label: 'Critical', value: String(criticalCount), icon: AlertTriangle, color: 'text-destructive' },
+                  { label: 'High', value: String(highCount), icon: Clock, color: 'text-amber-400' },
                   { label: 'Score Sécurité', value: `${secScore}%`, icon: TrendingUp, color: secScore > 70 ? 'text-emerald-400' : secScore > 40 ? 'text-amber-400' : 'text-destructive' },
                 ].map((stat, i) => (
                   <div key={i} className={`p-5 rounded-2xl bg-card/50 border border-border/30 transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`} style={{ transitionDelay: `${300 + i * 100}ms` }}>

@@ -3,28 +3,28 @@ import { useRef, useEffect, useState } from 'react';
 const steps = [
   {
     number: '01',
-    title: 'Intégration',
-    description: 'Connectez votre repository en quelques secondes. GitHub, GitLab, Bitbucket supportés.',
+    title: 'Ingestion',
+    description: 'Instant repository connection or smart contract upload. Full CI/CD support.',
   },
   {
     number: '02',
-    title: 'Analyse',
-    description: 'Notre moteur Rust analyse votre code avec une précision chirurgicale.',
+    title: 'Rust SAST Core',
+    description: 'Blazing fast Rust AST analysis, taint dataflow, and control flow graph generation.',
   },
   {
     number: '03',
-    title: 'Validation IA',
-    description: 'L\'intelligence artificielle confirme les vulnérabilités et élimine les faux positifs.',
+    title: 'Nemotron AI + Z3',
+    description: 'Semantic hypothesis generation backed by Z3 SMT BitVec formal proofs (SAT/UNSAT).',
   },
   {
     number: '04',
-    title: 'Correction',
-    description: 'Des patches sont générés et vérifiés automatiquement.',
+    title: 'Self-Healing',
+    description: 'Auto-generation of Foundry .t.sol PoC exploits and AST-verified remediation patches.',
   },
   {
     number: '05',
-    title: 'Déploiement',
-    description: 'Déployez en un clic avec rollback automatique si nécessaire.',
+    title: 'Enforcement',
+    description: 'One-click pull request generation with automated verification and safe fallback.',
   },
 ];
 

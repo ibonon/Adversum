@@ -72,7 +72,7 @@ export default function AttackTimeline({
         {/* Connector line */}
         <div className="absolute top-8 left-8 right-8 h-0.5 bg-gradient-to-r from-red-900 via-orange-700 to-red-900 z-0" />
 
-        {steps.map((step) => {
+        {(steps || []).map((step) => {
           const isActive = step.index === activeIndex;
           const colorClass = PRIMITIVE_COLORS[step.primitive] || PRIMITIVE_COLORS.CUSTOM;
           const icon = PRIMITIVE_ICONS[step.primitive] || "⚙️";

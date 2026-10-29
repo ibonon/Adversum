@@ -29,7 +29,7 @@ const HeroSection = () => {
           >
             <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
             <span className="text-sm text-muted-foreground">
-              Nouvelle version 2.0 disponible
+              Version 5.0 Enterprise Available
             </span>
           </div>
 
@@ -39,10 +39,10 @@ const HeroSection = () => {
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
             }`}
           >
-            Sécurité du code
+            Code Security
             <br />
             <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent bg-[length:200%_auto] animate-shimmer">
-              réinventée
+              Reinvented
             </span>
           </h1>
 
@@ -52,8 +52,7 @@ const HeroSection = () => {
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
             }`}
           >
-            Adversum combine la puissance de Rust avec l'intelligence artificielle 
-            pour détecter et corriger automatiquement les vulnérabilités.
+            Adversum combines high-performance Rust, NVIDIA Nemotron AI, and Z3 Formal Verification to detect, prove, and heal vulnerabilities autonomously.
           </p>
 
           {/* CTA Buttons */}
@@ -66,7 +65,7 @@ const HeroSection = () => {
               size="lg" 
               className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-8 h-14 text-base group"
             >
-              Essai gratuit
+              Launch Audit
               <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
             </Button>
             <Button 
@@ -75,7 +74,7 @@ const HeroSection = () => {
               className="rounded-full px-8 h-14 text-base border-border/50 hover:bg-background/50 group"
             >
               <Play className="w-4 h-4 mr-2" />
-              Voir la démo
+              Watch Demo
             </Button>
           </div>
 
@@ -86,9 +85,9 @@ const HeroSection = () => {
             }`}
           >
             {[
-              { value: '10x', label: 'Plus rapide' },
-              { value: '95%', label: 'Précision' },
-              { value: '24/7', label: 'Monitoring' },
+              { value: '10x', label: 'Faster Throughput' },
+              { value: '100%', label: 'Mathematical Proof' },
+              { value: '24/7', label: 'Continuous SOC' },
             ].map((stat, index) => (
               <div key={index} className="text-center">
                 <div className="text-3xl md:text-4xl font-bold text-foreground mb-1">{stat.value}</div>

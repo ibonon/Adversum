@@ -27,7 +27,7 @@ const scenarios = [
       { code: '  });', state: 'idle' as const },
       { code: '});', state: 'idle' as const },
     ],
-    severity: 'Critique',
+    severity: 'Critical',
     cwe: 'CWE-89',
   },
   {
@@ -49,7 +49,7 @@ const scenarios = [
       { code: '  container.appendChild(div);', state: 'fixed' as const },
       { code: '}', state: 'idle' as const },
     ],
-    severity: 'Élevée',
+    severity: 'High',
     cwe: 'CWE-79',
   },
   {
@@ -68,7 +68,7 @@ const scenarios = [
       { code: '  return JSON.parse(decoded);', state: 'fixed' as const },
       { code: '}', state: 'idle' as const },
     ],
-    severity: 'Critique',
+    severity: 'Critical',
     cwe: 'CWE-502',
   },
 ];
@@ -85,7 +85,7 @@ const LiveSimulation = () => {
   const sectionRef = useRef<HTMLDivElement>(null);
   const [isInView, setIsInView] = useState(false);
 
-  const scenario = scenarios[scenarioIdx];
+  const scenario = scenarios[scenarioIdx] || scenarios[0];
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -199,11 +199,11 @@ const LiveSimulation = () => {
       case 'detected':
         return { text: `${scenario.severity} · ${scenario.cwe} · ${scenario.name}`, color: 'text-destructive', icon: AlertTriangle };
       case 'fixing':
-        return { text: 'Génération du patch AVR…', color: 'text-accent', icon: Zap };
+        return { text: 'Generating AVR patch…', color: 'text-accent', icon: Zap };
       case 'fixed':
-        return { text: 'Vulnérabilité neutralisée', color: 'text-success', icon: ShieldCheck };
+        return { text: 'Vulnerability Neutralized', color: 'text-success', icon: ShieldCheck };
       default:
-        return { text: 'Prochain scénario…', color: 'text-muted-foreground', icon: Cpu };
+        return { text: 'Next scenario…', color: 'text-muted-foreground', icon: Cpu };
     }
   };
 
@@ -220,16 +220,16 @@ const LiveSimulation = () => {
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
           <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground mb-4 block">
-            Live · En temps réel
+            Live · Real-time
           </span>
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 tracking-tight">
-            Regardez Adversum{' '}
+            Watch Adversum{' '}
             <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              travailler
+              in action
             </span>
           </h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
-            Détection, validation IA et correction automatique — en moins d'une seconde.
+            Instant detection, SMT formal verification, and automated patching — in milliseconds.
           </p>
         </div>
 
@@ -268,7 +268,7 @@ const LiveSimulation = () => {
                   />
                 )}
 
-                {displayedLines.filter(Boolean).map((line, idx) => (
+                {(displayedLines || []).filter(Boolean).map((line, idx) => (
                   <div
                     key={idx}
                     className={`flex items-start gap-3 py-0.5 rounded transition-all duration-300 ${
@@ -321,7 +321,7 @@ const LiveSimulation = () => {
                   Adversum Core
                 </div>
                 <div className="text-[10px] font-mono text-muted-foreground">
-                  v2.0 · Rust + IA
+                  v5.0 · Rust + Nemotron + Z3
                 </div>
               </div>
             </div>
@@ -329,9 +329,9 @@ const LiveSimulation = () => {
             {/* Live stats */}
             <div className="grid grid-cols-3 gap-3 mt-8">
               {[
-                { label: 'Scannés', value: stats.scanned, color: 'text-foreground' },
-                { label: 'Bloqués', value: stats.blocked, color: 'text-destructive' },
-                { label: 'Corrigés', value: stats.fixed, color: 'text-success' },
+                { label: 'Scanned', value: stats.scanned, color: 'text-foreground' },
+                { label: 'Blocked', value: stats.blocked, color: 'text-destructive' },
+                { label: 'Remediated', value: stats.fixed, color: 'text-success' },
               ].map((stat) => (
                 <div
                   key={stat.label}
