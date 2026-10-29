@@ -193,7 +193,7 @@ const generateStandaloneHtmlReport = (opts: {
       ` : ''}
       ${f.poc_code ? `
         <details style="margin-top:10px;">
-          <summary style="cursor:pointer;color:#60a5fa;font-size:12px;font-weight:600;">⚡ PoC d'Exploit Foundry (ExploitPoC.t.sol)</summary>
+          <summary style="cursor:pointer;color:#60a5fa;font-size:12px;font-weight:600;">⚡ Foundry Exploit PoC (ExploitPoC.t.sol)</summary>
           <pre style="background:#020617;border:1px solid #1d4ed8;border-radius:8px;padding:12px;font-family:monospace;font-size:11px;color:#bfdbfe;overflow-x:auto;margin-top:8px;">${f.poc_code}</pre>
         </details>
       ` : ''}
@@ -786,13 +786,13 @@ const DashboardPreview = () => {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
       <div className="container mx-auto px-6 relative z-10">
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground mb-4 block">Plateforme d'Audit Institutionnelle</span>
+          <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground mb-4 block">Institutional Audit Platform</span>
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 tracking-tight">
-            Audit de Sécurité{' '}
-            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Multi-Niveaux</span>
+            Security Audit{' '}
+            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Multi-Tier</span>
           </h2>
           <p className="text-lg text-muted-foreground leading-relaxed">
-            Sélectionnez votre profil d'analyse selon la nature du code — Smart Contracts, Ponts Cross-Chain, Proof of Reserves ou Audit Complet avec PoC Foundry.
+            Select an analysis profile tailored to your codebase — Smart Contracts, Cross-Chain Bridges, Proof of Reserves, or Full-Spectrum Audit with Foundry PoC.
           </p>
         </div>
 
@@ -848,7 +848,7 @@ const DashboardPreview = () => {
                       type="text"
                       value={repoUrl}
                       onChange={e => setRepoUrl(e.target.value)}
-                      placeholder="https://github.com/owner/repo  ou  ./chemin/local"
+                      placeholder="https://github.com/owner/repo  or  ./local/path"
                       className="flex-1 px-4 py-2.5 rounded-xl bg-background/80 border border-border/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono text-foreground placeholder:text-muted-foreground/50"
                       disabled={isScanning}
                     />
@@ -857,13 +857,13 @@ const DashboardPreview = () => {
                       disabled={isScanning}
                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-primary/25 shrink-0 disabled:opacity-50"
                     >
-                      {isScanning ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyse…</> : <><Shield className="w-4 h-4" /> Lancer l'Audit</>}
+                      {isScanning ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Shield className="w-4 h-4" /> Run Audit</>}
                     </button>
                   </div>
                   {/* QUICK DEMO TARGET PILLS */}
                   <div className="flex items-center gap-2 flex-wrap pt-1">
                     <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-primary" /> Cibles 1-Clic :
+                      <Sparkles className="w-3 h-3 text-primary" /> 1-Click Targets:
                     </span>
                     <button
                       type="button"
@@ -904,10 +904,10 @@ const DashboardPreview = () => {
                       <div className="flex items-center justify-between border-b border-border/30 pb-2">
                         <div className="flex items-center gap-2 text-xs text-primary font-semibold">
                           <Terminal className="w-3.5 h-3.5 animate-pulse" />
-                          <span>Console Agentique Adversum — Exécution en cours</span>
+                          <span>Adversum Agentic Console — Live Execution</span>
                         </div>
                         <span className="text-[11px] px-2 py-0.5 rounded bg-primary/20 text-primary border border-primary/30">
-                          ⏱ {elapsedSeconds}s écoulées
+                          ⏱ {elapsedSeconds}s elapsed
                         </span>
                       </div>
                       
@@ -932,14 +932,14 @@ const DashboardPreview = () => {
 
                       {/* Streaming terminal messages */}
                       <div className="p-2.5 rounded-lg bg-black/90 border border-border/20 text-[11px] text-emerald-400/90 space-y-1 max-h-36 overflow-y-auto">
-                        <div>[00:01] [+] Initialisation de l'Agent d'Audit Adversum (Sandbox Process)...</div>
-                        <div>[00:03] [*] Cible identifiée : {repoUrl}</div>
-                        {elapsedSeconds >= 8 && <div>[00:08] [*] Clone sécurisé Git shallow (depth 1) et extraction de l'arbre syntaxique (AST)...</div>}
-                        {elapsedSeconds >= 25 && <div>[00:25] [*] Exécution du noyau Rust (PyO3) : Taint Analysis & Dataflow Invariants...</div>}
-                        {elapsedSeconds >= 55 && <div>[00:55] [*] Corrélation multi-moteurs : détection des chemins de vulnérabilités...</div>}
-                        {elapsedSeconds >= 85 && <div className="text-violet-300 font-semibold">[00:85] 🧠 Nebius Token Factory : Inférence NVIDIA Nemotron pour validation des findings...</div>}
-                        {elapsedSeconds >= 120 && <div className="text-blue-300 font-semibold">[01:20] 🔍 Tavily Search : Recherche temps-réel d'exploits publics et corrélations CVE...</div>}
-                        {elapsedSeconds >= 155 && <div className="text-amber-300 font-semibold">[01:55] ⚡ Synthèse des PoCs Foundry (.t.sol) et des correctifs Git unifiés (.diff)...</div>}
+                        <div>[00:01] [+] Adversum Audit Agent initialized (Sandbox Process)...</div>
+                        <div>[00:03] [*] Target identified: {repoUrl}</div>
+                        {elapsedSeconds >= 8 && <div>[00:08] [*] Secure shallow Git clone (depth 1) & AST extraction...</div>}
+                        {elapsedSeconds >= 25 && <div>[00:25] [*] Native Rust Core (PyO3): Taint Analysis & Dataflow Invariants...</div>}
+                        {elapsedSeconds >= 55 && <div>[00:55] [*] Multi-engine correlation: exploit path tracing...</div>}
+                        {elapsedSeconds >= 85 && <div className="text-violet-300 font-semibold">[00:85] 🧠 Nebius Token Factory: NVIDIA Nemotron AI inference for finding validation...</div>}
+                        {elapsedSeconds >= 120 && <div className="text-blue-300 font-semibold">[01:20] 🔍 Tavily Search: Real-time public exploit search & CVE correlation...</div>}
+                        {elapsedSeconds >= 155 && <div className="text-amber-300 font-semibold">[01:55] ⚡ Synthesis of Foundry PoC exploits (.t.sol) and unified Git patches (.diff)...</div>}
                       </div>
                     </div>
                   )}
@@ -952,7 +952,7 @@ const DashboardPreview = () => {
                   { label: 'Total', value: String(totalCount), icon: AlertTriangle, color: 'text-destructive' },
                   { label: 'Critical', value: String(criticalCount), icon: AlertTriangle, color: 'text-destructive' },
                   { label: 'High', value: String(highCount), icon: Clock, color: 'text-amber-400' },
-                  { label: 'Score Sécurité', value: `${secScore}%`, icon: TrendingUp, color: secScore > 70 ? 'text-emerald-400' : secScore > 40 ? 'text-amber-400' : 'text-destructive' },
+                  { label: 'Security Score', value: `${secScore}%`, icon: TrendingUp, color: secScore > 70 ? 'text-emerald-400' : secScore > 40 ? 'text-amber-400' : 'text-destructive' },
                 ].map((stat, i) => (
                   <div key={i} className={`p-5 rounded-2xl bg-card/50 border border-border/30 transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`} style={{ transitionDelay: `${300 + i * 100}ms` }}>
                     <stat.icon className={`w-5 h-5 ${stat.color} mb-3`} />
@@ -967,7 +967,7 @@ const DashboardPreview = () => {
                 <div className="rounded-2xl bg-gradient-to-r from-violet-950/40 to-blue-950/40 border border-violet-500/30 px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
                   <div className="flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-                    <span className="text-xs font-semibold text-violet-300 uppercase tracking-wider">Propulsé par IA</span>
+                    <span className="text-xs font-semibold text-violet-300 uppercase tracking-wider">AI-Powered Verification</span>
                     {nebiusEnabled && (
                       <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-violet-500/20 border border-violet-500/40 text-violet-300">
                         🟢 NVIDIA Nemotron · Nebius Token Factory
@@ -982,12 +982,12 @@ const DashboardPreview = () => {
                   <div className="flex items-center gap-3 text-[11px] font-mono text-muted-foreground">
                     {aiValidatedCount > 0 && (
                       <span className="px-2 py-0.5 rounded bg-violet-500/10 border border-violet-500/20 text-violet-400">
-                        ✓ {aiValidatedCount} findings validés IA
+                        ✓ {aiValidatedCount} AI-validated findings
                       </span>
                     )}
                     {tavilyEnrichedCount > 0 && (
                       <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400">
-                        ✓ {tavilyEnrichedCount} enrichis CVE
+                        ✓ {tavilyEnrichedCount} CVE-enriched findings
                       </span>
                     )}
                   </div>
@@ -1003,7 +1003,7 @@ const DashboardPreview = () => {
                   >
                     <span className="flex items-center gap-2">
                       <Shield className="w-4 h-4" />
-                      Résumé Exécutif IA — Généré par NVIDIA Nemotron
+                      AI Executive Summary — Generated by NVIDIA Nemotron
                     </span>
                     {showAiSummary ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
@@ -1030,7 +1030,7 @@ const DashboardPreview = () => {
                   >
                     <div className="flex items-center gap-2.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-pulse" />
-                      <span>🕸️ Hypothèse de Graphe d'Attaque & Kill Chain (Raisonnement NVIDIA Nemotron)</span>
+                      <span>🕸️ Attack Graph & Kill Chain Hypothesis (NVIDIA Nemotron Reasoning)</span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-500/20 border border-violet-500/40 text-violet-200">
                         {attackGraph.complexity} RISK
                       </span>
@@ -1041,11 +1041,11 @@ const DashboardPreview = () => {
                     <div className="p-5 space-y-4">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 rounded-xl bg-violet-950/20 border border-violet-500/20">
                         <div>
-                          <div className="text-xs text-violet-400 font-mono uppercase tracking-wider mb-0.5">Scénario d'Attaque Multi-Vulnérabilités</div>
+                          <div className="text-xs text-violet-400 font-mono uppercase tracking-wider mb-0.5">Multi-Vulnerability Attack Scenario</div>
                           <div className="text-sm font-bold text-foreground">{attackGraph.title}</div>
                         </div>
                         <div className="text-right text-xs">
-                          <span className="text-muted-foreground font-mono">Acteur de Menace : </span>
+                          <span className="text-muted-foreground font-mono">Threat Actor: </span>
                           <span className="text-violet-300 font-semibold">{attackGraph.threat_actor}</span>
                         </div>
                       </div>
@@ -1053,7 +1053,7 @@ const DashboardPreview = () => {
                       {/* Kill Chain Step Flow */}
                       <div className="space-y-3">
                         <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                          <span>Séquence d'Exploitation Enchaînée ({attackGraph.steps?.length || 0} étapes) :</span>
+                          <span>Chained Exploit Sequence ({attackGraph.steps?.length || 0} étapes) :</span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           {(attackGraph.steps || []).map((step: any, sIdx: number) => (
@@ -1061,7 +1061,7 @@ const DashboardPreview = () => {
                               <div>
                                 <div className="flex items-center justify-between mb-1.5">
                                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-violet-500/20 text-violet-300 font-bold border border-violet-500/30">
-                                    Étape {step.step}
+                                    Step {step.step}
                                   </span>
                                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/20 font-bold">
                                     {step.finding_id}
@@ -1072,7 +1072,7 @@ const DashboardPreview = () => {
                                 <p className="text-[11px] text-muted-foreground leading-relaxed">{step.action}</p>
                               </div>
                               <div className="pt-2 border-t border-border/20 text-[10px] text-emerald-400 font-mono">
-                                ➔ Résultat : {step.outcome}
+                                ➔ Impact: {step.outcome}
                               </div>
                             </div>
                           ))}
@@ -1082,7 +1082,7 @@ const DashboardPreview = () => {
                       {/* Edges & Inter-finding correlations */}
                       {attackGraph.edges && attackGraph.edges.length > 0 && (
                         <div className="p-3.5 rounded-xl bg-black/40 border border-border/30 space-y-2">
-                          <div className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider">Corrélations Logiques Déduites par NVIDIA Nemotron :</div>
+                          <div className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider">Logical Correlations Inferred by NVIDIA Nemotron:</div>
                           <div className="space-y-1.5">
                             {attackGraph.edges.map((edge: any, eIdx: number) => (
                               <div key={eIdx} className="flex items-center gap-2 text-xs font-mono text-violet-200/90">
@@ -1104,7 +1104,7 @@ const DashboardPreview = () => {
               {ccss && (
                 <div className="rounded-2xl bg-card/40 border border-amber-500/20 overflow-hidden">
                   <button onClick={() => setShowCCSS(s => !s)} className="w-full flex items-center justify-between px-5 py-3 text-sm font-medium text-amber-400 hover:bg-amber-500/5 transition-colors">
-                    <span className="flex items-center gap-2"><Building2 className="w-4 h-4" />Conformité CCSS v3.0 — {ccss.achieved_level} ({ccss.overall_score}%)</span>
+                    <span className="flex items-center gap-2"><Building2 className="w-4 h-4" />CCSS v3.0 Compliance — {ccss.achieved_level} ({ccss.overall_score}%)</span>
                     {showCCSS ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
                   {showCCSS && (
@@ -1132,7 +1132,7 @@ const DashboardPreview = () => {
               {showThreatModel && (
                 <div className="rounded-2xl bg-card/40 border border-border/30 px-5 py-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2"><Shield className="w-3.5 h-3.5" />Modèle de Menaces Financières STRIDE</span>
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2"><Shield className="w-3.5 h-3.5" />STRIDE Financial Threat Model</span>
                     <div className="flex gap-2 text-[10px] font-mono">
                       {Object.entries(threat.risk_summary || {}).map(([sev, count]) => (count as number) > 0 && (
                         <span key={sev} className={`px-2 py-0.5 rounded border ${sev === 'CRITICAL' ? 'text-destructive border-destructive/30 bg-destructive/10' : sev === 'HIGH' ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' : 'text-muted-foreground border-border/30'}`}>{count as number} {sev}</span>
@@ -1157,7 +1157,7 @@ const DashboardPreview = () => {
               <div className="rounded-2xl bg-card/30 border border-border/30 p-6">
                 <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                   <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                    {findings.length > 0 ? `Résultats · ${displayFindings.length} vulnérabilités` : 'Aperçu démo — Vulnérabilités & PoC Foundry'}
+                    {findings.length > 0 ? `Audit Results · ${displayFindings.length} vulnérabilités` : 'Demo Preview — Vulnerabilities & Foundry PoC'}
                   </h3>
                   <div className="flex gap-2 flex-wrap">
                     <button onClick={handleExportHtml} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary/20 text-primary border border-primary/30 rounded-lg hover:bg-primary/30 transition-colors shadow-sm">
@@ -1167,7 +1167,7 @@ const DashboardPreview = () => {
                       <FileCode className="w-3.5 h-3.5" />SARIF 2.1
                     </button>
                     <button onClick={handleExportMarkdown} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-background/50 border border-border/50 rounded-lg hover:bg-muted transition-colors">
-                      <Download className="w-3.5 h-3.5" />{scanResult?.markdown_report ? 'Rapport Exécutif' : 'Markdown'}
+                      <Download className="w-3.5 h-3.5" />{scanResult?.markdown_report ? 'Executive Report' : 'Markdown'}
                     </button>
                   </div>
                 </div>
@@ -1207,26 +1207,26 @@ const DashboardPreview = () => {
                             <div className="rounded-lg border border-violet-500/30 bg-violet-950/20 p-3 space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <span className="text-[11px] font-semibold text-violet-400 flex items-center gap-1.5">
-                                  🟢 Validé par NVIDIA Nemotron (Nebius)
+                                  🟢 Validated by NVIDIA Nemotron (Nebius)
                                 </span>
                                 <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${(vuln as any).nebius_ai.is_true_positive ? 'text-destructive border-destructive/30 bg-destructive/10' : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'}`}>
-                                  {(vuln as any).nebius_ai.is_true_positive ? '⚠ Vrai positif' : '✓ Faux positif probable'}
+                                  {(vuln as any).nebius_ai.is_true_positive ? '⚠ True Positive' : '✓ Probable False Positive'}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden">
                                   <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-violet-300" style={{ width: `${Math.round(((vuln as any).nebius_ai.confidence ?? 0) * 100)}%` }} />
                                 </div>
-                                <span className="text-[10px] font-mono text-violet-400">{Math.round(((vuln as any).nebius_ai.confidence ?? 0) * 100)}% confiance</span>
+                                <span className="text-[10px] font-mono text-violet-400">{Math.round(((vuln as any).nebius_ai.confidence ?? 0) * 100)}% confidence</span>
                               </div>
                               {(vuln as any).nebius_ai.ai_explanation && (
                                 <p className="text-[11px] text-violet-200/70 leading-relaxed">{(vuln as any).nebius_ai.ai_explanation}</p>
                               )}
                               {(vuln as any).nebius_ai.ai_remediation && (
-                                <p className="text-[11px] text-violet-300/80"><strong className="text-violet-400">Fix IA :</strong> {(vuln as any).nebius_ai.ai_remediation}</p>
+                                <p className="text-[11px] text-violet-300/80"><strong className="text-violet-400">AI Remediation:</strong> {(vuln as any).nebius_ai.ai_remediation}</p>
                               )}
                               {(vuln as any).nebius_ai.attack_scenario && (
-                                <p className="text-[10px] text-violet-200/50 italic">Scénario : {(vuln as any).nebius_ai.attack_scenario}</p>
+                                <p className="text-[10px] text-violet-200/50 italic">Attack Scenario: {(vuln as any).nebius_ai.attack_scenario}</p>
                               )}
                             </div>
                           )}
@@ -1243,7 +1243,7 @@ const DashboardPreview = () => {
                           )}
                           {vuln.snippet && (
                             <div>
-                              <div className="text-[11px] font-medium text-muted-foreground mb-1">Code vulnérable :</div>
+                              <div className="text-[11px] font-medium text-muted-foreground mb-1">Vulnerable Code Snippet:</div>
                               <div className="rounded-lg bg-background/60 border border-border/30 p-3 font-mono text-xs text-foreground/80 overflow-x-auto">
                                 {vuln.snippet}
                               </div>
@@ -1252,7 +1252,7 @@ const DashboardPreview = () => {
                           {vuln.recommendation && (
                             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-primary/5 p-3 rounded-lg border border-primary/20">
                               <Wrench className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                              <span><strong className="text-foreground">Recommandation :</strong> {vuln.recommendation}</span>
+                              <span><strong className="text-foreground">Remediation:</strong> {vuln.recommendation}</span>
                             </div>
                           )}
                           {vuln.poc_code && (
@@ -1260,14 +1260,14 @@ const DashboardPreview = () => {
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-xs font-semibold text-blue-400">
                                   <Terminal className="w-4 h-4" />
-                                  <span>PoC d'Exploit Foundry (<code>ExploitPoC.t.sol</code>)</span>
+                                  <span>Foundry Exploit PoC (<code>ExploitPoC.t.sol</code>)</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleCopyPoc(vuln.poc_code, i); }}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-[11px] font-mono transition-colors border border-blue-500/30"
                                   >
-                                    {copiedPocIdx === i ? <><Check className="w-3 h-3 text-emerald-400" /> Copié !</> : <><Copy className="w-3 h-3" /> Copier</>}
+                                    {copiedPocIdx === i ? <><Check className="w-3 h-3 text-emerald-400" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy</>}
                                   </button>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); downloadFile(vuln.poc_code, `Exploit_${vuln.name.split(':')[0].trim()}.t.sol`, 'text/plain'); }}
@@ -1278,7 +1278,7 @@ const DashboardPreview = () => {
                                 </div>
                               </div>
                               <div className="text-[10px] text-blue-300/70 font-mono">
-                                Commande de reproduction : <span className="text-blue-200">forge test --match-contract {vuln.name.split(':')[0].replace(/[^a-zA-Z0-9]/g, '')}PoCTest -vvvv</span>
+                                Reproduction command: <span className="text-blue-200">forge test --match-contract {vuln.name.split(':')[0].replace(/[^a-zA-Z0-9]/g, '')}PoCTest -vvvv</span>
                               </div>
                               <pre className="rounded-lg bg-black/60 border border-blue-500/20 p-3 font-mono text-[11px] text-blue-100/90 overflow-x-auto max-h-60 leading-relaxed">
                                 <code>{vuln.poc_code}</code>
@@ -1291,14 +1291,14 @@ const DashboardPreview = () => {
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
                                   <GitPullRequest className="w-4 h-4" />
-                                  <span>Patch de Remédiation Vérifié AVR (<code>git apply patch.diff</code>)</span>
+                                  <span>AVR-Verified Remediation Patch (<code>git apply patch.diff</code>)</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleCopyPatch((vuln as any).diff_patch, i); }}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[11px] font-mono transition-colors border border-emerald-500/30"
                                   >
-                                    {copiedPatchIdx === i ? <><Check className="w-3 h-3 text-emerald-400" /> Copié !</> : <><Copy className="w-3 h-3" /> Copier</>}
+                                    {copiedPatchIdx === i ? <><Check className="w-3 h-3 text-emerald-400" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy</>}
                                   </button>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); downloadFile((vuln as any).diff_patch, `Fix_${vuln.name.split(':')[0].trim()}.patch`, 'text/plain'); }}
@@ -1309,7 +1309,7 @@ const DashboardPreview = () => {
                                 </div>
                               </div>
                               <div className="text-[10px] text-emerald-300/70 font-mono">
-                                Invariant formel validé : <span className="text-emerald-200">Éradication mathématique du vecteur d'attaque</span>
+                                Formal invariant verified: <span className="text-emerald-200">Mathematical eradication of exploit vector</span>
                               </div>
                               <pre className="rounded-lg bg-black/60 border border-emerald-500/20 p-3 font-mono text-[11px] text-emerald-100/90 overflow-x-auto max-h-60 leading-relaxed">
                                 <code>{(vuln as any).diff_patch}</code>
@@ -1325,7 +1325,7 @@ const DashboardPreview = () => {
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-all shadow-sm"
                             >
                               {executingForkIdx === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Flame className="w-3.5 h-3.5 text-red-500" />}
-                              <span>{executingForkIdx === i ? 'Exécution sur Fork...' : '⚡ Exécuter Fork Mainnet (Proof of Exploit)'}</span>
+                              <span>{executingForkIdx === i ? 'Executing on Live Fork...' : '⚡ Run Mainnet Fork (Proof of Exploit)'}</span>
                             </button>
 
                             <button
@@ -1334,7 +1334,7 @@ const DashboardPreview = () => {
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold transition-all shadow-sm"
                             >
                               {generatingPrIdx === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitPullRequest className="w-3.5 h-3.5 text-emerald-400" />}
-                              <span>{generatingPrIdx === i ? 'Génération PR...' : '🛠️ Auto-PR Tri-Partite (AVR)'}</span>
+                              <span>{generatingPrIdx === i ? 'Generating Self-Healing PR...' : '🛠️ Autonomous Self-Healing PR (AVR)'}</span>
                             </button>
                           </div>
 
@@ -1344,7 +1344,7 @@ const DashboardPreview = () => {
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-xs font-bold text-red-400">
                                   <Flame className="w-4 h-4 text-red-400" />
-                                  <span>Preuve d'Exploitation Empirique sur Fork (0% Faux Positif)</span>
+                                  <span>Empirical Proof of Exploit on Live Fork (0% False Positive)</span>
                                 </div>
                                 <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-red-500/50 bg-red-500/20 text-red-200 font-bold">
                                   {forkResults[i].status}
@@ -1353,31 +1353,31 @@ const DashboardPreview = () => {
 
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] font-mono">
                                 <div className="p-2 rounded bg-black/40 border border-red-500/20">
-                                  <div className="text-muted-foreground text-[10px]">Trésorerie Avant</div>
+                                  <div className="text-muted-foreground text-[10px]">Vault Balance Before</div>
                                   <div className="font-semibold text-foreground">{forkResults[i].initial_vault_balance_eth?.toFixed(2)} ETH</div>
                                 </div>
                                 <div className="p-2 rounded bg-black/40 border border-red-500/20">
-                                  <div className="text-muted-foreground text-[10px]">Trésorerie Après</div>
+                                  <div className="text-muted-foreground text-[10px]">Vault Balance After</div>
                                   <div className="font-semibold text-foreground">{forkResults[i].final_vault_balance_eth?.toFixed(2)} ETH</div>
                                 </div>
                                 <div className="p-2 rounded bg-black/40 border border-red-500/20">
-                                  <div className="text-muted-foreground text-[10px]">Siphonné (Attaquant)</div>
+                                  <div className="text-muted-foreground text-[10px]">Drained (Attacker Profit)</div>
                                   <div className="font-bold text-red-400">+{forkResults[i].attacker_profit_eth?.toFixed(2)} ETH</div>
                                 </div>
                                 <div className="p-2 rounded bg-black/40 border border-red-500/20">
-                                  <div className="text-muted-foreground text-[10px]">Valeur USD</div>
+                                  <div className="text-muted-foreground text-[10px]">USD Value</div>
                                   <div className="font-bold text-red-400">${forkResults[i].attacker_profit_usd?.toLocaleString()}</div>
                                 </div>
                               </div>
 
                               <div className="text-[10px] text-muted-foreground font-mono flex items-center justify-between">
                                 <span>Tx Hash: <span className="text-foreground">{forkResults[i].tx_hash?.slice(0, 22)}...</span></span>
-                                <span>Gas Utilisé: <span className="text-foreground">{forkResults[i].gas_consumed?.toLocaleString()}</span></span>
+                                <span>Gas Consumed: <span className="text-foreground">{forkResults[i].gas_consumed?.toLocaleString()}</span></span>
                               </div>
 
                               {forkResults[i].traces && (
                                 <div className="space-y-1">
-                                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Trace d'Exécution EVM (Foundry / RPC) :</div>
+                                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">EVM Execution Trace (Foundry / RPC):</div>
                                   <div className="rounded-lg bg-black/70 border border-red-500/20 p-2 font-mono text-[10px] space-y-1 max-h-36 overflow-y-auto">
                                     {forkResults[i].traces.map((tr: any, ti: number) => (
                                       <div key={ti} className="flex items-center gap-2">
@@ -1402,7 +1402,7 @@ const DashboardPreview = () => {
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
                                   <GitPullRequest className="w-4 h-4 text-emerald-400" />
-                                  <span>Pull Request Autonome Prête — Comité Tri-Partite Adversum</span>
+                                  <span>Autonomous Pull Request Ready — Adversum Tri-Partite Committee</span>
                                 </div>
                                 <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/50 bg-emerald-500/20 text-emerald-200 font-bold">
                                   {prResults[i].verification_status}
@@ -1414,9 +1414,9 @@ const DashboardPreview = () => {
                               </div>
 
                               <div className="flex items-center gap-3 text-[10px] font-mono text-muted-foreground">
-                                <span>Branche: <span className="text-emerald-300">{prResults[i].branch_name}</span></span>
-                                <span>Preuve: <span className="text-emerald-300">{prResults[i].formal_proof_badge}</span></span>
-                                <span>Gaz: <span className="text-amber-300">{prResults[i].gas_delta}</span></span>
+                                <span>Branch: <span className="text-emerald-300">{prResults[i].branch_name}</span></span>
+                                <span>Formal Proof: <span className="text-emerald-300">{prResults[i].formal_proof_badge}</span></span>
+                                <span>Gas Delta: <span className="text-amber-300">{prResults[i].gas_delta}</span></span>
                               </div>
 
                               <pre className="rounded-lg bg-black/60 border border-emerald-500/20 p-2 font-mono text-[10px] text-emerald-200 overflow-x-auto max-h-40">
@@ -1424,7 +1424,7 @@ const DashboardPreview = () => {
                               </pre>
 
                               <div className="rounded bg-black/40 p-2 border border-border/30 font-mono text-[10px] text-muted-foreground space-y-1">
-                                <div className="text-foreground font-semibold">Commandes pour appliquer et soumettre la PR :</div>
+                                <div className="text-foreground font-semibold">Commands to apply and submit PR:</div>
                                 {prResults[i].git_cli_commands?.map((cmd: string, ci: number) => (
                                   <div key={ci} className="text-blue-300">$ {cmd}</div>
                                 ))}

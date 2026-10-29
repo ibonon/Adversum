@@ -58,7 +58,7 @@ const CTASection = () => {
                 size="lg" 
                 className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-10 h-14 text-base group"
               >
-                Essai gratuit 14 jours
+                Start 14-Day Free Trial
                 <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
               </Button>
               <Button 
@@ -66,7 +66,7 @@ const CTASection = () => {
                 size="lg" 
                 className="rounded-full px-10 h-14 text-base border-border/50 hover:bg-background/50"
               >
-                Contacter l'équipe
+                Contact Security Team
               </Button>
             </div>
 
@@ -77,7 +77,7 @@ const CTASection = () => {
               }`}
             >
               <p className="text-sm text-muted-foreground mb-6">
-                Ils nous font confiance
+                Trusted by Leading Protocols & Teams
               </p>
               <div className="flex items-center justify-center gap-12 opacity-40">
                 {['Datadog', 'Stripe', 'Notion', 'Linear'].map((company, i) => (
