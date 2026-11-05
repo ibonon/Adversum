@@ -208,7 +208,7 @@ Continuous 24/7 EVM monitoring:
 ```
 Developer / Analyst
        │
-       │  POST /api/v1/scan  { path | git_url }
+       │  POST /audit  { target_path | git_url }
        ▼
 ┌─────────────────────────────────────────────────────────┐
 │  FastAPI Route Handler                                  │
@@ -236,7 +236,7 @@ Developer / Analyst
 └───────────────────────┬─────────────────────────────────┘
                         │
                         ▼
-          GET /api/v1/jobs/{job_id}/findings
+          GET /audit/{job_id}
                         │
                         ▼
         ┌───────────────────────────┐
@@ -504,6 +504,10 @@ x-api-key: <your-api-key>
 
 Set `API_KEY` in `.env` or environment. Default dev key: `adv-dev-key-123`.
 
+> **Production:** the default is refused. `api/main.py` refuses to import when
+> `ADVERSUM_ENV=production` and `API_KEY` is missing, public, a placeholder, or
+> shorter than 16 characters — the process exits before serving any request.
+
 ### Path Validation
 
 The `api/security.py` module enforces:
@@ -625,7 +629,7 @@ test(phase3): add attack chain simulation coverage
 
 ```bash
 make lint       # ruff + eslint
-make test       # full pytest suite (165 tests)
+make test       # full pytest suite (263 tests)
 make format     # ruff format
 ```
 
@@ -651,7 +655,7 @@ tests/
 ```
 
 All tests run with `NEBIUS_MOCK=1` to avoid real LLM calls. The suite currently
-collects 266 tests; the CI job runs `tests/` (plus `modules/` and
+collects 263 tests; the CI job runs `tests/` (plus `modules/` and
 `orchestrator/tests/`) with a 50 % coverage floor.
 
 ---
