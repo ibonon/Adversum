@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
-use crate::semantic::types::Symbol;
 use crate::interner::SymbolId;
+use crate::semantic::types::Symbol;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -28,7 +28,7 @@ pub struct SymbolTable {
 impl SymbolTable {
     pub fn new() -> Self {
         Self {
-            scopes: vec![Scope::default()], 
+            scopes: vec![Scope::default()],
             next_id: 0,
         }
     }
@@ -45,17 +45,20 @@ impl SymbolTable {
 
     /// Define a symbol in the current scope.
     pub fn define(&mut self, mut symbol: Symbol) -> Result<usize, SemanticError> {
-        let current_scope = self.scopes.last_mut().ok_or_else(|| SemanticError::AlreadyDefined(SymbolId::NULL))?; 
-        
+        let current_scope = self
+            .scopes
+            .last_mut()
+            .ok_or_else(|| SemanticError::AlreadyDefined(SymbolId::NULL))?;
+
         if current_scope.symbols.contains_key(&symbol.name) {
             return Err(SemanticError::AlreadyDefined(symbol.name));
         }
-        
+
         // Assign ID
         let id = self.next_id;
         self.next_id += 1;
         symbol.id = id;
-        
+
         current_scope.symbols.insert(symbol.name, symbol);
         Ok(id)
     }
@@ -69,7 +72,7 @@ impl SymbolTable {
         }
         None
     }
-    
+
     /// Check if defined in current scope (for shadowing checks).
     pub fn lookup_current(&self, name: SymbolId) -> Option<&Symbol> {
         self.scopes.last().and_then(|s| s.symbols.get(&name))

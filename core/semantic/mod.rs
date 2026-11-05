@@ -1,9 +1,9 @@
-pub mod types;
 pub mod symtab;
+pub mod types;
 
 // Re-exports
-pub use types::*;
 pub use symtab::*;
+pub use types::*;
 
 // Tests live in `core/semantic/tests.rs`. The module itself was never declared
 // in `src/lib.rs` (so it never compiled); the dangling `#[cfg(test)]` below is

@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::ast::types::Span;
 use crate::interner::SymbolId;
+use serde::{Deserialize, Serialize};
 
 /// Represents the type of a value or symbol.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
