@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# The repository root .gitignore ignores every "lib/" directory (Python venv
+# rule), which would silently drop frontend/src/lib/. Re-include it so that
+# source modules such as src/lib/api.ts are actually committed.
+!src/lib/
+!src/lib/**

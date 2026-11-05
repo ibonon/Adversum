@@ -88,6 +88,11 @@ pub struct FunctionIR {
     pub name: SymbolId,
     pub params: Vec<SymbolId>,
     pub instructions: Vec<Instr>,
+    /// 1-based source line for each instruction in `instructions` (parallel to
+    /// the vector above). Empty for IR built before this field existed;
+    /// consumers fall back to the global line map in that case.
+    #[serde(default)]
+    pub instr_lines: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

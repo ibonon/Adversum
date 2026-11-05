@@ -25,6 +25,37 @@ def _mock_core_forced() -> bool:
         return False
 
 
+#: Minimal program that exercises the two halves of the taint engine:
+#: a *called* source (`input`) and an *attribute* source (`sys.argv`).
+#: The attribute case regressed silently in shipped builds: the extension
+#: imported fine, reported findings for `input()`, and returned nothing for
+#: `eval(sys.argv[1])` — a false negative on the textbook CWE-95 pattern.
+_SELF_TEST_SOURCE = (
+    "import sys\n"
+    "def _adversum_ffi_probe():\n"
+    "    a = eval(input())\n"
+    "    return eval(sys.argv[1])\n"
+)
+
+
+def _core_self_check(module) -> tuple[bool, str]:
+    """
+    Runs the linked extension against a known-positive snippet.
+
+    Returns (ok, reason). Any exception from an unexpected API surface is
+    treated as "ok": the check exists to catch *silent* misses, not to punish
+    a differently-shaped build.
+    """
+    try:
+        result = module.inspect_code(_SELF_TEST_SOURCE)
+        found = len(getattr(result, "findings", []) or [])
+        if found >= 2:
+            return True, f"ok ({found} findings)"
+        return False, f"only {found}/2 expected findings (stale or broken build)"
+    except Exception as exc:  # pragma: no cover - depends on the Rust build
+        return True, f"skipped ({type(exc).__name__}: {exc})"
+
+
 class CoreWrapper:
     """
     Bridge between Python Orchestrator and Rust Core.
@@ -48,15 +79,47 @@ class CoreWrapper:
             import adversum_core
             # Verify that the extension is fully functional and the correct version
             # The current version MUST have 'Finding' class exported for validation
-            if hasattr(adversum_core, "Finding"):
-                self.rust_core = adversum_core
-                self.use_ffi = True
-                logger.info("Initializing CoreWrapper (FFI Linked - Rust Engine Active)")
+            if not hasattr(adversum_core, "Finding"):
+                logger.warning(
+                    "Rust Core Extension found but version is OUTDATED (missing Finding). "
+                    "Falling back to Python engine."
+                )
+                return
+
+            self.rust_core = adversum_core
+
+            # A linked extension is not proof that it detects anything. Verify it
+            # against a known-positive snippet and refuse to trust a build that
+            # silently misses the attribute-source case.
+            ok, reason = _core_self_check(adversum_core)
+            accept_stale = os.getenv("ADVERSUM_ACCEPT_STALE_CORE", "false").lower() == "true"
+
+            if not ok and not accept_stale:
+                self.rust_core = None
+                logger.error(
+                    "Rust Core FFI linked but FAILED its detection self-check (%s). "
+                    "Refusing to use it: a stale build reports zero findings where the "
+                    "source is vulnerable, which is the worst failure mode for a scanner. "
+                    "Falling back to the Python engine.",
+                    reason,
+                )
+                logger.error(
+                    "Rebuild the extension: `cd core && maturin develop --release` "
+                    "(or install the wheel from core/target/wheels). "
+                    "Set ADVERSUM_ACCEPT_STALE_CORE=1 to use it anyway."
+                )
+                return
+
+            self.use_ffi = True
+            if ok:
+                logger.info("Initializing CoreWrapper (FFI Linked - Rust Engine Active, %s)", reason)
             else:
-                logger.warning("Rust Core Extension found but version is OUTDATED (missing Finding). Falling back to Python engine.")
+                logger.warning("Using a STALE Rust Core (self-check: %s) — forced by ADVERSUM_ACCEPT_STALE_CORE", reason)
         except ImportError:
-            logger.error("CRITICAL: Rust Core Extension NOT found. Industrial analysis is disabled.")
-            logger.error("Run `maturin develop` in `adversum/core` to build the engine.")
+            logger.warning(
+                "Rust Core Extension NOT found — using the Python fallback engine. "
+                "Run `maturin develop --release` in `core/` to build it."
+            )
 
     def get_hashes(self, paths: List[str]) -> dict[str, str]:
         """Computes XXH3 hashes for a list of file paths via Rust Core."""

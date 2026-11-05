@@ -66,6 +66,7 @@ class ValidatedFinding(BaseModel):
     resolved_line: Optional[int] = Field(None, description="Ligne réellement ancrée dans le source (None si ancrage échoué)")
     anchor_status: Optional[str] = Field(None, description="ANCRAGE_OK | ANCRAGE_ECHOUE")
     z3_verdict: Optional[str] = Field(None, description="Verdict Z3 : SAT | UNSAT | UNPARSED | UNKNOWN")
+    is_fixed: bool = Field(False, description="Un correctif vérifié a été appliqué (AVR)")
 
 # The final "Finding" exposed to API could be just ValidatedFinding or a flattened version.
 # For modularity, we expose ValidatedFinding as the main result.

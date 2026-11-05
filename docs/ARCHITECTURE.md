@@ -123,25 +123,25 @@ api/main.py (FastAPI Application)
 ├── modules/
 │   ├── live_fork/
 │   │   └── engine.py                 ← Foundry/Hardhat fork simulation
-│   ├── attack_chain/
-│   │   └── executor.py               ← Flashloan/oracle attack sim
-│   ├── defi_risk/
-│   │   └── scorer.py                 ← DeFi protocol risk scoring
-│   ├── resilience/
-│   │   ├── arena.py                  ← Wargame incident simulation
+│   ├── attack_simulator/
+│   │   ├── chain_executor.py         ← Flashloan/oracle attack sim
+│   │   ├── risk_scorer.py            ← Composite DeFi risk scoring
+│   │   └── scenarios/                ← Euler, Ronin, Wormhole, Mango…
+│   ├── incident_response/
+│   │   ├── resilience_arena.py       ← Wargame incident simulation
 │   │   ├── circuit_breaker.py        ← Solidity circuit breaker synth
-│   │   └── invariant_evaluator.py    ← 10 DeFi invariant checks
+│   │   └── adversarial_evaluator.py  ← 10 DeFi invariant checks
 │   └── threat_hunter/
 │       └── daemon.py                 ← 24/7 autonomous EVM watcher
 │
 ├── api/
-│   └── security.py                   ← Path validation, git URL check
+│   └── security.py                   ← Path whitelist, git URL allowlist
 │
 └── core/                             ← Rust crate (cargo)
     └── src/
-        ├── lib.rs                    ← FFI exports
-        ├── scanner.rs                ← AST + pattern matching
-        └── validators.rs             ← Deterministic rule engine
+        ├── lib.rs                    ← FFI exports + PyO3 bindings
+        ├── validator/mod.rs          ← Deterministic rule engine
+        └── ast/python.rs             ← Tree-sitter AST walkers
 ```
 
 ---
@@ -281,27 +281,48 @@ Developer / Analyst
 
 | Method | Path                            | Description                            |
 |--------|---------------------------------|----------------------------------------|
-| POST   | `/api/v1/scan`                  | Start a new smart contract audit       |
-| GET    | `/api/v1/jobs`                  | List all audit jobs                    |
-| GET    | `/api/v1/jobs/{id}`             | Get job status and metadata            |
-| GET    | `/api/v1/jobs/{id}/findings`    | Retrieve validated findings            |
-| GET    | `/api/v1/jobs/{id}/report`      | Download full audit report             |
+| POST   | `/audit`                        | Start a new audit (path or git URL)    |
+| GET    | `/audit/{job_id}`               | Job status + paginated findings        |
+| GET    | `/audits`                       | List jobs (cursor `since_id`, `limit`) |
+| POST   | `/fix/{finding_id}`             | Apply a verified single fix            |
+| POST   | `/fix/job/{job_id}`             | Batch-remediate a whole job            |
+
+### Scanner & Remediation
+
+| Method | Path                              | Description                                   |
+|--------|-----------------------------------|-----------------------------------------------|
+| POST   | `/scan/github`                    | Clone + scan inside an isolated container     |
+| POST   | `/api/v1/scan/clone-and-scan`     | Clone (or local path) + multi-module scan     |
+| POST   | `/api/v1/scan/all`                | Multi-module scan on whitelisted path(s)      |
+| POST   | `/api/v1/scan/remediate`          | Unified diffs for a batch of findings         |
+
+> Path targets go through `validate_scan_path()` (whitelist under
+> `ALLOWED_SCAN_DIR`) and remote URLs through `validate_repo_url()`
+> (HTTPS + host allowlist). There is no implicit scan of the server CWD.
 
 ### AI & Enrichment
 
 | Method | Path                                    | Description                              |
 |--------|-----------------------------------------|------------------------------------------|
-| POST   | `/api/v1/ai/validate`                   | LLM batch finding validation             |
-| POST   | `/api/v1/ai/executive-summary`          | Generate executive security summary      |
-| GET    | `/api/v1/ai/attack-graph`               | Generate attack graph hypothesis         |
-| GET    | `/api/v1/ai/status`                     | Nebius + Tavily availability status      |
+| POST   | `/api/v1/intelligence/triage`           | P0–P4 risk triage of findings            |
+| POST   | `/api/v1/intelligence/mev-analyze`      | MEV / flash-loan exposure analysis       |
+| POST   | `/api/v1/intelligence/threat-model`     | STRIDE + PASTA generation                |
+| POST   | `/api/v1/intelligence/threat-graph`     | Threat graph hypothesis                  |
+| POST   | `/api/v1/intelligence/blast-radius`     | Blast-radius computation                 |
+| GET    | `/api/v1/threat-stream/history`         | Recent threat events                     |
+| GET    | `/api/v1/threat-stream/stats`           | Event bus counters                       |
+| WS     | `/ws/threat-stream?api_key=…`           | Live threat stream (API-key required)    |
 
 ### Attack Chain Simulation (Phase 3)
 
 | Method | Path                                    | Description                              |
 |--------|-----------------------------------------|------------------------------------------|
-| POST   | `/api/v1/simulate/attack-chain`         | Execute simulated attack sequence        |
-| GET    | `/api/v1/simulate/risk-score`           | Compute DeFi protocol risk score         |
+| POST   | `/api/v1/simulator/run-attack`          | Execute a simulated attack sequence      |
+| GET    | `/api/v1/simulator/scenarios`           | List available attack scenarios          |
+| GET    | `/api/v1/simulator/replay/{id}`         | Replay a recorded simulation             |
+| POST   | `/api/v1/simulator/risk-score`          | Compute DeFi protocol risk score         |
+| GET    | `/api/v1/simulator/history`             | Simulation history                       |
+| GET    | `/api/v1/simulator/risk-matrix`         | Risk matrix                              |
 
 ### Resilience Arena (Phase 4)
 
@@ -487,8 +508,65 @@ Set `API_KEY` in `.env` or environment. Default dev key: `adv-dev-key-123`.
 
 The `api/security.py` module enforces:
 - Path traversal prevention (blocks `../`, absolute paths outside project)
-- Git URL allowlist (only `https://` GitHub/GitLab URLs)
+- Scan whitelist: every local target — including the local branch of
+  `/api/v1/scan/clone-and-scan` — must resolve inside `ALLOWED_SCAN_DIR`
+- Git URL allowlist (`validate_repo_url`): HTTPS only, host in
+  `ALLOWED_GIT_HOSTS` (default GitHub/GitLab/Bitbucket), no embedded
+  credentials, no `ext::`/`file::` transports
 - Payload size cap: 25 MB (`MAX_REQUEST_BODY_BYTES`)
+
+Every `git clone` is executed with `GIT_SAFE_ARGS`
+(`protocol.ext.allow=never`, `protocol.file.allow=never`) and
+`GIT_ALLOW_PROTOCOL=https`, which blocks remote command execution through
+git transports.
+
+### WebSocket Authentication
+
+Browsers cannot attach custom headers to a WebSocket handshake, so
+`/ws/threat-stream` takes the key as `?api_key=<key>`. The connection is
+rejected (close code 1008) before the upgrade if the key is missing/invalid
+or the `Origin` is not in `ALLOWED_ORIGINS`.
+
+### Concurrency Limits
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MAX_CONCURRENT_AUDITS` | 3 | Concurrent `/audit` analyses (also enforced by the priority job queue) |
+| `MAX_CONCURRENT_SCANS` | 4 | Concurrent scanner subprocesses (git clone, `scan_all.py`, docker) |
+| `MAX_CONCURRENT_JOBS` | 3 | Job-queue worker concurrency |
+| `MAX_REPO_FILES` / `MAX_REPO_BYTES` | 50 000 / 512 MB | Ingestion guard rails per cloned repository |
+| `NEBIUS_MAX_VALIDATED_FINDINGS` | 4 | Findings that get an individual LLM pass (rate-limit budget) |
+
+Without these bounds, Starlette background tasks and `asyncio.to_thread`
+fan-out let a burst of requests saturate both the CPU and the 32-slot
+default thread pool.
+
+### Rust Core — build freshness is enforced
+
+`CoreWrapper` never trusts a linked extension blindly. At startup it runs a
+built-in known-positive program through `inspect_code()`:
+
+```python
+a = eval(input())        # called source
+return eval(sys.argv[1]) # attribute source
+```
+
+If fewer than two findings come back, the build is considered stale: a loud
+error is logged, the FFI is **disabled**, and the deterministic Python engine
+takes over. That guard exists because a shipped build once imported fine,
+reported `eval(input())`, and returned nothing for `eval(sys.argv[1])` — a
+silent false negative on the textbook CWE-95 pattern.
+
+Rebuild and reinstall after any Rust change:
+
+```bash
+cd core
+maturin develop --release          # in a virtualenv
+# or, outside a venv:
+maturin build --release && pip install --force-reinstall target/wheels/*.whl
+```
+
+Set `ADVERSUM_ACCEPT_STALE_CORE=1` only to bypass the guard deliberately.
 
 ### Rate Limiting
 
@@ -563,15 +641,18 @@ make format     # ruff format
 
 ```
 tests/
+├── conftest.py         ← Shared fixtures + API_KEY isolation
 ├── test_phase1_*.py    ← Static analysis + pipeline
 ├── test_phase2_*.py    ← AI triage + enrichment
 ├── test_phase3_*.py    ← Attack chain simulation
 ├── test_phase4_*.py    ← Resilience arena
 ├── test_phase5_api.py  ← Threat hunter + health probes
-└── conftest.py         ← Shared fixtures
+└── ...
 ```
 
-All tests run with `NEBIUS_MOCK=1` to avoid real LLM calls. 165 tests must remain green on every PR.
+All tests run with `NEBIUS_MOCK=1` to avoid real LLM calls. The suite currently
+collects 266 tests; the CI job runs `tests/` (plus `modules/` and
+`orchestrator/tests/`) with a 50 % coverage floor.
 
 ---
 

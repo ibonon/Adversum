@@ -259,3 +259,44 @@ exigerait une analyse par fonction (ou par portée `using`), hors périmètre
 actuel.
 
 ---
+
+## 10. Moteur de taint Rust — ce qu'il détecte vraiment (CWE-95 / CWE-78)
+
+Le moteur Rust est une **analyse de flux** : un puit (\eval\, \os.system\,
+\subprocess.*\…) n'est signalé que si une **source** connue l'atteint. Ce n'est
+pas un simple pattern-matching, et l'écart est visible sur des cas réels.
+
+### Couvert (vérifié sur le build courant)
+
+| Forme | Résultat |
+|---|---|
+| \eval(input())\ | ✅ ligne du puit |
+| \eval(sys.argv[1])\ | ✅ (corrigé : les sources *attributs* étaient ignorées) |
+| \eval(os.environ["X"])\ | ✅ (corrigé, idem) |
+| \eval(request.args.get("cmd"))\ | ✅ |
+| \os.system(request.form["cmd"])\ | ✅ |
+| \eval("1+1")\ | ✅ aucun finding (pas de faux positif) |
+
+### Non couvert (par construction, pas par accident)
+
+1. **Paramètre de fonction jamais alimenté par une source connue.**
+   \def handler(user_input): return eval(user_input)\ ne produit **aucun**
+   finding : \user_input\ est un paramètre, et l'analyse ne remonte pas les
+   appelants inconnus. C'est le comportement correct d'une analyse de flux,
+   mais c'est exactement la fixture utilisée dans certaines démos/tests — elle
+   n'est donc pas représentative.
+2. **Sources personnalisées** (framework maison, ORM, message broker) : à
+   ajouter dans \knowledge/taint/*.json\ (liste \sources\). Les noms pointés
+   (\.b\) sont taintés comme champs, les noms nus seulement s'ils sont
+   *appelés*.
+3. **Sanitizers** : seuls \html.escape\ et \shlex.quote\ sont modélisés.
+
+### Garde-fou de build
+
+\CoreWrapper\ exécute au démarrage un programme de référence
+(\eval(input())\ + \eval(sys.argv[1])\) via \inspect_code()\. Si le build
+lié ne retourne pas les 2 findings, il est considéré comme périmé : le FFI est
+**désactivé** et le moteur Python prend le relais, avec un message explicite.
+Raison : un build livré importait correctement, détectait \input()\ et
+retournait 0 finding sur \eval(sys.argv[1])\ — le pire mode de défaillance
+pour un scanner. Rebuild : \cd core && maturin develop --release\.

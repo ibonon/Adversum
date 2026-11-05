@@ -6,7 +6,10 @@
     "request.args", "request.form", "request.get_json", "request.data",
     "request.cookies", "request.headers", "request.files",
     "sys.argv", "os.environ", "os.getenv", "os.getenvb",
-    "flask.request", "django.request", "bottle.request"
+    "flask.request", "django.request", "bottle.request",
+    "request.args.get", "request.form.get", "request.values.get",
+    "request.json", "request.values", "os.environ.get",
+    "sys.stdin.readline", "sys.stdin.read"
   ],
   "sinks": [
     {"name": "eval", "cwe": "CWE-95", "severity": "critical"},

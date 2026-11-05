@@ -1,4 +1,30 @@
 # 🛡️ Adversum Institutional Security Audit Report
+
+> ## ⚠️ ARTEFACT OBSOLÈTE — NE PAS PRÉSENTER EN L'ÉTAT
+>
+> Cette sortie a été générée le 16/08/2026 par une version antérieure du moteur.
+> Deux défauts y sont visibles et ont été corrigés depuis :
+>
+> 1. **Contradiction de scoring** — le rapport affiche simultanément
+>    `Security Posture Grade: F` et `CCSS Compliance Level: Level 3 (Banking
+>    Grade) 100%`. La cause : `modules/ccss_audit/checker.py` concaténait le
+>    texte de **tous** les fichiers, y compris les `.md`. Un README contenant le
+>    mot « multisig » suffisait à obtenir `PASS_L3`. Le checker sépare désormais
+>    preuve *code/config* et preuve *documentaire*, exige ≥ 2 indicateurs
+>    indépendants pour le niveau 3, et ne peut plus atteindre L2 sur de la
+>    documentation seule.
+> 2. **Finding fantôme** — le finding `SOL-002` référence
+>    `modules/solidity/tests/test_contracts/tx_origin.sol`, fichier qui n'existe
+>    pas dans le dépôt (le seul `tx_origin` restant est un cas de test généré à
+>    la volée).
+>
+> Pour régénérer un rapport cohérent :
+>
+> ```bash
+> python modules/scan_all.py --target ./ --all --format cex_report \
+>     --project-name "Adversum" > AUDIT_REPORT.md
+> ```
+
 **Target System:** AlphaNex Exchange (./)  
 **Audit Date:** 16/08/2026 22:42:12 UTC  
 **Audit Standard:** CCSS v3.0 | OWASP Top 10 | SMT Formal Invariant Verification  

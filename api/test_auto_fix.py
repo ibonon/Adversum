@@ -9,9 +9,8 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from orchestrator.services.db import create_db_and_tables
-from api.main import app
+from api.main import app, API_KEY
 
-API_KEY = os.getenv("API_KEY", "adv-dev-key-123")
 client = TestClient(app, headers={"X-API-Key": API_KEY})
 
 def test_auto_fix_workflow():
@@ -28,7 +27,10 @@ def test_auto_fix_workflow():
     asyncio.run(create_db_and_tables())
 
     # 1. Create a Vulnerable File
-    test_dir = os.path.join(os.path.dirname(__file__), "../temp_test_project")
+    # `/audit` rejects any target_path containing '..' (path-traversal guard,
+    # see AuditRequest.model_post_init), so normalize before submitting: this
+    # test must exercise the auto-fix workflow, not the security guard.
+    test_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../temp_test_project"))
     os.makedirs(test_dir, exist_ok=True)
     vuln_file = os.path.join(test_dir, "vuln.py")
     
@@ -71,7 +73,7 @@ def test_auto_fix_workflow():
         # In ValidatedFinding, it's top level.
         if f.get("fix_code"):
             target_finding = f
-            print(f"Found fixable finding: {f['raw']['rule_id']}")
+            print(f"Found fixable finding: {f['raw']['id']}")
             break
             
     if not target_finding:

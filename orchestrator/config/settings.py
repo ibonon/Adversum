@@ -1,6 +1,9 @@
 from pydantic import Field
 import os
+import logging
 from typing import Set, List
+
+logger = logging.getLogger("adversum.settings")
 
 class Settings:
     """
@@ -71,5 +74,14 @@ class Settings:
                  raise ValueError("CRITICAL: Default API_KEY_SECRET used in production!")
             if self.DATA_ENCRYPTION_KEY == "J1qK8_8f9L4n5P6q2R3s4T5u6V7w8X9y0Z1a2B3c4D5=":
                  raise ValueError("CRITICAL: Default DATA_ENCRYPTION_KEY used in production!")
+        else:
+            # Outside production the built-in AES key ships in the repo, so
+            # anything "encrypted" with it is effectively plaintext. Say it out
+            # loud instead of leaving a false sense of confidentiality.
+            if self.DATA_ENCRYPTION_KEY == "J1qK8_8f9L4n5P6q2R3s4T5u6V7w8X9y0Z1a2B3c4D5=":
+                logger.warning(
+                    "DATA_ENCRYPTION_KEY is the public default value: encrypted data is "
+                    "not confidential. Set DATA_ENCRYPTION_KEY before storing real secrets."
+                )
 
 settings = Settings()

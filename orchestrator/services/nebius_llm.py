@@ -362,7 +362,22 @@ Enclose your final JSON strictly between <json> and </json> tags:
 # ---------------------------------------------------------------------------
 # Batch validation (top N findings)
 # ---------------------------------------------------------------------------
-async def validate_findings_batch(findings: list, max_findings: int = 4) -> list:
+def max_validated_findings(default: int = 4) -> int:
+    """
+    How many findings get an individual LLM validation pass.
+
+    The cap exists because the free NVIDIA NIM tier returns 504 when hit with
+    many sequential calls. It used to be a hard-coded 4 in the signature, so a
+    400-finding audit silently AI-validated only the first four while the report
+    implied otherwise. Override with NEBIUS_MAX_VALIDATED_FINDINGS.
+    """
+    try:
+        return max(0, int(os.getenv("NEBIUS_MAX_VALIDATED_FINDINGS", str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+async def validate_findings_batch(findings: list, max_findings: Optional[int] = None) -> list:
     """
     Validate up to `max_findings` findings sequentially with a semaphore to avoid
     overwhelming the free-tier NVIDIA NIM rate limit and causing 504 Gateway Timeouts.
@@ -370,6 +385,9 @@ async def validate_findings_batch(findings: list, max_findings: int = 4) -> list
     """
     if not _is_available() or not findings:
         return findings
+
+    if max_findings is None:
+        max_findings = max_validated_findings()
 
     top = findings[:max_findings]
     rest = findings[max_findings:]

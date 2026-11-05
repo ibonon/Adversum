@@ -2,7 +2,8 @@ import logging
 import time
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict
+from datetime import datetime, timezone
+from typing import List, Dict, Optional
 from sqlmodel import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..services.db import engine
@@ -31,6 +32,16 @@ except ImportError:
     logging.getLogger(__name__).warning("orjson not available, using stdlib json (slower)")
 
 logger = logging.getLogger(__name__)
+
+# SQLite builds before 3.32 cap a statement at 999 bound parameters. Every
+# `IN (...)` below is chunked so a large repository cannot blow that limit.
+_IN_CHUNK = 900
+
+
+def _chunked(seq, size: int = _IN_CHUNK):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
 
 class AnalysisPipeline:
     """
@@ -86,7 +97,7 @@ class AnalysisPipeline:
             return {"findings": [], "summary": "No source files found."}
 
         # Step 2: Incremental Check
-        changed_files, cached_findings = await self._get_incremental_state(all_files)
+        changed_files, cached_findings = await self._get_incremental_state(all_files, project_path)
         logger.info(f"Incremental State: {len(changed_files)} files modified, {len(cached_findings)} findings cached.")
 
         # Step 3: Core Analysis (Only for changed files)
@@ -103,7 +114,7 @@ class AnalysisPipeline:
                 new_findings = raw_findings
                 robustness_score = core_robustness
                 
-            await self._update_incremental_state(new_hashes, raw_findings)
+            await self._update_incremental_state(new_hashes, raw_findings, changed_files)
         else:
             logger.info("Universal optimization: No files changed. Skipping Core analysis.")
 
@@ -169,40 +180,56 @@ class AnalysisPipeline:
             "robustness_score": robustness_score
         }
 
-    async def _get_incremental_state(self, all_files: List[str]) -> tuple[List[str], List[RawFinding]]:
+    async def _get_incremental_state(self, all_files: List[str], project_root: str = "") -> tuple[List[str], List[RawFinding]]:
         """Determines which files need re-analysis and returns cached findings for others.
-        
-        FIX: Optimized to use batch queries instead of N+1 queries.
+
+        The hash table is GLOBAL (one row per path ever scanned). Loading it
+        wholesale made the cost of every scan grow with total scan history; the
+        query is now scoped to the current project subtree, and rows for files
+        that no longer exist are purged so the table cannot grow forever.
         """
         changed_files = []
         cached_findings = []
         
         current_hashes = self.core.get_hashes(all_files)
+
+        # `startswith(..., autoescape=True)` escapes LIKE wildcards, so a path
+        # containing '_' or '%' cannot accidentally broaden the match.
+        scope = project_root or ""
+        file_set = set(all_files)
         
         async with AsyncSession(engine) as session:
-            # FIX: Load ALL hashes in one query instead of N queries
-            db_hashes_list = (await session.execute(select(FileHash))).scalars().all()
-            db_hashes = {h.file_path: h.xxh3_hash for h in db_hashes_list}
+            if scope:
+                scope_stmt = select(FileHash).where(FileHash.file_path.startswith(scope, autoescape=True))
+            else:
+                scope_stmt = select(FileHash)
+            rows = (await session.execute(scope_stmt)).scalars().all()
+            db_hashes = {h.file_path: h.xxh3_hash for h in rows}
             
-            # Identify changed files
+            # Identify changed files (new, modified, or hash unavailable)
             for path in all_files:
                 curr_hash = current_hashes.get(path)
                 db_hash = db_hashes.get(path)
-                
-                if not db_hash or db_hash != curr_hash:
+                if not db_hash or (curr_hash is not None and db_hash != curr_hash):
                     changed_files.append(path)
+
+            changed_set = set(changed_files)
+
+            # Cache eviction: modified files (stale findings) + deleted files.
+            stale_paths = [h.file_path for h in rows if h.file_path not in file_set]
+            purge = list(changed_set) + stale_paths
+            for chunk in _chunked(purge):
+                await session.execute(delete(CachedFinding).where(CachedFinding.file_path.in_(chunk)))
+
+            # Drop hashes for files that disappeared from the project.
+            for chunk in _chunked(stale_paths):
+                await session.execute(delete(FileHash).where(FileHash.file_path.in_(chunk)))
             
-            # FIX: Delete old cached findings in ONE query using IN clause
-            if changed_files:
-                await session.execute(
-                    delete(CachedFinding).where(CachedFinding.file_path.in_(changed_files))
-                )
-            
-            # FIX: Load cached findings for unchanged files in ONE query
-            unchanged_files = list(set(all_files) - set(changed_files))
-            if unchanged_files:
+            # Load cached findings for unchanged files, in bounded batches.
+            unchanged_files = [p for p in all_files if p not in changed_set]
+            for chunk in _chunked(unchanged_files):
                 db_findings = (await session.execute(
-                    select(CachedFinding).where(CachedFinding.file_path.in_(unchanged_files))
+                    select(CachedFinding).where(CachedFinding.file_path.in_(chunk))
                 )).scalars().all()
                 
                 for df in db_findings:
@@ -212,24 +239,41 @@ class AnalysisPipeline:
             # Single commit at the end
             await session.commit()
         
-        logger.debug(f"Incremental cache: {len(changed_files)} changed, {len(unchanged_files)} unchanged, {len(cached_findings)} cached findings")
+        logger.debug(f"Incremental cache: {len(changed_files)} changed, {len(unchanged_files)} unchanged, "
+                     f"{len(cached_findings)} cached findings, {len(stale_paths)} stale purged")
         return changed_files, cached_findings
 
-    async def _update_incremental_state(self, new_hashes: Dict[str, str], new_findings: List[RawFinding]):
-        """Updates the database with new hashes and caches new findings.
-        
-        FIX: Optimized to use batch operations and faster JSON serialization.
+    async def _update_incremental_state(
+        self,
+        new_hashes: Dict[str, str],
+        new_findings: List[RawFinding],
+        changed_files: Optional[List[str]] = None,
+    ):
+        """Persists hashes and per-file finding cache for the files just scanned.
+
+        Only the changed files are touched: the previous version loaded the
+        whole FileHash table to upsert, which made writes O(total history).
         """
+        if changed_files is None:
+            changed_files = list(new_hashes.keys())
+
         async with AsyncSession(engine) as session:
-            # FIX: Load all existing hashes in one query
-            existing_hashes = {h.file_path: h for h in (await session.execute(select(FileHash))).scalars().all()}
+            existing: Dict[str, FileHash] = {}
+            for chunk in _chunked(changed_files):
+                rows = (await session.execute(
+                    select(FileHash).where(FileHash.file_path.in_(chunk))
+                )).scalars().all()
+                existing.update({h.file_path: h for h in rows})
             
+            now = datetime.now(timezone.utc)
+
             # Update or insert hashes
             for path, h in new_hashes.items():
-                if path in existing_hashes:
-                    existing_hashes[path].xxh3_hash = h
+                if path in existing:
+                    existing[path].xxh3_hash = h
+                    existing[path].last_scanned_at = now
                 else:
-                    session.add(FileHash(file_path=path, xxh3_hash=h))
+                    session.add(FileHash(file_path=path, xxh3_hash=h, last_scanned_at=now))
             
             # Cache findings (grouped by file)
             findings_by_file = {}

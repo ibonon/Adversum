@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import { apiFetch } from "@/lib/api";
 
 export interface ClashResult {
   clash_id: string;
@@ -53,11 +54,10 @@ export default function ArenaClash() {
     setLoading(true);
     setBenchmark(null);
     try {
-      const res = await fetch("/api/v1/wargame/simulate-incident", {
+      const res = await apiFetch("/api/v1/wargame/simulate-incident", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": "adv-dev-key-123",
         },
         body: JSON.stringify({
           protocol,
@@ -79,9 +79,7 @@ export default function ArenaClash() {
     setLoading(true);
     setClash(null);
     try {
-      const res = await fetch(`/api/v1/wargame/resilience-benchmark?protocol=${encodeURIComponent(protocol)}`, {
-        headers: { "x-api-key": "adv-dev-key-123" },
-      });
+      const res = await apiFetch(`/api/v1/wargame/resilience-benchmark?protocol=${encodeURIComponent(protocol)}`);
       if (res.ok) {
         const data: BenchmarkResult = await res.json();
         setBenchmark(data);
@@ -96,11 +94,10 @@ export default function ArenaClash() {
   const synthesizeBreaker = useCallback(async () => {
     setSynthesizing(true);
     try {
-      const res = await fetch("/api/v1/wargame/synthesize-circuit-breaker", {
+      const res = await apiFetch("/api/v1/wargame/synthesize-circuit-breaker", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": "adv-dev-key-123",
         },
         body: JSON.stringify({
           protocol_name: protocol.replace(/\s+/g, ""),

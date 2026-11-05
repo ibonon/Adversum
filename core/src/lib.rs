@@ -26,6 +26,10 @@ pub mod safety;
 pub mod sarif;
 #[path = "../scoring/mod.rs"]
 pub mod scoring;
+// `core/semantic/` was present on disk but never declared here, so it was
+// silently excluded from the crate (dead source, never compiled or tested).
+#[path = "../semantic/mod.rs"]
+pub mod semantic;
 #[path = "../smt/mod.rs"]
 pub mod smt;
 #[path = "../tier0/mod.rs"]
@@ -474,12 +478,28 @@ impl<'a> Pipeline<'a> {
 
         let mut engine_reports = Vec::new();
 
+        // The taint engine recognises a source only when it is *called*
+        // (`input()`, `request.get_json()`). Attribute-style sources such as
+        // `sys.argv`, `os.environ` or `request.args` are lowered to a
+        // `FieldLoad { obj, field }`, so they were never tainted and
+        // `eval(sys.argv[1])` produced ZERO findings — a false negative on the
+        // textbook CWE-95 pattern. Dotted KB names are split at the first dot
+        // and seeded as tainted fields in the entry state.
+        let mut initial_taint = crate::dataflow::taint::TaintState::new();
+        for src in &kb.sources {
+            if let Some((obj, field)) = src.split_once('.') {
+                let obj_sym = interner.intern(obj);
+                let field_sym = interner.intern(field);
+                initial_taint.taint_field(obj_sym, field_sym);
+            }
+        }
+
         // Evaluate top-level
         let top_cfg = CfgBuilder::new(&module.program).build();
         let mut top_analysis =
             TaintAnalysis::new(&module.program, &top_cfg, config.clone(), &summaries)
                 .with_line_map(instr_lines.clone());
-        top_analysis.run(crate::dataflow::taint::TaintState::new());
+        top_analysis.run(initial_taint.clone());
 
         // --- Phase 3 Declarative Datalog Analysis (Ascent) ---
         // Runs relational fixpoint for provable provenance and cross-validation
@@ -515,10 +535,18 @@ impl<'a> Pipeline<'a> {
                 functions: std::collections::HashMap::new(),
             };
             let func_cfg = CfgBuilder::new(&func_program).build();
+            // Use the function's own line map: the local instruction indices are
+            // not offsets into the global one, which made every in-function
+            // finding point at an unrelated line.
+            let func_lines = if func_ir.instr_lines.len() == func_program.instructions.len() {
+                func_ir.instr_lines.clone()
+            } else {
+                instr_lines.clone()
+            };
             let mut func_analysis =
                 TaintAnalysis::new(&func_program, &func_cfg, config.clone(), &summaries)
-                    .with_line_map(instr_lines.clone());
-            func_analysis.run(crate::dataflow::taint::TaintState::new());
+                    .with_line_map(func_lines);
+            func_analysis.run(initial_taint.clone());
 
             let func_ctx = crate::rules::MatchContext {
                 program: &func_program,

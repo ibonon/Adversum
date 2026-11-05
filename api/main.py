@@ -7,6 +7,16 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+# Windows consoles default to cp1252. Log messages and reports contain arrows
+# (→), check marks and accented text, which raised UnicodeEncodeError and
+# aborted the request mid-audit. Make the standard streams lossy instead of
+# fatal — a mangled glyph must never fail a scan.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
 try:
     from dotenv import load_dotenv
     load_dotenv(Path(_PROJECT_ROOT) / ".env")
@@ -79,12 +89,18 @@ _findings_total        = _make_counter(  "adversum_findings_total",         "Tot
 # Orchestrator imports
 
 from orchestrator.pipeline.analysis_pipeline import AnalysisPipeline
-from orchestrator.models.findings import ValidatedFinding
+from orchestrator.models.findings import ValidatedFinding, RawFinding
 from orchestrator.models.sql_models import Job, JobStatus, FindingModel
 from orchestrator.services.db import create_db_and_tables, get_session
 
 # Security utilities
-from api.security import validate_scan_path, is_git_url
+from api.security import (
+    validate_scan_path,
+    validate_repo_url,
+    git_safe_env,
+    GIT_SAFE_ARGS,
+    is_git_url,
+)
 from api.cache import api_cache
 
 # ── Nebius (NVIDIA Nemotron) + Tavily integrations ─────────────────────────
@@ -151,6 +167,29 @@ app.add_middleware(
 
 # Initialize the pipeline
 pipeline = AnalysisPipeline()
+
+# Bounds the number of audits analysed concurrently across the whole process.
+# Starlette background tasks are NOT bounded on their own: without this, N
+# simultaneous /audit calls mean N concurrent Rust scans + N DB writers.
+_AUDIT_SEMAPHORE = asyncio.Semaphore(int(os.getenv("MAX_CONCURRENT_AUDITS", "3")))
+
+# Every scanner endpoint shells out (scan_all.py, git, docker). Those calls are
+# long (up to 15 min) and memory-hungry, so they are capped too — otherwise a
+# handful of calls saturates the default 32-slot asyncio thread pool.
+_SCAN_SEMAPHORE = asyncio.Semaphore(int(os.getenv("MAX_CONCURRENT_SCANS", "4")))
+
+
+async def _run_bounded_scan(cmd: list, timeout: int, env: dict | None = None):
+    """Runs a scanner subprocess off-loop, under the global scan slot limit."""
+    async with _SCAN_SEMAPHORE:
+        return await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
 
 @app.on_event("startup")
 async def on_startup():
@@ -342,6 +381,14 @@ class ScanAllRequest(BaseModel):
             raise ValueError(f"min_severity must be one of {valid_severities}")
         if self.target_path and ".." in self.target_path:
             raise ValueError("target_path must not contain '..' (path traversal attempt)")
+        if self.target is not None:
+            if len(self.target) > 20:
+                raise ValueError("target list too large (max 20 paths)")
+            for t in self.target:
+                if not isinstance(t, str) or len(t) > 500:
+                    raise ValueError("each target must be a string of at most 500 chars")
+                if ".." in t:
+                    raise ValueError("target must not contain '..' (path traversal attempt)")
 
 class FindingFixRequest(BaseModel):
     file: str
@@ -388,6 +435,7 @@ class SelfHealingPRRequest(BaseModel):
 async def process_audit(job_id: int, target_path: str):
     # We need a new session for the background task
     from orchestrator.services.db import engine
+    cloned_path = None
     async with AsyncSession(engine, expire_on_commit=False) as session:
         job = await session.get(Job, job_id)
         if not job:
@@ -413,6 +461,7 @@ async def process_audit(job_id: int, target_path: str):
                 
                 repo_context = await loop.run_in_executor(None, partial(clone_repository, target_path))
                 real_path = repo_context.local_path
+                cloned_path = real_path
                 
                 job.summary = f"Cloned to {real_path}. Starting analysis..."
                 session.add(job)
@@ -487,16 +536,13 @@ async def process_audit(job_id: int, target_path: str):
                 job.robustness_score = result["robustness_score"]
 
         except Exception as e:
-            # FIX: Improved error handling with full traceback
-            import traceback
+            # The full traceback is logged server-side only: returning it in
+            # `job.summary` leaked internal paths and stack frames through the
+            # public GET /audit/{id} response.
             logger.error(f"Audit {job_id} failed", exc_info=True)
             job.status = JobStatus.FAILED
-            job.error_message = str(e)
-            # Store traceback for debugging (truncate to avoid DB overflow)
-            error_trace = traceback.format_exc()
-            if len(error_trace) > 5000:
-                error_trace = error_trace[:5000] + "\n... (truncated)"
-            job.summary = f"ERROR: {str(e)}\n\nTraceback:\n{error_trace}"
+            job.error_message = str(e)[:2000]
+            job.summary = f"ERROR: {str(e)[:500]}"
             job.completed_at = datetime.now(timezone.utc)
         
         is_completed = (job.status == JobStatus.COMPLETED)
@@ -527,6 +573,38 @@ async def process_audit(job_id: int, target_path: str):
                 logger.info(f"Enqueued {len(findings)} findings into Redis for LLM validation.")
             except Exception as e:
                 logger.error(f"Failed to enqueue LLM tasks: {e}", exc_info=True)
+
+    # Release the on-disk clone. Repositories are cloned into ./tmp_repos and
+    # were previously never deleted -> unbounded disk growth after a few dozen
+    # audits. The containment check keeps the rmtree anchored under tmp_repos.
+    if cloned_path:
+        try:
+            import shutil
+            resolved = Path(cloned_path).resolve()
+            if "tmp_repos" in resolved.parts and resolved.is_dir():
+                shutil.rmtree(resolved, ignore_errors=True)
+        except Exception as e:
+            logger.warning(f"Could not clean cloned repo {cloned_path}: {e}")
+
+
+async def _dispatch_audit(job_id: int, target_path: str) -> None:
+    """
+    Runs an audit under a concurrency bound.
+
+    Production path: the bounded priority queue (started by the app lifespan).
+    Test/embedded path: inline under the process semaphore, because the
+    lifespan is not executed when the app is imported directly.
+    """
+    from orchestrator.services.job_queue import job_queue
+
+    if getattr(job_queue, "is_running", False):
+        await job_queue.enqueue(
+            process_audit, job_id, target_path, job_id=f"audit-{job_id}"
+        )
+        return
+
+    async with _AUDIT_SEMAPHORE:
+        await process_audit(job_id, target_path)
 
 # ... (Previous Endpoints)
 
@@ -626,9 +704,10 @@ async def apply_batch_fix(job_id: int, request: Request, session: AsyncSession =
 async def submit_audit(request: Request, audit_req: AuditRequest, background_tasks: BackgroundTasks, session: AsyncSession = Depends(get_session)):
     """Submit a new security audit job."""
     
-    # SECURITY: Validate and sanitize path to prevent directory traversal
+    # SECURITY: Validate and sanitize path to prevent directory traversal.
+    # Remote URLs go through the host allowlist before reaching `git clone`.
     if is_git_url(audit_req.target_path):
-        validated_path = audit_req.target_path
+        validated_path = validate_repo_url(audit_req.target_path)
     else:
         validated_path = validate_scan_path(audit_req.target_path)
 
@@ -637,7 +716,7 @@ async def submit_audit(request: Request, audit_req: AuditRequest, background_tas
     await session.commit()
     await session.refresh(job)
     
-    background_tasks.add_task(process_audit, job.id, str(validated_path))
+    background_tasks.add_task(_dispatch_audit, job.id, str(validated_path))
     
     return JobResponse(
         id=job.id, 
@@ -702,20 +781,24 @@ async def get_audit_status(
     findings = (await session.execute(findings_query)).scalars().all()
     
     mapped_results = []
-    # Use construct to bypass validation for speed (data from DB is trusted)
     for f in findings:
-        mapped_results.append(ValidatedFinding.model_construct(
+        # The dict passed as `raw` must match RawFinding's field names
+        # (id/message/line...). It previously used rule_id/description/
+        # line_number, which `model_construct` accepted silently and then blew
+        # up at response validation — so any job WITH findings returned a 500.
+        raw = RawFinding(
+            id=f.rule_id,
+            message=f.message,
+            severity=f.severity,
+            file_path=f.file_path,
+            line=f.line,
+            column=0,
+            snippet=f.snippet or "",
+            proof_anchor=f.proof_anchor,
+        )
+        mapped_results.append(ValidatedFinding(
             id=f.id,
-            raw={
-                "rule_id": f.rule_id,  # Fixed: was "id"
-                "description": f.message,  # Fixed: was "message"
-                "severity": f.severity,
-                "file_path": f.file_path,
-                "snippet": f.snippet or "",
-                "line_number": f.line,  # Fixed: was "line"
-                "column_number": 0  # Added missing field
-                # proof and immune_context are lost in DB layer currently, so acceptable to omit
-            },
+            raw=raw,
             validation_status=f.validation_status,
             ai_confidence=f.ai_confidence,
             reasoning_notes=f.reasoning_notes,
@@ -728,7 +811,7 @@ async def get_audit_status(
             resolved_line=f.resolved_line,
             anchor_status=f.anchor_status,
             z3_verdict=f.z3_verdict,
-            is_fixed=f.is_fixed
+            is_fixed=f.is_fixed,
         ))
 
     return JobDetailResponse(
@@ -748,6 +831,7 @@ async def get_audit_status(
 async def list_audits(
     session: AsyncSession = Depends(get_session),
     since_id: Optional[int] = Query(None, description="Cursor for keyset pagination — returns only jobs with id > since_id"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of jobs returned"),
 ):
     """List all audit jobs. Use since_id for efficient cursor-based pagination."""
     # FIX: Use subquery to avoid N+1 query problem
@@ -760,6 +844,7 @@ async def list_audits(
         .outerjoin(FindingModel, Job.id == FindingModel.job_id)
         .group_by(Job.id)
         .order_by(Job.created_at.desc())
+        .limit(limit)
     )
 
     if since_id is not None:
@@ -839,7 +924,7 @@ async def get_dashboard_stats(session: AsyncSession = Depends(get_session)):
 
 
 @app.get("/api/v1/cache/stats", include_in_schema=False)
-async def cache_stats():
+async def cache_stats(api_key: str = Depends(get_api_key)):
     """Internal monitoring endpoint — returns LRU cache hit/miss statistics."""
     return api_cache.stats
 
@@ -934,6 +1019,26 @@ async def scan_github_repo(
     - **output_format**: "json" (default) or "text"
     """
 
+    # Validate before the value is handed to the scanner container's `git clone`.
+    repo_url = validate_repo_url(payload.repo_url)
+
+    if payload.output_format not in {"json", "text"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="output_format must be 'json' or 'text'",
+        )
+
+    # The entrypoint injects the token into the clone URL
+    # (`https://{token}@github.com/...`). A token containing '@' or '/' would
+    # rewrite the host and defeat validate_repo_url, so restrict its alphabet.
+    if payload.github_token:
+        import re as _re
+        if not _re.fullmatch(r"[A-Za-z0-9_-]{1,255}", payload.github_token):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="github_token contains invalid characters",
+            )
+
     try:
         import docker  # pip install docker
     except ImportError:
@@ -951,13 +1056,16 @@ async def scan_github_repo(
         )
 
     env = {
-        "REPO_URL": payload.repo_url,
+        "REPO_URL": repo_url,
         "OUTPUT_FORMAT": payload.output_format,
+        # Defence in depth inside the container: no exotic git transports.
+        "GIT_ALLOW_PROTOCOL": "https",
+        "GIT_TERMINAL_PROMPT": "0",
     }
     if payload.github_token:
         env["GITHUB_TOKEN"] = payload.github_token
 
-    logger.info(f"Spawning adversum-scanner container for: {payload.repo_url}")
+    logger.info(f"Spawning adversum-scanner container for: {repo_url}")
 
     try:
         # Run the container (blocking, max 5 minutes) — isolated, no network except outbound
@@ -1003,12 +1111,12 @@ async def scan_github_repo(
 
 
 # --- MULTI-MODULE SCAN & AUTO-REMEDIATION ENDPOINTS ---
-
-class ScanAllRequest(BaseModel):
-    target: List[str]
-    modules: Optional[List[str]] = None
-    all_modules: bool = True
-    min_severity: str = "INFO"
+#
+# NOTE: `ScanAllRequest` and `RemediateRequest` are defined ONCE, at the top of
+# this module. They used to be re-declared here, which silently rebound the
+# names *after* the validated versions had been registered: the route handlers
+# below resolved to the unvalidated redefinitions, dropping the path-traversal
+# guard and the 500-findings cap. Do not redeclare them.
 
 class CloneAndScanRequest(BaseModel):
     repo_url: str
@@ -1020,10 +1128,11 @@ class CloneAndScanRequest(BaseModel):
     poc_output_dir: Optional[str] = None  # If set, generate Foundry PoC .t.sol files in this dir
     project_name: Optional[str] = "Digital Asset Platform"
 
-class RemediateRequest(BaseModel):
-    findings: List[Dict[str, Any]]
-
-
+    def model_post_init(self, __context: Any) -> None:
+        if not self.repo_url or len(self.repo_url) > 500:
+            raise ValueError("repo_url must be between 1 and 500 characters")
+        if self.format not in {"json", "text", "sarif", "markdown", "html", "cex_report"}:
+            raise ValueError(f"unsupported format: {self.format}")
 
 async def _ai_enrich_result(res: dict, repo_url: str = "", project_name: str = "") -> dict:
     """
@@ -1059,8 +1168,13 @@ async def _ai_enrich_result(res: dict, repo_url: str = "", project_name: str = "
 
         # Step 2 — Nebius / NVIDIA Nemotron finding validation
         if _NEBIUS_LOADED and _nebius_available():
-            print("\033[96m[*] [Nebius/Nemotron] Validation IA des findings en cours (NVIDIA Nemotron)...\033[0m", flush=True)
-            findings = await validate_findings_batch(findings, max_findings=4)
+            from orchestrator.services.nebius_llm import max_validated_findings as _max_ai
+            ai_validated = min(len(findings), _max_ai())
+            logger.info("AI-validating %d/%d findings (NVIDIA Nemotron)", ai_validated, len(findings))
+            findings = await validate_findings_batch(findings, max_findings=ai_validated)
+            # Surface the cap so the report cannot imply full AI coverage.
+            ai_metadata["findings_ai_validated"] = ai_validated
+            ai_metadata["findings_total"] = len(findings)
 
         # Step 3 — Executive summary
         if _NEBIUS_LOADED and _nebius_available():
@@ -1102,8 +1216,22 @@ async def clone_and_scan_endpoint(
     import shutil
     import subprocess
 
-    target_input = payload.repo_url.strip()
-    print(f"\n\033[96m[+] [ADVERSUM API] Nouvelle demande de scan reçue pour : {target_input}\033[0m", flush=True)
+    raw_input = payload.repo_url.strip()
+
+    # SECURITY: a local target must clear the same whitelist as /audit, and a
+    # remote target must clear the git host allowlist. This endpoint used to
+    # scan ANY path that merely existed (`os.path.exists`), which allowed an
+    # authenticated caller to enumerate and read arbitrary local directories
+    # (C:\, /etc, SSH keys...) through the scanner's findings.
+    if is_git_url(raw_input):
+        repo_url = validate_repo_url(raw_input)
+        local_target = None
+    else:
+        local_target = validate_scan_path(raw_input)
+        repo_url = None
+
+    target_input = str(local_target) if local_target is not None else repo_url
+    logger.info("Scan request received for: %s", target_input)
 
     def _build_scan_command(target_dir: str) -> List[str]:
         script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
@@ -1122,18 +1250,16 @@ async def clone_and_scan_endpoint(
             cmd.append("--poc")
         return cmd
 
-    # If the user supplied a local path directly, skip git clone and scan instantly!
-    if os.path.exists(target_input):
-        print(f"\033[93m[*] Cible détectée : Dossier Local ({target_input}). Analyse immédiate en cours...\033[0m", flush=True)
+    # If the caller supplied a local path (already whitelisted above), skip the
+    # clone and scan it in place.
+    if local_target is not None:
+        logger.info("Local target detected (%s) — scanning in place", target_input)
         cmd = _build_scan_command(target_input)
-        scan_res = await asyncio.to_thread(
-            subprocess.run,
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=900
-        )
-        print(f"\033[92m[✓] Analyse locale terminée avec succès !\033[0m", flush=True)
+        try:
+            scan_res = await _run_bounded_scan(cmd, 900)
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=504, detail="Local scan timed out after 900s")
+        logger.info("Local scan finished for %s", target_input)
         raw = scan_res.stdout
         if payload.format == "cex_report":
             return {"repo_url": target_input, "markdown_report": raw}
@@ -1152,14 +1278,15 @@ async def clone_and_scan_endpoint(
 
     temp_dir = tempfile.mkdtemp(prefix="adversum_scan_")
     try:
-        print(f"\033[93m[*] Cible détectée : Dépôt distant. Téléchargement depuis GitHub en cours...\033[0m", flush=True)
-        # Clone repository with optimized shallow flags
-        clone_env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+        logger.info("Remote target detected (%s) — cloning", repo_url)
+        # Clone repository with optimized shallow flags. GIT_SAFE_ARGS disables
+        # the `ext::`/`file::` transports (remote command execution) and
+        # git_safe_env() pins GIT_ALLOW_PROTOCOL to https.
+        clone_env = git_safe_env()
         try:
-            clone_res = await asyncio.to_thread(
-                subprocess.run,
+            clone_res = await _run_bounded_scan(
                 [
-                    "git", "clone",
+                    "git", *GIT_SAFE_ARGS, "clone",
                     "--depth", "1",
                     "--single-branch",
                     "--no-tags",
@@ -1169,59 +1296,51 @@ async def clone_and_scan_endpoint(
                     "-c", "http.postBuffer=524288000",
                     "-c", "http.lowSpeedLimit=1000",
                     "-c", "http.lowSpeedTime=120",
-                    payload.repo_url,
+                    repo_url,
                     temp_dir
                 ],
-                capture_output=True,
-                text=True,
-                timeout=900,
-                env=clone_env
+                900,
+                env=clone_env,
             )
         except subprocess.TimeoutExpired:
-            print(f"\033[91m[!] Délai dépassé lors du clonage de {payload.repo_url}\033[0m", flush=True)
+            logger.warning("Clone timed out for %s", repo_url)
             raise HTTPException(
                 status_code=504,
-                detail=f"Délai d'attente dépassé lors du clonage du dépôt ({payload.repo_url}). Vérifiez la connexion ou l'accès au dépôt."
+                detail=f"Délai d'attente dépassé lors du clonage du dépôt ({repo_url}). Vérifiez la connexion ou l'accès au dépôt."
             )
 
         if clone_res.returncode != 0:
-            print(f"\033[91m[!] Échec du clonage : {clone_res.stderr}\033[0m", flush=True)
+            logger.warning("Clone failed for %s: %s", repo_url, clone_res.stderr[:300])
             raise HTTPException(
                 status_code=400,
                 detail=f"Échec du clonage du dépôt : {clone_res.stderr.strip() or clone_res.stdout.strip()}"
             )
 
-        print(f"\033[92m[✓] Téléchargement Git réussi. Lancement de l'analyse SAST multi-modules...\033[0m", flush=True)
+        logger.info("Git clone succeeded — launching multi-module SAST")
 
         # Build scan command
         cmd = _build_scan_command(temp_dir)
 
         # Run scan via background thread to avoid Windows asyncio subprocess transport issues
         try:
-            scan_res = await asyncio.to_thread(
-                subprocess.run,
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=900
-            )
+            scan_res = await _run_bounded_scan(cmd, 900)
         except subprocess.TimeoutExpired:
             raise HTTPException(
                 status_code=504,
-                detail=f"Le scan du code source a dépassé la limite de temps de 15 minutes. Le projet ({payload.repo_url}) est trop volumineux."
+                detail=f"Le scan du code source a dépassé la limite de temps de 15 minutes. Le projet ({repo_url}) est trop volumineux."
             )
 
         raw = scan_res.stdout
         if payload.format == "cex_report":
-            return {"repo_url": payload.repo_url, "markdown_report": raw}
+            return {"repo_url": repo_url, "markdown_report": raw}
         if payload.format == "html":
-            return {"repo_url": payload.repo_url, "html_report": raw}
+            return {"repo_url": repo_url, "html_report": raw}
         json_start = raw.find("{")
         if json_start != -1:
             try:
                 res = json.loads(raw[json_start:])
-                res["repo_url"] = payload.repo_url
-                res = await _ai_enrich_result(res, repo_url=payload.repo_url, project_name=payload.project_name or "")
+                res["repo_url"] = repo_url
+                res = await _ai_enrich_result(res, repo_url=repo_url, project_name=payload.project_name or "")
                 return res
             except json.JSONDecodeError:
                 pass
@@ -1244,20 +1363,27 @@ async def scan_all_endpoint(
     Returns unified JSON findings.
     """
     script_path = str(Path(__file__).parent.parent / "modules" / "scan_all.py")
-    targets = payload.target or ([payload.target_path] if payload.target_path else ["./"])
+
+    raw_targets = payload.target or ([payload.target_path] if payload.target_path else [])
+    if not raw_targets:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide target_path or target[] — there is no implicit scan of the server CWD.",
+        )
+
+    # SECURITY: every target must clear the same whitelist as /audit.
+    targets = [str(validate_scan_path(t)) for t in raw_targets]
+
     cmd = [sys.executable, script_path, "--format", "json", "--target"] + targets
     if payload.all_modules:
         cmd.append("--all")
     if payload.modules:
         cmd.extend(["--modules"] + payload.modules)
 
-    scan_res = await asyncio.to_thread(
-        subprocess.run,
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=300
-    )
+    try:
+        scan_res = await _run_bounded_scan(cmd, 300)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Multi-module scan timed out after 300s")
 
     raw = scan_res.stdout
     json_start = raw.find("{")
@@ -1419,7 +1545,32 @@ async def websocket_threat_stream(websocket: WebSocket):
     Real-time WebSocket threat stream.
     Clients receive push notifications for all security events:
     findings, exploits, MEV attacks, CVE correlations, patches, compliance.
+
+    Auth: browsers cannot set custom headers on a WebSocket handshake, so the
+    API key is passed as `?api_key=<key>`. The stream used to be fully open and
+    pushed the last 20 security events (file paths, snippets) to anyone.
     """
+    import secrets as _secrets
+    from urllib.parse import urlparse as _urlparse
+
+    supplied_key = websocket.query_params.get("api_key", "")
+    if not API_KEY or not _secrets.compare_digest(supplied_key, API_KEY):
+        # Close BEFORE accept(): Starlette then answers with HTTP 403 instead of
+        # completing the upgrade, so no event is ever emitted to the client.
+        await websocket.close(code=1008)
+        logger.warning("Rejected unauthenticated WebSocket attempt from %s",
+                       getattr(websocket.client, "host", "unknown"))
+        return
+
+    origin = websocket.headers.get("origin")
+    if origin:
+        origin_host = (_urlparse(origin).netloc or "").lower()
+        allowed_hosts = {(_urlparse(o).netloc or "").lower() for o in allowed_origins}
+        if origin_host and origin_host not in allowed_hosts:
+            await websocket.close(code=1008)
+            logger.warning("Rejected WebSocket from disallowed origin: %s", origin)
+            return
+
     await websocket.accept()
     from orchestrator.services.threat_stream import get_event_bus
     bus = get_event_bus()
@@ -1981,7 +2132,7 @@ async def manual_scan_block(
 # ── Enterprise Healthcheck & Readiness Probes ────────────────────────────────
 
 @app.get("/api/v1/queue/stats", include_in_schema=False)
-async def queue_stats():
+async def queue_stats(api_key: str = Depends(get_api_key)):
     """Internal: job queue stats for monitoring."""
     from orchestrator.services.job_queue import job_queue
     return job_queue.stats

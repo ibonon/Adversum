@@ -2,20 +2,45 @@ import os
 import time
 import sys
 import asyncio
-# Set API Key for testing BEFORE importing app
-os.environ["API_KEY"] = "test-secret-key"
-# Allow scanning of the project root for testing purposes
-os.environ["ALLOWED_SCAN_DIR"] = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
+import pytest
 from fastapi.testclient import TestClient
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import api.main as api_main
 from api.main import app
 from orchestrator.services.db import create_db_and_tables
 
-client = TestClient(app, headers={"X-API-Key": "test-secret-key"})
+# Key this module's client is pinned to. Deliberately different from the suite
+# default (`adv-dev-key-123`) to prove that per-test isolation actually works.
+MODULE_API_KEY = "test-secret-key"
+
+client = TestClient(app, headers={"X-API-Key": MODULE_API_KEY})
+
+
+@pytest.fixture(autouse=True)
+def module_api_config(monkeypatch):
+    """Apply this module's config per test instead of mutating os.environ at import.
+
+    The previous module-level ``os.environ["API_KEY"] = "test-secret-key"`` ran
+    during collection — i.e. before any test executed and before the other test
+    modules were imported — and therefore leaked into the whole pytest session.
+    ``api/test_api_persistence.py`` and ``api/test_auto_fix.py`` then sent a key
+    that no longer matched ``api.main.API_KEY`` and failed with 403.
+
+    ``monkeypatch`` restores both ``os.environ`` and ``api.main.API_KEY`` after
+    each test, so the override cannot escape this module.
+    """
+    monkeypatch.setenv("API_KEY", MODULE_API_KEY)
+    # Allow scanning of the project root for testing purposes.
+    monkeypatch.setenv(
+        "ALLOWED_SCAN_DIR",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")),
+    )
+    monkeypatch.setattr(api_main, "API_KEY", MODULE_API_KEY)
+    yield
 
 def test_api_workflow():
     print("Testing API Workflow...")

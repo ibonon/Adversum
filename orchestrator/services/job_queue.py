@@ -9,6 +9,7 @@ import logging
 import os
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Callable, Coroutine, Dict, List, Optional
@@ -37,8 +38,10 @@ class JobQueueManager:
         self._max_concurrent = int(os.getenv("MAX_CONCURRENT_JOBS", str(max_concurrent)))
         self._semaphore = asyncio.Semaphore(self._max_concurrent)
         self._active: Dict[str, QueuedJob] = {}
-        self._completed: List[Dict] = []
-        self._failed: List[Dict] = []
+        # Bounded history: these used to be unbounded lists, i.e. a slow memory
+        # leak in a long-running SOC process.
+        self._completed: deque = deque(maxlen=500)
+        self._failed: deque = deque(maxlen=500)
         self._running = False
         self._worker_task: Optional[asyncio.Task] = None
         logger.info(f"[JobQueue] Initialized — max_concurrent={self._max_concurrent}")
@@ -102,6 +105,11 @@ class JobQueueManager:
         self._running = False
         if self._worker_task:
             await asyncio.wait_for(self._worker_task, timeout=5.0)
+
+    @property
+    def is_running(self) -> bool:
+        """True once the app lifespan has started the worker."""
+        return self._running
 
     @property
     def stats(self) -> dict:

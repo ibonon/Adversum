@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-
-const API_KEY = import.meta.env.VITE_API_KEY || "adv-dev-key-123";
-const BASE_URL = import.meta.env.VITE_API_URL || "";
+import { apiFetch } from "@/lib/api";
 
 interface MetricsSnapshot {
   requestsTotal: number;
@@ -47,11 +45,12 @@ export function useMetrics(pollIntervalMs: number = 15_000): UseMetricsReturn {
 
   const fetchMetrics = useCallback(async () => {
     try {
-      // Fetch Prometheus metrics and cache stats in parallel
+      // Fetch Prometheus metrics (public) and cache/queue stats (authenticated) in parallel.
+      // Promise.allSettled isole les échecs : une route en erreur ne casse pas le hook.
       const [metricsRes, cacheRes, queueRes] = await Promise.allSettled([
-        fetch(`${BASE_URL}/metrics`),
-        fetch(`${BASE_URL}/api/v1/cache/stats`, { headers: { "X-API-Key": API_KEY } }),
-        fetch(`${BASE_URL}/api/v1/queue/stats`, { headers: { "X-API-Key": API_KEY } }),
+        apiFetch("/metrics", { auth: false }),
+        apiFetch("/api/v1/cache/stats"),
+        apiFetch("/api/v1/queue/stats"),
       ]);
 
       let raw: Record<string, number> = {};

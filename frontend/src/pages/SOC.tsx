@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { apiFetch, wsUrl } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -167,7 +168,8 @@ export default function SOCDashboard() {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     setWsStatus("connecting");
-    const ws = new WebSocket(`ws://${window.location.host}/ws/threat-stream`);
+    // wsUrl() choisit wss:// en HTTPS et ajoute ?api_key= (flux authentifié côté backend).
+    const ws = new WebSocket(wsUrl("/ws/threat-stream"));
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -257,9 +259,9 @@ export default function SOCDashboard() {
 
   const runMEVDemo = async () => {
     try {
-      const resp = await fetch("/api/v1/intelligence/mev-analyze", {
+      const resp = await apiFetch("/api/v1/intelligence/mev-analyze", {
         method:  "POST",
-        headers: { "Content-Type": "application/json", "X-API-Key": "adv-dev-key-123" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transactions: [
             { tx_hash: "0x" + "a".repeat(64), from_address: "0x" + "dead".repeat(10), to_address: "0x" + "1234".repeat(10), value_wei: 50000000000000000000, gas_price: 200000000000, input_data: "0xd0e30db0" },
@@ -289,9 +291,9 @@ export default function SOCDashboard() {
 
   const runComplianceDemo = async () => {
     try {
-      const resp = await fetch("/api/v1/compliance/report", {
+      const resp = await apiFetch("/api/v1/compliance/report", {
         method:  "POST",
-        headers: { "Content-Type": "application/json", "X-API-Key": "adv-dev-key-123" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ findings: [], target: "DemoProtocol", frameworks: ["soc2", "iso27001"] }),
       });
       if (resp.ok) {

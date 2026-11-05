@@ -1,4 +1,6 @@
 import React, { useState, useCallback } from "react";
+import { apiFetch } from "@/lib/api";
+
 import AttackFlow, { type AttackNode, type AttackEdge } from "@/components/AttackFlow";
 import AttackTimeline, { type TimelineStep } from "@/components/AttackTimeline";
 import RiskMatrix, { type RiskMatrixData } from "@/components/RiskMatrix";
@@ -157,19 +159,13 @@ export default function WarRoom() {
     setReplayRunning(false);
 
     try {
-      const res = await fetch("/api/v1/simulator/run-attack", {
+      const res = await apiFetch("/api/v1/simulator/run-attack", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": "adv-dev-key-123",
         },
         body: JSON.stringify({ scenario_id: selectedScenario }),
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || `HTTP ${res.status}`);
-      }
 
       const data: SimulationResult = await res.json();
       setSimulation(data);

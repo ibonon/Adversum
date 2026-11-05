@@ -21,6 +21,10 @@ class CCSSAspectResult:
     matched_indicators: List[str]
     identified_gaps: List[str]
     recommendations: List[str]
+    # Provenance of the evidence. Kept so a reader can tell a real control from
+    # a keyword that only appears in the documentation.
+    code_indicators: List[str] = field(default_factory=list)
+    doc_only_indicators: List[str] = field(default_factory=list)
 
 @dataclass
 class CCSSAuditReport:
@@ -32,6 +36,16 @@ class CCSSAuditReport:
     compliance_summary: Dict[str, Any]
 
 class CCSSChecker:
+    # Evidence-bearing files: only code and infrastructure configuration can
+    # demonstrate a CCSS control. Documentation used to be scanned too, which is
+    # how a repository whose README says "multisig" could be graded
+    # "Level 3 (Banking Grade) 100%" while scoring F overall.
+    CODE_EXTENSIONS = {
+        '.py', '.ts', '.tsx', '.js', '.jsx', '.go', '.rs', '.java',
+        '.sol', '.vy', '.tf', '.yaml', '.yml', '.env', '.toml', '.ini', '.sql',
+    }
+    DOC_EXTENSIONS = {'.md', '.rst', '.txt', '.json'}
+
     def __init__(self, kb_path: Optional[str] = None):
         if not kb_path:
             kb_path = os.path.join(os.path.dirname(__file__), 'kb', 'ccss_matrix.json')
@@ -42,21 +56,32 @@ class CCSSChecker:
     def audit_target(self, target_dir: str) -> CCSSAuditReport:
         """
         Audits a codebase/architecture directory against the 10 CCSS aspects.
+
+        Scoring is keyword-evidence based: this is a coverage indicator, not a
+        substitute for an architecture review. Documentation hits are recorded
+        separately and can never award Level 2/3 on their own.
         """
-        files_content = []
+        code_chunks = []
+        doc_chunks = []
         for root, dirs, files in os.walk(target_dir):
             dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', '.venv', 'venv', 'dist', 'build')]
             for f in files:
                 ext = os.path.splitext(f)[1].lower()
-                if ext in ('.py', '.ts', '.js', '.sol', '.vy', '.tf', '.yaml', '.yml', '.md', '.json', '.env'):
-                    full_path = os.path.join(root, f)
-                    try:
-                        with open(full_path, 'r', encoding='utf-8', errors='ignore') as fp:
-                            files_content.append((full_path, fp.read()))
-                    except Exception:
-                        pass
+                if ext not in self.CODE_EXTENSIONS and ext not in self.DOC_EXTENSIONS:
+                    continue
+                full_path = os.path.join(root, f)
+                try:
+                    with open(full_path, 'r', encoding='utf-8', errors='ignore') as fp:
+                        content = fp.read()
+                except Exception:
+                    continue
+                if ext in self.CODE_EXTENSIONS:
+                    code_chunks.append(content)
+                else:
+                    doc_chunks.append(content)
 
-        combined_text = '\n'.join([content for _, content in files_content]).lower()
+        code_text = '\n'.join(code_chunks).lower()
+        doc_text = '\n'.join(doc_chunks).lower()
 
         aspect_results = []
         weighted_score_sum = 0.0
@@ -72,10 +97,13 @@ class CCSSChecker:
             risks = aspect.get('risks', [])
 
             matched = []
+            doc_only = []
             for ind in indicators:
                 pattern = re.compile(r'\b' + re.escape(ind.lower()) + r'\b')
-                if pattern.search(combined_text):
+                if pattern.search(code_text):
                     matched.append(ind)
+                elif pattern.search(doc_text):
+                    doc_only.append(ind)
 
             match_ratio = len(matched) / max(1, len(indicators))
             
@@ -109,6 +137,14 @@ class CCSSChecker:
             else:
                 score = match_ratio * 100.0
 
+            # A single keyword is not a control. Require at least two
+            # independent code-level indicators before awarding Level 3, and
+            # never let documentation-only evidence reach Level 2.
+            if len(matched) < 2:
+                score = min(score, 84.0)          # -> at most PASS_L2
+            if not matched:
+                score = min(score, 30.0 if doc_only else 0.0)
+
             if score >= 85.0:
                 status = 'PASS_L3'
             elif score >= 65.0:
@@ -139,7 +175,9 @@ class CCSSChecker:
                 status=status,
                 matched_indicators=matched,
                 identified_gaps=gaps,
-                recommendations=recs
+                recommendations=recs,
+                code_indicators=matched,
+                doc_only_indicators=doc_only,
             ))
 
         overall_score = round(weighted_score_sum, 1)

@@ -1,9 +1,45 @@
 import subprocess
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from typing import List, Optional
 from contextlib import contextmanager
+
+# Hardening flags prefixed to every git invocation (see api/security.py).
+_GIT_SAFE_ARGS = [
+    "-c", "protocol.ext.allow=never",
+    "-c", "protocol.file.allow=never",
+    "-c", "gc.auto=0",
+]
+
+# Guard rails against resource exhaustion on hostile / gigantic repositories.
+MAX_FILES = int(os.getenv("MAX_REPO_FILES", "50000"))
+MAX_TOTAL_BYTES = int(os.getenv("MAX_REPO_BYTES", str(512 * 1024 * 1024)))  # 512 MB
+CLONE_TIMEOUT_S = int(os.getenv("GIT_CLONE_TIMEOUT_S", "600"))
+
+
+class CloneError(RuntimeError):
+    """Raised when a remote repository cannot be materialised locally."""
+
+
+def _git_env() -> dict:
+    env = dict(os.environ)
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GIT_ASKPASS"] = "echo"
+    env["GIT_ALLOW_PROTOCOL"] = "https"
+    return env
+
+
+def _safe_repo_name(url: str) -> str:
+    """Derives a filesystem-safe directory name from a repository URL."""
+    tail = url.rstrip("/").split("/")[-1]
+    tail = tail[:-4] if tail.endswith(".git") else tail
+    tail = re.sub(r"[^A-Za-z0-9._-]", "_", tail)
+    if not tail or tail in {".", ".."}:
+        tail = "repo"
+    return tail[:64]
+
 
 @dataclass
 class SourceFile:
@@ -18,29 +54,43 @@ class RepoContext:
     files: List[SourceFile]
 
 def clone_repository(url: str, target_base_dir: str = "./tmp_repos") -> RepoContext:
-    """Clones a repository and returns its context."""
+    """
+    Clones a repository and returns its context.
+
+    Raises CloneError if the clone fails — silently producing an empty
+    directory here used to turn a failed clone into a "0 findings" success,
+    which is the worst possible failure mode for a security scanner.
+    """
     import uuid
-    repo_name = url.split("/")[-1].replace(".git", "")
-    # Append UUID to ensure unique path for every scan
+    repo_name = _safe_repo_name(url)
     unique_id = str(uuid.uuid4())[:8]
     target_dir = os.path.join(target_base_dir, f"{repo_name}_{unique_id}")
-    
+
     if os.path.exists(target_dir):
-        shutil.rmtree(target_dir, ignore_errors=True) # Clean start
-    
+        shutil.rmtree(target_dir, ignore_errors=True)  # Clean start
+
     print(f"Cloning {url} to {target_dir}...")
     try:
         subprocess.check_call(
-            ["git", "clone", "--depth", "1", url, target_dir], 
-            stdout=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL
+            ["git", *_GIT_SAFE_ARGS, "clone", "--depth", "1", url, target_dir],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=CLONE_TIMEOUT_S,
+            env=_git_env(),
         )
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        print("Notice: Git clone failed or Git not found. Ensuring target directory exists.")
-        os.makedirs(target_dir, exist_ok=True)
-    
+    except FileNotFoundError as exc:
+        raise CloneError("git executable not found on this host") from exc
+    except subprocess.TimeoutExpired as exc:
+        shutil.rmtree(target_dir, ignore_errors=True)
+        raise CloneError(f"git clone timed out after {CLONE_TIMEOUT_S}s") from exc
+    except subprocess.CalledProcessError as exc:
+        shutil.rmtree(target_dir, ignore_errors=True)
+        stderr = (exc.stderr or b"").decode("utf-8", "replace").strip()
+        raise CloneError(f"git clone failed: {stderr[:500] or 'unknown error'}") from exc
+
     # Collect files
     files = []
+    total_bytes = 0
     for root, _, filenames in os.walk(target_dir):
         if ".git" in root:
             continue
@@ -49,10 +99,17 @@ def clone_repository(url: str, target_base_dir: str = "./tmp_repos") -> RepoCont
             if ext in [".py", ".rs", ".js", ".ts", ".sol", ".c", ".cpp", ".java"]:
                 full_path = os.path.join(root, f)
                 try:
+                    size = os.path.getsize(full_path)
+                    if total_bytes + size > MAX_TOTAL_BYTES or len(files) >= MAX_FILES:
+                        raise CloneError(
+                            f"repository exceeds ingestion limits "
+                            f"({MAX_FILES} files / {MAX_TOTAL_BYTES // (1024 * 1024)} MB)"
+                        )
                     with open(full_path, 'r', encoding='utf-8', errors='ignore') as file_obj:
                         content = file_obj.read()
+                    total_bytes += size
                     files.append(SourceFile(path=full_path, content=content, language=ext[1:]))
-                except Exception as e:
+                except OSError as e:
                     print(f"Skipping {f}: {e}")
 
     return RepoContext(url=url, local_path=target_dir, files=files)

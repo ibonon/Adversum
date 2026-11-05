@@ -313,15 +313,13 @@ impl<'ast> Visitor<'ast> for LoweringContext<'_> {
                     name: func_sym,
                     params: param_syms,
                     instructions: std::mem::replace(&mut self.instructions, saved_instructions),
+                    // Function bodies are lowered into their own instruction
+                    // buffer, so their line map must be kept with them. It used
+                    // to be discarded here, which made every finding inside a
+                    // function report a line taken from an unrelated top-level
+                    // instruction (e.g. "def f():" instead of the sink line).
+                    instr_lines: std::mem::replace(&mut self.instr_lines, saved_lines),
                 };
-
-                // Store lines? We need a way to store function lines. For MVP, we can keep lines global or per function.
-                // Actually, since lines are associated with the lowered instructions, we should put them back.
-                // But wait, instr_lines is expected to match the length of program.instructions.
-                // If we put functions separately, we need to handle their lines. Let's just append function instructions to the main program for line matching, or not.
-                // A better way: just append the function body to the main instruction stream AND store it in FunctionIR!
-                // Actually, we'll store it in the `functions` map, and we'll add `functions` to `self`.
-                self.instr_lines = saved_lines; // restore old lines, losing function lines for now to keep simple
 
                 self.functions.insert(func_sym, func_ir);
             }

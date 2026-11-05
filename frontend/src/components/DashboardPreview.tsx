@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
+import { apiFetch, ApiError } from '@/lib/api';
 import {
   AlertTriangle, Clock, TrendingUp, Download, FileCode, Copy, Check, Globe,
   Wrench, Loader2, Zap, Shield, Building2, FileText, ChevronDown, ChevronUp, CheckCircle2, Terminal,
@@ -325,21 +326,12 @@ const DashboardPreview = () => {
         initial_vault_eth: 100.0,
         network: 'ethereum-mainnet-fork'
       };
-      let res;
-      try {
-        res = await fetch('/api/v1/exploit/live-fork', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
-          body: JSON.stringify(payload)
-        });
-      } catch {
-        res = await fetch('http://127.0.0.1:8000/api/v1/exploit/live-fork', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
-          body: JSON.stringify(payload)
-        });
-      }
-      if (res && res.ok) {
+      const res = await apiFetch('/api/v1/exploit/live-fork', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
         const data = await res.json();
         setForkResults(prev => ({ ...prev, [idx]: data }));
       }
@@ -366,21 +358,12 @@ const DashboardPreview = () => {
         repo_url: repoUrl || 'https://github.com/organization/digital-assets-vault',
         apply_to_disk: false
       };
-      let res;
-      try {
-        res = await fetch('/api/v1/remediation/self-healing-pr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
-          body: JSON.stringify(payload)
-        });
-      } catch {
-        res = await fetch('http://127.0.0.1:8000/api/v1/remediation/self-healing-pr', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
-          body: JSON.stringify(payload)
-        });
-      }
-      if (res && res.ok) {
+      const res = await apiFetch('/api/v1/remediation/self-healing-pr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
         const data = await res.json();
         setPrResults(prev => ({ ...prev, [idx]: data }));
       }
@@ -435,20 +418,11 @@ const DashboardPreview = () => {
     };
 
     try {
-      let res;
-      try {
-        res = await fetch('/api/v1/scan/clone-and-scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
-          body: JSON.stringify(body)
-        });
-      } catch {
-        res = await fetch('http://127.0.0.1:8000/api/v1/scan/clone-and-scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'adv-dev-key-123' },
-          body: JSON.stringify(body)
-        });
-      }
+      const res = await apiFetch('/api/v1/scan/clone-and-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
       const rawText = await res.text();
       if (!rawText?.trim()) {
         setScanStatusMsg('❌ Réponse vide du serveur');
@@ -464,9 +438,8 @@ const DashboardPreview = () => {
         console.error('[Adversum] Raw text (non-JSON):', rawText.slice(0, 500));
         return;
       }
-      if (!res.ok) {
-        setScanStatusMsg(`❌ Erreur ${res.status} : ${data.detail || data.error || ''}`);
-      } else {
+      // apiFetch lève une ApiError si le statut n'est pas 2xx : plus de branche !res.ok.
+      if (res.ok) {
         // Normalize the response to always have a consistent shape
         let normalized: any = data;
 
@@ -501,8 +474,12 @@ const DashboardPreview = () => {
           setScanStatusMsg(`⚠️ Analyse terminée — aucune vulnérabilité détectée (sortie brute disponible dans la console)`);
         }
       }
-    } catch {
-      setScanStatusMsg("❌ Impossible de joindre le serveur — vérifiez que l'API tourne sur :8080");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setScanStatusMsg(err.status ? `❌ Erreur ${err.status} : ${err.detail}` : `❌ ${err.detail}`);
+      } else {
+        setScanStatusMsg("❌ Impossible de joindre le serveur — vérifiez VITE_API_URL et que l'API est démarrée.");
+      }
     } finally {
       setIsScanning(false);
     }

@@ -60,9 +60,18 @@ class CEXReportGenerator:
         md.append(f"| :--- | :--- |")
         md.append(f"| **Overall Security Score** | **{score:.1f} / 100** |")
         md.append(f"| **Security Posture Grade** | **{grade}** |")
-        md.append(f"| **CCSS Compliance Level** | **{ccss_report.achieved_level if ccss_report else 'Evaluated'}** ({ccss_report.overall_score if ccss_report else 0}% compliance) |")
+        decision = ""
+        if ccss_report and grade in ("D", "F"):
+            # A codebase graded D/F cannot simultaneously be "Level 3 Banking
+            # Grade". The percentage measures keyword *indicators*, not an
+            # audited certification, so the contradiction is stated explicitly
+            # instead of being printed side by side.
+            decision = " — **contradicted by the overall grade**"
+
+        md.append(f"| **CCSS Compliance Level** | **{ccss_report.achieved_level if ccss_report else 'Evaluated'}** "
+                  f"({ccss_report.overall_score if ccss_report else 0}% keyword-indicator coverage, not a certification){decision} |")
         md.append(f"| **Total Security Findings** | **{len(all_findings)}** ({critical_count} Critical, {high_count} High, {medium_count} Medium, {low_count} Low) |")
-        md.append(f"| **SMT Formal Invariants** | **{len(smt_proofs) if smt_proofs else 'Active'} Verified Formulas** |\n")
+        md.append(f"| **SMT Formal Invariants** | **{len(smt_proofs) if smt_proofs else 0}** verified formulas |\n")
 
         # CCSS Compliance Scorecard
         if ccss_report:
