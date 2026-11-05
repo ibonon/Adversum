@@ -1,4 +1,4 @@
-# Force Clean Launch
+﻿# Force Clean Launch
 $root = "f:\Adversum\adversum"
 $dbFile = "$root\adversum.db"
 $apiDbFile = "$root\api\adversum.db" # Just in case
@@ -18,7 +18,10 @@ if (Test-Path $frontendNext) { Remove-Item -Recurse -Force $frontendNext; Write-
 if (Test-Path $frontendCache) { Remove-Item -Recurse -Force $frontendCache; Write-Host "Cleared node_modules cache" }
 
 $env:PYTHONPATH = $root
-$env:API_KEY = "adv-dev-key-123"
+# Aucune clé en dur : source = $env:API_KEY, sinon la ligne API_KEY= du .env.
+. "$PSScriptRoot\scripts\lib\api-key.ps1"
+$apiKey = Get-AdversumApiKey
+if ($apiKey) { $env:API_KEY = $apiKey }
 
 Write-Host "🚀 Starting API..." -ForegroundColor Cyan
 Start-Process -FilePath "python" -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port 8080" -WorkingDirectory "$root\api" -WindowStyle Normal

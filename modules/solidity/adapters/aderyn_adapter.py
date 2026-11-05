@@ -74,6 +74,7 @@ class AderynAdapter(BaseSolidityAdapter):
         return "ADERYN_BIN"
 
     def run(self, target_path: str, timeout: int = 300) -> List[SolFinding]:
+        self._reset_error()
         if not self.is_available():
             return []
 
@@ -106,8 +107,10 @@ class AderynAdapter(BaseSolidityAdapter):
                 findings = self.parse_json_output(raw_content, target_path)
 
         except subprocess.TimeoutExpired:
+            self._fail(f"timeout after {timeout}s")
             print(f"[WARN] Aderyn timed out after {timeout}s on {target_path}", file=sys.stderr)
         except Exception as e:
+            self._fail(f"execution failed: {e}")
             print(f"[WARN] Aderyn execution failed on {target_path}: {e}", file=sys.stderr)
         finally:
             if os.path.exists(temp_json_path):
@@ -122,7 +125,8 @@ class AderynAdapter(BaseSolidityAdapter):
         findings: List[SolFinding] = []
         try:
             data = json.loads(raw_json)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            self._fail(f"parse error: {e.msg}")
             return []
 
         # Aderyn groups issues by severity category (critical_issues, high_issues, medium_issues, low_issues, nc_issues)

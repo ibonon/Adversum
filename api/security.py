@@ -117,23 +117,6 @@ def validate_scan_path(path_str: str) -> Path:
     return requested_path
 
 
-def is_safe_filename(filename: str) -> bool:
-    """
-    Check if a filename is safe (no path traversal attempts).
-
-    Args:
-        filename: Filename to check
-
-    Returns:
-        True if safe, False otherwise
-    """
-    if not filename or "\0" in filename:
-        return False
-    # Reject any path separator, parent reference or Windows drive/ADS syntax.
-    dangerous_patterns = ["..", "/", "\\", ":"]
-    return not any(pattern in filename for pattern in dangerous_patterns)
-
-
 def is_git_url(path_str: str) -> bool:
     """
     Check if the provided string refers to a remote git repository

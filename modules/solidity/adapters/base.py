@@ -11,6 +11,16 @@ from typing import List, Dict, Any, Optional
 class BaseSolidityAdapter(ABC):
     def __init__(self, executable_path: Optional[str] = None):
         self.executable_path = executable_path or self._find_executable()
+        # Dernière erreur d'exécution, None si le dernier run s'est bien passé.
+        # Un adaptateur qui échoue renvoyait [] sans le dire : l'appelant ne
+        # pouvait pas distinguer « outil en panne » de « aucun problème trouvé ».
+        self.last_error: Optional[str] = None
+
+    def _reset_error(self) -> None:
+        self.last_error = None
+
+    def _fail(self, reason: str) -> None:
+        self.last_error = reason
 
     @abstractmethod
     def tool_name(self) -> str:

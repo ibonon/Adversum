@@ -119,7 +119,11 @@ Créer `.env` à la racine du projet:
 
 ```bash
 # f:/Adversum/adversum/.env
+# Valeur de DÉVELOPPEMENT uniquement. En production, api/main.py refuse de
+# démarrer avec cette clé (ADVERSUM_ENV=production) : générer une valeur avec
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
 API_KEY=adv-dev-key-123
+ADVERSUM_ENV=development
 OPENAI_API_KEY=sk-votre-clé-openai
 DATABASE_URL=sqlite:///./adversum.db
 ```

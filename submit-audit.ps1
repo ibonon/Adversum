@@ -1,8 +1,15 @@
-# Script pour soumettre l'auto-audit
+﻿# Script pour soumettre l'auto-audit
 Write-Host "Soumission de l'auto-audit Adversum..." -ForegroundColor Yellow
 
+. "$PSScriptRoot\scripts\lib\api-key.ps1"
+$apiKey = Get-AdversumApiKey
+if (-not $apiKey) {
+    Write-Host "API_KEY introuvable (ni variable d'environnement, ni .env)." -ForegroundColor Red
+    exit 1
+}
+
 $headers = @{
-    "X-API-Key" = "adv-dev-key-123"
+    "X-API-Key" = $apiKey
     "Content-Type" = "application/json"
 }
 

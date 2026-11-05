@@ -544,12 +544,22 @@ def cmd_ws_listen(args):
             print(f"{YELLOW}[!] Install websockets: pip install websockets{RESET}")
             return
 
-        uri = f"ws://{args.host}:{args.port}/ws/threat-stream"
-        print(f"\n{CYAN}{BOLD}[WebSocket Threat Stream]{RESET} Connecting to {uri}")
+        # The backend authenticates the WebSocket with a QUERY parameter, not a
+        # header (browsers cannot set headers on a WS handshake). The key comes
+        # from the environment — hardcoding it here meant the CLI could only
+        # ever talk to a server running with the public development key.
+        api_key = os.getenv("API_KEY", "").strip()
+        if not api_key:
+            print(f"{YELLOW}[!] API_KEY is not set.{RESET} Export the same key the server uses, e.g.")
+            print(f"{DIM}    PowerShell: $env:API_KEY = \"<your key>\"{RESET}")
+            return
+        from urllib.parse import quote as _quote
+        uri = f"ws://{args.host}:{args.port}/ws/threat-stream?api_key={_quote(api_key, safe='')}"
+        print(f"\n{CYAN}{BOLD}[WebSocket Threat Stream]{RESET} Connecting to ws://{args.host}:{args.port}/ws/threat-stream")
         print(f"{DIM}Listening for {args.duration}s. Press Ctrl+C to stop.{RESET}\n")
 
         try:
-            async with websockets.connect(uri, extra_headers={"X-API-Key": "adv-dev-key-123"}) as ws:
+            async with websockets.connect(uri) as ws:
                 import signal, time
                 end_time = time.time() + args.duration
                 while time.time() < end_time:

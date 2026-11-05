@@ -1,4 +1,4 @@
-# Script simple pour démarrer l'API Adversum
+﻿# Script simple pour démarrer l'API Adversum
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "    Démarrage API Adversum" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
@@ -18,10 +18,8 @@ if ($existing) {
 
 # Configurer l'environnement
 $env:PYTHONPATH = $projectRoot
-if (-not $env:API_KEY) {
-    $env:API_KEY = "adv-dev-key-123"
-    Write-Host "✓ API_KEY configurée: adv-dev-key-123" -ForegroundColor Green
-}
+# Plus de clé en dur ici : le bloc .env ci-dessous fournit API_KEY, sinon
+# l'application applique son propre défaut de développement (avec avertissement).
 
 # Charger .env si présent
 $envFile = "$projectRoot\.env"

@@ -159,10 +159,10 @@ def run_solidity(
     enable_aderyn: bool = True,
     slither_bin: str = None,
     aderyn_bin: str = None
-) -> list[dict]:
-    """Lance le scanner Solidity multi-moteurs (Natif + Slither + Aderyn) et retourne les findings normalisés."""
+) -> tuple[list[dict], list[dict]]:
+    """Lance le scanner Solidity multi-moteurs et retourne (findings, erreurs_moteurs)."""
     if not target_files:
-        return []
+        return [], []
     try:
         from solidity.scanner import SolidityScanner  # type: ignore
         import solidity.rules as solidity_rules
@@ -177,15 +177,16 @@ def run_solidity(
         )
         
         # If target_dir is available and external engines are active, run project-level analysis
+        engine_errors: list[dict] = []
         if target_dir and os.path.isdir(target_dir) and scanner.orchestrator and (scanner.orchestrator.slither_adapter or scanner.orchestrator.aderyn_adapter):
-            findings = scanner.scan_directory(target_dir)
+            findings, engine_errors = scanner.scan_directory(target_dir)
         else:
             findings = _scan_files_parallel(scanner, target_files)
 
-        return [_normalize(f, "solidity") for f in findings]
+        return [_normalize(f, "solidity") for f in findings], engine_errors
     except Exception as e:
         print(f"{YELLOW}[WARN] Solidity module not available: {e}{RESET}", file=sys.stderr)
-        return []
+        return [], [{"engine": "Solidity scanner", "error": f"module failed: {e}"}]
 
 
 def run_crypto(target_files: list[str]) -> list[dict]:
@@ -638,6 +639,9 @@ def main():
 
     # Lancement des scanners
     all_findings: list[dict] = []
+    # Moteurs externes en échec (timeout, binaire absent, sortie illisible).
+    # Remonté dans le rapport : un outil en panne n'est PAS "aucun problème".
+    engine_errors: list[dict] = []
     if args.all:
         active_modules = ["solidity", "crypto", "iac", "cex_api", "cross_chain", "por", "semgrep", "trivy"]
     else:
@@ -646,14 +650,16 @@ def main():
 
     if "solidity" in active_modules and targets_map.get("solidity"):
         print(f"{CYAN}[*] Running Solidity multi-engine scanner (Native + Slither + Aderyn)...{RESET}", file=sys.stderr)
-        all_findings.extend(run_solidity(
+        sol_findings, sol_errors = run_solidity(
             targets_map["solidity"],
             target_dir=target_root if os.path.isdir(target_root) else None,
             enable_slither=not args.no_slither,
             enable_aderyn=not args.no_aderyn,
             slither_bin=args.slither_bin,
             aderyn_bin=args.aderyn_bin
-        ))
+        )
+        all_findings.extend(sol_findings)
+        engine_errors.extend(sol_errors)
 
     if "crypto" in active_modules and targets_map.get("crypto"):
         print(f"{CYAN}[*] Running Crypto Misuse scanner...{RESET}", file=sys.stderr)
@@ -854,6 +860,9 @@ def main():
             "ccss_compliance": _ccss_dict,
             "threat_model": _threat_dict,
             "intelligence": intel_data,
+            # Un moteur externe en échec est désormais explicite dans la sortie
+            # machine, plus seulement dans les logs stderr.
+            "engine_errors": engine_errors,
             "findings": correlated_findings,
         }, indent=2)
 
@@ -862,6 +871,17 @@ def main():
         print(f"{GREEN}[✓] Report written to {args.output}{RESET}", file=sys.stderr)
     else:
         print(output_text)
+
+    # Les moteurs en échec doivent être visibles même quand le rapport part sur
+    # stdout : un outil muet transformait un plantage en "aucune vulnérabilité".
+    if engine_errors:
+        try:
+            from solidity.adapters.orchestrator import format_engine_errors
+            summary = format_engine_errors(engine_errors)
+        except Exception:
+            summary = f"{len(engine_errors)} engine(s) failed: " + ", ".join(
+                f"{e.get('engine')} ({e.get('error')})" for e in engine_errors)
+        print(f"\n{RED}{BOLD}[!] {summary}{RESET}", file=sys.stderr)
 
     # Exit code non-nul si des findings critiques/high
     if stats.get("CRITICAL", 0) + stats.get("HIGH", 0) > 0:

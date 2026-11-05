@@ -1,5 +1,6 @@
 import sys
 import os
+import logging
 from pathlib import Path
 
 # Automatically ensure project root is in sys.path for both CMD and PowerShell
@@ -22,6 +23,71 @@ try:
     load_dotenv(Path(_PROJECT_ROOT) / ".env")
 except ImportError:
     pass
+
+# ── API key resolution: fail closed in production ────────────────────────────
+# This module is the app that every deployment actually serves
+# (`uvicorn api.main:app` — Dockerfile.backend, docker/Dockerfile.api, Makefile).
+# The guard in `orchestrator/config/settings.py` validates API_KEY_SECRET, a
+# variable nothing reads on this path, so it never protected this app: with
+# ADVERSUM_ENV=production the server happily started and accepted the public
+# `adv-dev-key-123` (HTTP 200). The check below runs at import time, so the
+# process exits before a single request is served.
+_PUBLIC_DEV_API_KEY = "adv-dev-key-123"
+_PRODUCTION_ENVS = {"production", "prod"}
+# Values copied verbatim from manifests/templates. A deployment that forgets to
+# replace them would otherwise boot with a key printed in the repository.
+_PLACEHOLDER_MARKERS = (
+    "replace_me", "replace-me", "your_", "changeme", "change_me",
+    "placeholder", "example", "todo",
+)
+
+
+def _is_production() -> bool:
+    return os.getenv("ADVERSUM_ENV", "").strip().lower() in _PRODUCTION_ENVS
+
+
+def _resolve_api_key() -> str:
+    """Return the effective API key, refusing insecure values in production."""
+    api_key = os.getenv("API_KEY", "").strip()
+
+    if _is_production():
+        problems = []
+        if not api_key:
+            problems.append("API_KEY is not set")
+        elif api_key == _PUBLIC_DEV_API_KEY:
+            problems.append(f"API_KEY is the public development default ({_PUBLIC_DEV_API_KEY})")
+        elif any(marker in api_key.lower() for marker in _PLACEHOLDER_MARKERS):
+            problems.append("API_KEY still contains a placeholder value")
+        elif len(api_key) < 16:
+            problems.append(f"API_KEY is too short ({len(api_key)} chars, minimum 16)")
+
+        if problems:
+            raise RuntimeError(
+                "SECURITY: refusing to start with ADVERSUM_ENV=production — "
+                + "; ".join(problems)
+                + ". Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\" "
+                "and export it as API_KEY. This refusal is deliberate and cannot be "
+                "disabled: a public key on this API grants audit submission and "
+                "arbitrary file patching."
+            )
+        return api_key
+
+    if not api_key:
+        logging.getLogger("adversum.api").warning(
+            "API_KEY not set — falling back to the documented development key. "
+            "Never deploy this configuration."
+        )
+        return _PUBLIC_DEV_API_KEY
+
+    if api_key == _PUBLIC_DEV_API_KEY:
+        logging.getLogger("adversum.api").warning(
+            "Using the public development API key. Set API_KEY (and ADVERSUM_ENV=production "
+            "to make this mandatory) before exposing the service."
+        )
+    return api_key
+
+
+API_KEY = _resolve_api_key()
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Request, status, Query
 from fastapi.responses import JSONResponse
@@ -267,6 +333,10 @@ async def telemetry_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # The only header the unused `orchestrator/api/app.py` had and this app was
+    # missing. An API serves no HTML, but a strict CSP is free defence in depth
+    # against content sniffing / framing of error pages.
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none';"
     return response
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -302,10 +372,10 @@ async def prometheus_metrics():
     return Response(content=generate_latest(_get_registry()), media_type=CONTENT_TYPE_LATEST)
 
 # Security: API Key Auth
-# Default to dev key for local development, but require explicit setting in production
-API_KEY = os.getenv("API_KEY", "adv-dev-key-123")
-if API_KEY == "adv-dev-key-123":
-    logger.warning("Using default dev API key. Set API_KEY env var for production!")
+# API_KEY is resolved at the top of this module by _resolve_api_key(), which
+# refuses to import at all when ADVERSUM_ENV=production and the key is missing,
+# public, or too short. Do not re-assign it here: a second assignment used to
+# re-read the environment and reintroduced the insecure default after the guard.
 
 # API Key Header configuration
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -548,6 +618,14 @@ async def process_audit(job_id: int, target_path: str):
         is_completed = (job.status == JobStatus.COMPLETED)
         session.add(job)
         await session.commit()
+
+        # The dashboard aggregation is cached for 30 s and nothing ever
+        # invalidated it (api_cache.invalidate() was only called from tests), so
+        # a freshly finished audit could stay invisible. Invalidate on write.
+        try:
+            await api_cache.invalidate("dashboard:stats")
+        except Exception:
+            logger.debug("Cache invalidation failed", exc_info=True)
         
         # Enqueue LLM Tasks after DB commit
         if is_completed and os.getenv("USE_LLM_VALIDATOR", "false").lower() == "true":
@@ -637,6 +715,10 @@ async def apply_fix(finding_id: int, request: Request, session: AsyncSession = D
         finding.validation_status = "CONFIRMED_FIXED"
         session.add(finding)
         await session.commit()
+        try:
+            await api_cache.invalidate("dashboard:stats")
+        except Exception:
+            logger.debug("Cache invalidation failed", exc_info=True)
         return {
             "status": "success", 
             "message": f"Remediation VERIFIED and applied to {finding.file_path}",
@@ -697,6 +779,10 @@ async def apply_batch_fix(job_id: int, request: Request, session: AsyncSession =
             results["details"].append({"file": file_path, "status": "FAILED", "count": len(file_findings)})
             
     await session.commit()
+    try:
+        await api_cache.invalidate("dashboard:stats")
+    except Exception:
+        logger.debug("Cache invalidation failed", exc_info=True)
     return results
 
 @app.post("/audit", response_model=JobResponse, dependencies=[Depends(get_api_key)])

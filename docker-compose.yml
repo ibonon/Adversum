@@ -46,7 +46,14 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - ANVIL_RPC_URL=http://anvil:8545
       - NEBIUS_MOCK=1
-      - API_KEY=adv-dev-key-123
+      # API_KEY has no default on purpose. Generate one before starting:
+      #   PowerShell : $env:API_KEY = python -c "import secrets; print(secrets.token_urlsafe(32))"
+      #   bash       : export API_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+      # The ":?" form makes `docker compose up` fail loudly instead of silently
+      # booting a publicly-known key. api/main.py also refuses the old default
+      # in production, so the two guards agree.
+      - 'API_KEY=${API_KEY:?API_KEY is required and must not be the public dev key}'
+      - 'ADVERSUM_ENV=production'
       - DATABASE_URL=sqlite+aiosqlite:///./adversum_prod.db
     ports:
       - "8000:8000"

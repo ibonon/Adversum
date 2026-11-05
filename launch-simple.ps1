@@ -1,8 +1,12 @@
-# Script de lancement simplifié (Secours)
+﻿# Script de lancement simplifié (Secours)
 $root = "f:\Adversum\adversum"
 $env:PYTHONPATH = $root
-# Force API Key for safety
-$env:API_KEY = "adv-dev-key-123"
+# Aucune clé en dur : source = $env:API_KEY, sinon la ligne API_KEY= du .env.
+# (Commentaire obsolète supprimé : « Force API Key for safety » décrivait
+# précisément ce qui n'était PAS sûr.)
+. "$PSScriptRoot\scripts\lib\api-key.ps1"
+$apiKey = Get-AdversumApiKey
+if ($apiKey) { $env:API_KEY = $apiKey }
 
 Write-Host "Killing old processes on 8080/3000..."
 Get-Process | Where-Object { $_.Path -like "*uvicorn*" } | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -20,7 +24,7 @@ Start-Sleep -Seconds 15
 
 Write-Host "3. Submitting Auto-Audit..."
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:8080/audit" -Method POST -Headers @{"X-API-Key" = "adv-dev-key-123" } -Body (@{target_path = $root; project_name = "Auto-Test" } | ConvertTo-Json) -ContentType "application/json" -ErrorAction Stop
+    $response = Invoke-WebRequest -Uri "http://localhost:8080/audit" -Method POST -Headers @{"X-API-Key" = $apiKey } -Body (@{target_path = $root; project_name = "Auto-Test" } | ConvertTo-Json) -ContentType "application/json" -ErrorAction Stop
     $job = $response.Content | ConvertFrom-Json
     Write-Host "   SUCCESS! Audit Job ID: $($job.id)" -ForegroundColor Green
     Write-Host "   Check Dashboard: http://localhost:3000/audits/$($job.id)" -ForegroundColor Cyan

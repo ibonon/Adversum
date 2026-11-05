@@ -22,7 +22,11 @@ from datetime import datetime, timezone
 # ── Security Rules ──────────────────────────────────────────────────────────
 RULES = [
     # Secrets
-    (r"(?i)(api[_-]?key|api[_-]?secret|secret[_-]?key|password|token|auth)\s*[:=]\s*['\"][A-Za-z0-9_\-\.]{16,}['\"]",
+    # L'alphabet d'origine ([A-Za-z0-9_\-.]{16,}) ratait les secrets contenant
+    # un symbole courant (`password = "S3cr3tPassw0rd!"`) et imposait 16
+    # caractères. On accepte desormais tout caractere non blanc/non guillemet
+    # des 12 caracteres (prouve par execution : avant -> aucun finding).
+    (r"(?i)(api[_-]?key|api[_-]?secret|secret[_-]?key|password|passwd|token|auth)\s*[:=]\s*['\"][^\s'\"\\]{12,}['\"]",
      "HARDCODED_SECRET", "CRITICAL", "Hardcoded credential detected"),
     (r"eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+",
      "EXPOSED_JWT", "CRITICAL", "Hardcoded JWT token — exposed credential"),
@@ -42,7 +46,10 @@ RULES = [
      "XSS_DANGEROUS_INNERHTML", "HIGH", "dangerouslySetInnerHTML in React (XSS risk)"),
 
     # Python
-    (r"subprocess\.run\(.*shell=True",
+    # `shell\s*=\s*True` : la version d'origine exigeait `shell=True` sans
+    # espace, donc `subprocess.run(cmd, shell = True)` passait inaperçu (prouvé
+    # par exécution). `[^)]*` couvre les arguments multi-lignes.
+    (r"subprocess\.run\([^)]*shell\s*=\s*True",
      "COMMAND_INJECTION", "CRITICAL", "subprocess with shell=True — command injection risk"),
     (r"\bos\.system\s*\(",
      "COMMAND_INJECTION_OS", "HIGH", "os.system() — prefer subprocess with shell=False"),

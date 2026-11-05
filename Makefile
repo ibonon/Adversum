@@ -31,15 +31,15 @@ dev: ## Start development servers (backend + frontend concurrently)
 	@cd frontend && $(NPM) run dev
 
 test: ## Run full test suite
-	@export NEBIUS_MOCK=1 API_KEY=adv-dev-key-123 && \
+	@export NEBIUS_MOCK=1 && \
 		$(PYTHON) -m pytest tests/ -v --tb=short
 
 test-fast: ## Run tests excluding slow integration tests
-	@export NEBIUS_MOCK=1 API_KEY=adv-dev-key-123 && \
+	@export NEBIUS_MOCK=1 && \
 		$(PYTHON) -m pytest tests/ -v --tb=short -m "not slow"
 
 test-cov: ## Run tests with coverage report
-	@export NEBIUS_MOCK=1 API_KEY=adv-dev-key-123 && \
+	@export NEBIUS_MOCK=1 && \
 		$(PYTHON) -m pytest tests/ \
 			--cov=api --cov=orchestrator --cov=modules \
 			--cov-report=term-missing \

@@ -1,4 +1,4 @@
-# Script de vérification de l'API Adversum
+﻿# Script de vérification de l'API Adversum
 Write-Host "=== Vérification de l'API Adversum ===" -ForegroundColor Cyan
 
 # Vérifier si l'API répond
@@ -18,8 +18,14 @@ try {
 
 # Vérifier l'authentification
 Write-Host "`n2. Test d'authentification avec clé API..." -ForegroundColor Yellow
+. "$PSScriptRoot\scripts\lib\api-key.ps1"
+$apiKey = Get-AdversumApiKey
+if (-not $apiKey) {
+    Write-Host "   ✗ API_KEY introuvable (ni variable d'environnement, ni .env)" -ForegroundColor Red
+    exit 1
+}
 $headers = @{
-    "X-API-Key" = "adv-dev-key-123"
+    "X-API-Key" = $apiKey
 }
 try {
     $response = Invoke-WebRequest -Uri "http://localhost:8000/audits" -Method GET -Headers $headers -ErrorAction Stop

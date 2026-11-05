@@ -3,9 +3,16 @@ import time
 import json
 import os
 
+# Clé résolue depuis l'environnement ou .env — jamais de valeur en dur.
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(next(p for p in _pathlib.Path(__file__).resolve().parents
+                              if (p / "scripts" / "lib" / "api_key.py").exists())))
+from scripts.lib.api_key import find_repo_root, get_api_key  # noqa: E402
+
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
-API_KEY = os.environ.get("API_KEY", "adv-dev-key-123")
-TARGET_PATH = os.environ.get("TARGET_PATH", r"f:\Adversum\adversum")
+API_KEY = get_api_key(required=True)
+TARGET_PATH = os.environ.get("TARGET_PATH", str(find_repo_root()))
 
 headers = {"X-API-Key": API_KEY}
 

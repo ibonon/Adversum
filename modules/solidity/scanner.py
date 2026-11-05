@@ -4,12 +4,13 @@ Adversum Solidity Scanner — Smart Contract Security Analysis
 Multi-Engine Architecture: Native AST/Regex Engine + Slither (Trail of Bits) + Aderyn (Cyfrin)
 """
 import os
+import sys
 import json
 import importlib
 import pkgutil
 import argparse
 from dataclasses import dataclass, asdict
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 @dataclass
 class SolFinding:
@@ -126,7 +127,14 @@ class SolidityScanner:
             return self.orchestrator.deduplicate(findings)
         return findings
 
-    def scan_directory(self, path: str) -> List[SolFinding]:
+    def scan_directory(self, path: str) -> Tuple[List[SolFinding], List[dict]]:
+        """
+        Scans a directory. Returns (findings, engine_errors).
+
+        `engine_errors` is non-empty when an external engine (Slither, Aderyn)
+        failed, timed out or returned unparseable output — so a broken tool can
+        no longer be mistaken for a clean contract.
+        """
         native_findings = []
         for root, _, files in os.walk(path):
             for file in files:
@@ -136,7 +144,7 @@ class SolidityScanner:
         if self.orchestrator:
             return self.orchestrator.run_all(path, native_findings=native_findings)
 
-        return native_findings
+        return native_findings, []
 
 
 if __name__ == "__main__":
@@ -156,10 +164,15 @@ if __name__ == "__main__":
         aderyn_bin=args.aderyn_bin
     )
 
+    engine_errors = []
     if os.path.isdir(args.target):
-        findings = scanner.scan_directory(args.target)
+        findings, engine_errors = scanner.scan_directory(args.target)
     else:
         findings = scanner.scan_file(args.target)
+
+    if engine_errors:
+        from adapters.orchestrator import format_engine_errors
+        print(f"[WARN] {format_engine_errors(engine_errors)}", file=sys.stderr)
 
     if args.format == 'sarif':
         try:

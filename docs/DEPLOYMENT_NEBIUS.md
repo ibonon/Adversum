@@ -94,7 +94,11 @@ Créez le fichier `.env` sur le serveur :
 ```bash
 cat << 'EOF' > .env
 # --- Sécurité API ---
-API_KEY=adv-dev-key-123
+# Ne PAS déployer la clé de développement : avec ADVERSUM_ENV=production,
+# api/main.py refuse de démarrer si elle est publique, vide ou un marqueur.
+# Générer : python -c "import secrets; print(secrets.token_urlsafe(32))"
+API_KEY=<cle_generee_localement>
+ADVERSUM_ENV=production
 ALLOWED_ORIGINS=http://localhost:3000,http://<IP_PUBLIQUE_NEBIUS>,https://<DOMAINE_DEMO>
 
 # --- Nebius Token Factory (NVIDIA Nemotron) ---
@@ -162,7 +166,7 @@ kubectl create secret generic adversum-secrets \
   --namespace adversum \
   --from-literal=NEBIUS_API_KEY="votre_cle_nebius_ici" \
   --from-literal=TAVILY_API_KEY="votre_cle_tavily_ici" \
-  --from-literal=API_KEY="adv-dev-key-123" \
+  --from-literal=API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 

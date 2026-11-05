@@ -1,4 +1,4 @@
-# Script simplifié pour démarrer les services
+﻿# Script simplifié pour démarrer les services
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "    Démarrage Adversum" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
@@ -8,9 +8,10 @@ $projectRoot = "f:\Adversum\adversum"
 
 # Configurer l'environnement
 $env:PYTHONPATH = $projectRoot
-if (-not $env:API_KEY) {
-    $env:API_KEY = "adv-dev-key-123"
-}
+# Aucune clé en dur : source = $env:API_KEY, sinon la ligne API_KEY= du .env.
+. "$PSScriptRoot\scripts\lib\api-key.ps1"
+$apiKey = Get-AdversumApiKey
+if ($apiKey) { $env:API_KEY = $apiKey }
 
 Write-Host "1. Démarrage de l'API..." -ForegroundColor Yellow
 Write-Host "   Ouvrez un nouveau terminal et exécutez:" -ForegroundColor Gray

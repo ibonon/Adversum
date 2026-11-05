@@ -2,6 +2,10 @@
 
 Quantitative evaluation of Adversum against industry-standard SAST and security auditing tools (Slither, Semgrep, and Snyk).
 
+> ⚠️ **Avertissement méthodologique et reproductibilité / Scope & Reproducibility Notice**  
+> Les métriques comparatives, débits et pourcentages présentés dans ce document sont issus d'évaluations et bancs d'essai historiques menés sur des corpus de référence spécifiques (`benchmarks/results/`, corpus SmartBugs et échantillons statiques de test).  
+> **Ces résultats ne sont pas reproduits en continu depuis ce dépôt** : la suite de tests automatisée du dépôt (`tests/`, `modules/formal_verification/`) valide la conformité fonctionnelle et la vérification formelle Z3 déterministe, mais aucun script ne rejoue l'ensemble de ces benchmarks comparatifs en continu. Les résultats réels dépendent du corpus cible, de l'environnement matériel, des versions logicielles et de la disponibilité des modèles LLM.
+
 ---
 
 ## 📊 1. Executive Comparison Matrix
@@ -9,13 +13,15 @@ Quantitative evaluation of Adversum against industry-standard SAST and security 
 | Metric / Capability | **Adversum (Rust + Nemotron)** | **Slither** | **Semgrep** | **Snyk Code** |
 | :--- | :---: | :---: | :---: | :---: |
 | **Engine Architecture** | Native Rust (Rayon + Tree-sitter + Datalog) | Python AST / SlithIR | OCaml pattern engine | Proprietary Cloud |
-| **Scan Throughput** | **12,500+ lines/sec** | ~1,200 lines/sec | ~4,500 lines/sec | ~800 lines/sec (API) |
-| **False Positive Rate** | **< 2.8%** *(Nemotron AI verified)* | 38.4% | 42.1% | 29.5% |
+| **Scan Throughput** | **12,500+ lines/sec\*** | ~1,200 lines/sec | ~4,500 lines/sec | ~800 lines/sec (API) |
+| **False Positive Rate** | **< 2.8%\*** *(Nemotron AI verified)* | 38.4%\* | 42.1%\* | 29.5%\* |
 | **Attack Graph Synthesis** | ✅ **Multi-stage Kill Chain (G-ASR)** | ❌ None | ❌ None | ❌ None |
 | **Auto-Remediation Verification** | ✅ **AVR (Autonomous Verified Remediation)** | ❌ None | ⚠️ Static patch | ⚠️ Static patch |
 | **Smart Contract Logic (DeFi)** | ✅ Reentrancy, Bridges, Merkle PoR | ✅ EVM opcodes | ⚠️ Regex/AST | ⚠️ Limited |
 | **IaC & Custody Standards** | ✅ CCSS v3.0, STRIDE, K8s, Terraform | ❌ No | ✅ IaC rules | ✅ IaC rules |
 | **Cloud Independence** | ✅ **Nebius Token Factory / Open-Source** | ❌ None | ❌ SaaS | ❌ Closed SaaS |
+
+<sub>\* Taux et débits mesurés lors de campagnes d'évaluation historiques sur les corpus de test dédiés (voir détails ci-dessous et dans `benchmarks/results/`). Ce ne sont pas des métriques contractuelles ou générales : les performances et taux de faux positifs varient selon la typologie du codebase, les versions d'outils, la connectivité et la configuration du modèle. Chiffres non reproduits en continu depuis ce dépôt.</sub>
 
 ---
 
@@ -32,6 +38,8 @@ Slither                  ██████████████████�
 Snyk (Cloud API)         ██████████████████████████████████ 68.5s
 ```
 
+> ℹ️ **Méthodologie & Reproductibilité :** Ce banc d'essai a été mesuré sur un échantillon multi-dépôts statique de 100 000 lignes (Rust, Solidity, Python, TypeScript, HCL). Les temps d'exécution indiqués correspondent à l'environnement de référence de test initial. Ce benchmark de débit global n'est pas réexécuté automatiquement par la suite de tests continue (`pytest` / `cargo test`) du dépôt.
+
 ### Key Architectural Enablers:
 1. **Thread-Local Tree-sitter Cursor Pooling (`cursor_pool.rs`)**: Eliminates 1.6 GB of heap allocations across parallel Rayon worker threads.
 2. **Ascent Datalog Relational Fixpoint (`datalog.rs`)**: Computes taint reachability in linear time rather than exponential recursive path exploration.
@@ -46,10 +54,12 @@ Evaluating detection on 50 verified historical vulnerability benchmarks (includi
 ```
                      True Positives    False Positives    Precision (%)
 Adversum Raw SAST          49                18               73.1%
-Adversum + Nemotron AI     48                 1               97.9%  <-- 95% FP reduction!
+Adversum + Nemotron AI     48                 1               97.9%*  <-- 95% FP reduction!
 Slither                    44                28               61.1%
 Semgrep                    41                30               57.7%
 ```
+
+> ℹ️ **Corpus d'évaluation :** Évaluation historique réalisée sur un corpus de 50 cas de vulnérabilités vérifiées (dont SmartBugs et cas de synthèse, voir `benchmarks/results/smartbugs_report.json`). Le taux de précision affiché (97.9%) et la réduction relative de faux positifs représentent les résultats observés sur ce jeu de test particulier avec NVIDIA Nemotron actif, et ne constituent pas une garantie uniforme sur tout codebase arbitraire. Chiffres non reproduits en continu depuis ce dépôt.
 
 ### How NVIDIA Nemotron-3.5-Lightning Eliminates False Positives:
 - **Control Flow Graph Awareness**: Rather than matching shallow regex or AST leaves, Adversum extracts the complete flow path (`source -> sanitizers -> sink`) and feeds it into Nemotron.
@@ -65,4 +75,6 @@ Adversum is not just an alerting tool—it is an autonomous remediation agent:
 1. **Patch Generation**: Nemotron synthesizes a surgical patch respecting the existing AST formatting and variable scopes.
 2. **Deterministic Re-Scan**: The Rust SAST engine immediately parses the patched AST in an isolated memory buffer.
 3. **Mathematical Proof of Fix**: If the vulnerability sink is eradicated and no new sinks or syntax errors are introduced, the patch is labeled `CONFIRMED_FIXED`.
-4. **Verification Rate**: **96.4%** of Nemotron-generated AVR patches pass the deterministic core verification on the first attempt.
+4. **Verification Rate**: **96.4%\*** of Nemotron-generated AVR patches pass the deterministic core verification on the first attempt.
+
+<sub>\* Taux mesuré sur les scénarios AVR validés du corpus d'expérimentation initial ; non rejoué automatiquement en continu par la suite de tests du dépôt.</sub>

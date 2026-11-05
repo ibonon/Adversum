@@ -2,9 +2,18 @@ import urllib.request
 import json
 import time
 
+# Clé résolue depuis l'environnement ou .env — jamais de valeur en dur.
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(next(p for p in _pathlib.Path(__file__).resolve().parents
+                              if (p / "scripts" / "lib" / "api_key.py").exists())))
+from scripts.lib.api_key import get_api_key  # noqa: E402
+
+API_KEY = get_api_key(required=True)
+
 def get_json(url):
     req = urllib.request.Request(url)
-    req.add_header('X-API-Key', 'adv-dev-key-123')
+    req.add_header('X-API-Key', API_KEY)
     with urllib.request.urlopen(req) as response:
         return json.loads(response.read().decode())
 

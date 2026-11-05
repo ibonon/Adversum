@@ -1,7 +1,10 @@
-# Script de redémarrage (Application des correctifs IPv4)
+﻿# Script de redémarrage (Application des correctifs IPv4)
 $root = "f:\Adversum\adversum"
 $env:PYTHONPATH = $root
-$env:API_KEY = "adv-dev-key-123"
+# Aucune clé en dur : source = $env:API_KEY, sinon la ligne API_KEY= du .env.
+. "$PSScriptRoot\scripts\lib\api-key.ps1"
+$apiKey = Get-AdversumApiKey
+if ($apiKey) { $env:API_KEY = $apiKey }
 
 Write-Host "🛑 Arrêt des services..." -ForegroundColor Yellow
 # Kill via ports to be sure

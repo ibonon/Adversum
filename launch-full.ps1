@@ -1,4 +1,4 @@
-# Script de lancement complet - Adversum Auto-Audit
+﻿# Script de lancement complet - Adversum Auto-Audit
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "    Lancement Complet Adversum" -ForegroundColor Cyan
 Write-Host "    Auto-Audit du Projet" -ForegroundColor Cyan
@@ -46,9 +46,7 @@ if (Test-Path $envFile) {
     }
 }
 else {
-    Write-Host "⚠️  .env non trouvé, utilisation des valeurs par défaut" -ForegroundColor Yellow
-    # Définir la clé API par défaut
-    [Environment]::SetEnvironmentVariable("API_KEY", "adv-dev-key-123", "Process")
+    Write-Host "⚠️  .env non trouvé : l'application utilisera son défaut de développement" -ForegroundColor Yellow
 }
 
 # Configurer PYTHONPATH
@@ -76,7 +74,7 @@ $apiJob = Start-Job -ScriptBlock {
         }
     }
     else {
-        [Environment]::SetEnvironmentVariable("API_KEY", "adv-dev-key-123", "Process")
+        # Pas de clé en dur : le serveur appliquera son défaut de développement.
     }
     
     Set-Location $apiPath
@@ -145,8 +143,14 @@ Write-Host "========================================" -ForegroundColor Cyan
 
 Start-Sleep -Seconds 3
 
+. "$PSScriptRoot\scripts\lib\api-key.ps1"
+$apiKey = Get-AdversumApiKey
+if (-not $apiKey) {
+    Write-Host "   ✗ API_KEY introuvable : impossible de soumettre l'audit." -ForegroundColor Red
+    exit 1
+}
 $headers = @{
-    "X-API-Key"    = "adv-dev-key-123"
+    "X-API-Key"    = $apiKey
     "Content-Type" = "application/json"
 }
 

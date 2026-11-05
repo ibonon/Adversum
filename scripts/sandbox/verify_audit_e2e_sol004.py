@@ -14,7 +14,14 @@ import urllib.error
 import urllib.request
 
 API_URL = os.environ.get("API_URL", "http://127.0.0.1:8123")
-API_KEY = os.environ.get("API_KEY", "adv-dev-key-123")
+
+# Clé résolue depuis l'environnement ou .env — jamais de valeur en dur.
+import pathlib as _pathlib  # noqa: E402
+sys.path.insert(0, str(next(p for p in _pathlib.Path(__file__).resolve().parents
+                            if (p / "scripts" / "lib" / "api_key.py").exists())))
+from scripts.lib.api_key import get_api_key  # noqa: E402
+
+API_KEY = get_api_key(required=True) or ""
 TARGET = os.environ.get(
     "TARGET",
     os.path.join(os.environ.get("TEMP", "/tmp"), "adversum_sol_e2e"),

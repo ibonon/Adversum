@@ -225,9 +225,9 @@ Real-time security operations dashboard featuring:
 ```
 tests/test_phase2_websocket.py    — 6  tests (pub/sub, fan-out, history, serialization)
 tests/test_phase2_mev.py          — 7  tests (sandwich, flash loan, oracle, rug pull, multi-chain)
-tests/test_phase2_threat_model.py — 10 tests (STRIDE categories, PASTA stages, attack paths, MITRE)
+tests/test_phase2_threat_model.py — 11 tests (STRIDE categories, PASTA stages, attack paths, MITRE)
 tests/test_phase2_compliance.py   — 22 tests (SARIF 2.1, SOC2, ISO27001, integration)
-tests/test_phase2_api.py          — 13 tests (all new endpoints)
+tests/test_phase2_api.py          — 12 tests (all new endpoints)
 ────────────────────────────────────────────────────────────────────────────────
 Total Phase 2                     — 58 tests | 58 passed ✅
 ```

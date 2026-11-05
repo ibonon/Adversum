@@ -10,10 +10,19 @@ metadata:
   namespace: adversum
 type: Opaque
 stringData:
-  # Remplacer par vos clés réelles lors du déploiement
+  # Remplacer par vos clés réelles lors du déploiement.
   NEBIUS_API_KEY: "your_nebius_token_factory_api_key_here"
   TAVILY_API_KEY: "your_tavily_api_key_here"
-  API_KEY: "adv-dev-key-123"
+  # NE JAMAIS mettre de clé réelle ici : ce manifeste est versionné.
+  # Créer le secret hors dépôt puis supprimer ce bloc stringData :
+  #   kubectl -n adversum create secret generic adversum-secrets \
+  #     --from-literal=API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  #
+  # La valeur ci-dessous est un marqueur : avec ADVERSUM_ENV=production (voir
+  # ConfigMap), api/main.py REFUSE de démarrer tant qu'elle n'a pas été
+  # remplacée. Le déploiement échoue en CrashLoopBackOff plutôt que de servir
+  # une clé publique.
+  API_KEY: "REPLACE_ME_WITH_A_RANDOM_SECRET"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -25,6 +34,9 @@ data:
   NEBIUS_MODEL: "nvidia/Nemotron-3_5-Lightning"
   ALLOWED_ORIGINS: "https://adversum.app,https://www.adversum.app"
   APP_ENV: "production"
+  # Lus par api/main.py : en production, le serveur refuse de démarrer si la clé
+  # est absente, publique ou un simple marqueur.
+  ADVERSUM_ENV: "production"
 ---
 # ─── BACKEND DEPLOYMENT ────────────────────────────────────────────────────────
 apiVersion: apps/v1

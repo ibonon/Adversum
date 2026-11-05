@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from api.main import app, get_session
+from api.main import app, get_session, API_KEY
 from orchestrator.models.sql_models import Job, FindingModel, JobStatus
 from sqlmodel import Session, create_engine, SQLModel
 from datetime import datetime
@@ -84,7 +84,7 @@ def setup_data():
 
 def test_dashboard_stats():
     print("Testing /stats/dashboard...")
-    response = client.get("/stats/dashboard", headers={"X-API-Key": "adv-dev-key-123"})
+    response = client.get("/stats/dashboard", headers={"X-API-Key": API_KEY})
     if response.status_code != 200:
         print(f"FAILED: {response.text}")
         return
@@ -98,7 +98,7 @@ def test_dashboard_stats():
 
 def test_compare_audits(id1, id2):
     print(f"Testing /audit/{id1}/compare/{id2}...")
-    response = client.get(f"/audit/{id1}/compare/{id2}", headers={"X-API-Key": "adv-dev-key-123"})
+    response = client.get(f"/audit/{id1}/compare/{id2}", headers={"X-API-Key": API_KEY})
     if response.status_code != 200:
         print(f"FAILED: {response.text}")
         return
