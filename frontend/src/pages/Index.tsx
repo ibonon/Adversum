@@ -23,7 +23,9 @@ const Index = () => {
         </ErrorBoundary>
         <HowItWorksSection />
         <ErrorBoundary>
-          <DashboardPreview />
+          <div id="dashboard-preview">
+            <DashboardPreview />
+          </div>
         </ErrorBoundary>
         <PricingSection />
         <CTASection />

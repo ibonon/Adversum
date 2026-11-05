@@ -3,6 +3,10 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, Play } from 'lucide-react';
 import Scene3D from './Scene3D';
 
+const scrollToDashboard = () => {
+  document.getElementById('dashboard-preview')?.scrollIntoView({ behavior: 'smooth' });
+};
+
 const HeroSection = () => {
   const [isVisible, setIsVisible] = useState(false);
 
@@ -64,6 +68,7 @@ const HeroSection = () => {
             <Button 
               size="lg" 
               className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-8 h-14 text-base group"
+              onClick={scrollToDashboard}
             >
               Launch Audit
               <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
@@ -72,6 +77,7 @@ const HeroSection = () => {
               variant="outline" 
               size="lg" 
               className="rounded-full px-8 h-14 text-base border-border/50 hover:bg-background/50 group"
+              onClick={() => window.open('https://youtu.be/2YmOO1dX3Zo', '_blank')}
             >
               <Play className="w-4 h-4 mr-2" />
               Watch Demo
