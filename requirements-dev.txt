@@ -4,7 +4,7 @@
 
 # Code Quality & Linting
 black==23.12.1
-ruff==0.1.8
+ruff==0.17.1
 mypy==1.7.1
 
 # Security Auditing
