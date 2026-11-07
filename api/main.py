@@ -1001,6 +1001,7 @@ async def get_audit_status(
         robustness_score=job.robustness_score,
         result=mapped_results,
         total_findings=total_findings,
+        findings_count=total_findings,  # keep in sync with total_findings
         page=page,
         page_size=page_size
     )
