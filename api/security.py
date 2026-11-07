@@ -38,6 +38,7 @@ GIT_SAFE_ARGS: List[str] = [
     "-c", "protocol.ext.allow=never",
     "-c", "protocol.file.allow=never",
     "-c", "gc.auto=0",
+    "-c", "credential.helper=",
 ]
 
 
@@ -45,7 +46,6 @@ def git_safe_env(base: dict | None = None) -> dict:
     """Environment for git subprocesses: no prompts, no exotic transports."""
     env = dict(os.environ if base is None else base)
     env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GIT_ASKPASS"] = "echo"
     # Belt-and-braces with the -c flags above.
     env["GIT_ALLOW_PROTOCOL"] = "https"
     return env

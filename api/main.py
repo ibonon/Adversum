@@ -502,6 +502,85 @@ class SelfHealingPRRequest(BaseModel):
             if not (url.startswith("https://github.com/") or url.startswith("https://gitlab.com/")):
                 raise ValueError("repo_url must be a GitHub or GitLab HTTPS URL")
 
+def _build_unified_summary(
+    base_summary: str,
+    core_findings: list,
+    all_sol_findings: list,
+    sol_count: int
+) -> str:
+    all_findings_count = len(core_findings) + len(all_sol_findings)
+
+    # 1. Truly zero findings across both general pipeline and Solidity
+    if all_findings_count == 0:
+        if base_summary == "No source files found.":
+            if sol_count > 0:
+                return f"{sol_count} Solidity file{'s' if sol_count > 1 else ''} analyzed, 0 findings detected."
+            return "No source files found."
+        if sol_count > 0:
+            return (
+                "# Rapport d'Audit de Sécurité\n\n"
+                "## Résumé Exécutif\n\n"
+                f"Aucune vulnérabilité détectée lors de cet audit ({sol_count} fichier{'s' if sol_count > 1 else ''} Solidity et code source analysés).\n\n"
+                "Le code analysé ne présente pas de problèmes de sécurité identifiés par les règles de détection actuelles."
+            )
+        return base_summary or "Aucune vulnérabilité détectée lors de cet audit."
+
+    # 2. Findings exist: build an honest, coherent summary with exact counts
+    sat_count = (
+        sum(1 for f in core_findings if getattr(f, "z3_verdict", None) == "SAT")
+        + sum(1 for sf in all_sol_findings if sf.get("z3_verdict") == "SAT")
+    )
+    confirmed_count = (
+        sum(1 for f in core_findings if str(getattr(f, "validation_status", "")).upper() == "CONFIRMED")
+        + sum(1 for sf in all_sol_findings if str(sf.get("validation_status", "")).upper() == "CONFIRMED")
+    )
+    critical_count = (
+        sum(1 for f in core_findings if str(getattr(getattr(f, "raw", None), "severity", "")).upper() == "CRITICAL")
+        + sum(1 for sf in all_sol_findings if str(sf.get("severity", "")).upper() == "CRITICAL")
+    )
+    high_count = (
+        sum(1 for f in core_findings if str(getattr(getattr(f, "raw", None), "severity", "")).upper() == "HIGH")
+        + sum(1 for sf in all_sol_findings if (str(sf.get("severity", "")).upper() == "HIGH" or sf.get("z3_verdict") == "SAT"))
+    )
+    medium_count = (
+        sum(1 for f in core_findings if str(getattr(getattr(f, "raw", None), "severity", "")).upper() == "MEDIUM")
+        + sum(1 for sf in all_sol_findings if (str(sf.get("severity", "")).upper() == "MEDIUM" and sf.get("z3_verdict") != "SAT"))
+    )
+    low_count = max(0, all_findings_count - (critical_count + high_count + medium_count))
+
+    sat_suffix = f" ({sat_count} preuve{'s' if sat_count > 1 else ''} formelle{'s' if sat_count > 1 else ''} Z3 SAT)" if sat_count > 0 else ""
+
+    summary_lines = [
+        "# Rapport d'Audit de Sécurité",
+        "",
+        "## Résumé Exécutif",
+        "",
+        f"L'audit a identifié {all_findings_count} finding{'s' if all_findings_count > 1 else ''} de sécurité, dont {confirmed_count} confirmé{'s' if confirmed_count > 1 else ''} comme vulnérabilité{'s' if confirmed_count > 1 else ''} réelle{'s' if confirmed_count > 1 else ''}{sat_suffix}.",
+        "",
+        "### Répartition par Sévérité",
+        f"- **CRITIQUE**: {critical_count} finding{'s' if critical_count > 1 else ''}",
+        f"- **HAUTE**: {high_count} finding{'s' if high_count > 1 else ''}",
+        f"- **MOYENNE**: {medium_count} finding{'s' if medium_count > 1 else ''}",
+        f"- **FAIBLE**: {low_count} finding{'s' if low_count > 1 else ''}",
+    ]
+
+    if sol_count > 0:
+        summary_lines.extend([
+            "",
+            "### Analyse Solidity",
+            f"- {sol_count} fichier{'s' if sol_count > 1 else ''} Solidity analysé{'s' if sol_count > 1 else ''} : {len(all_sol_findings)} finding{'s' if len(all_sol_findings) > 1 else ''} ({sat_count} Z3 SAT vérifié{'s' if sat_count > 1 else ''}).",
+        ])
+
+    if len(core_findings) > 0:
+        summary_lines.extend([
+            "",
+            "### Analyse Code Source",
+            f"- {len(core_findings)} finding{'s' if len(core_findings) > 1 else ''} détecté{'s' if len(core_findings) > 1 else ''}.",
+        ])
+
+    return "\n".join(summary_lines)
+
+
 async def process_audit(job_id: int, target_path: str):
     # We need a new session for the background task
     from orchestrator.services.db import engine
@@ -600,8 +679,21 @@ async def process_audit(job_id: int, target_path: str):
             # Update Job
             job.status = JobStatus.COMPLETED
             job.completed_at = datetime.now(timezone.utc)
-            if "summary" in result:
-                job.summary = result["summary"]
+
+            # Unify summary across general pipeline and Solidity passes
+            all_sol_findings = sol_overflow_findings + sol_reentrancy_findings
+            root_path_obj = Path(real_path)
+            if root_path_obj.is_file():
+                sol_count = 1 if root_path_obj.suffix.lower() == ".sol" else 0
+            elif root_path_obj.is_dir():
+                sol_count = len(list(root_path_obj.rglob("*.sol")))
+            else:
+                sol_count = 0
+
+            core_findings = result.get("findings", [])
+            base_summary = result.get("summary", "")
+            job.summary = _build_unified_summary(base_summary, core_findings, all_sol_findings, sol_count)
+
             if "robustness_score" in result:
                 job.robustness_score = result["robustness_score"]
 

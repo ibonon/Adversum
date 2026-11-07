@@ -11,6 +11,7 @@ _GIT_SAFE_ARGS = [
     "-c", "protocol.ext.allow=never",
     "-c", "protocol.file.allow=never",
     "-c", "gc.auto=0",
+    "-c", "credential.helper=",
 ]
 
 # Guard rails against resource exhaustion on hostile / gigantic repositories.
@@ -26,7 +27,6 @@ class CloneError(RuntimeError):
 def _git_env() -> dict:
     env = dict(os.environ)
     env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GIT_ASKPASS"] = "echo"
     env["GIT_ALLOW_PROTOCOL"] = "https"
     return env
 
@@ -71,29 +71,30 @@ def clone_repository(url: str, target_base_dir: str = "./tmp_repos") -> RepoCont
 
     print(f"Cloning {url} to {target_dir}...")
     try:
-        subprocess.check_call(
-            ["git", *_GIT_SAFE_ARGS, "clone", "--depth", "1", url, target_dir],
+        proc = subprocess.run(
+            ["git", *_GIT_SAFE_ARGS, "clone", "--depth", "1", "--quiet", "--no-progress", url, target_dir],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             timeout=CLONE_TIMEOUT_S,
             env=_git_env(),
         )
+        if proc.returncode != 0:
+            shutil.rmtree(target_dir, ignore_errors=True)
+            stderr = (proc.stderr or b"").decode("utf-8", "replace").strip()
+            raise CloneError(f"git clone failed: {stderr[:500] or 'unknown error'}")
     except FileNotFoundError as exc:
         raise CloneError("git executable not found on this host") from exc
     except subprocess.TimeoutExpired as exc:
         shutil.rmtree(target_dir, ignore_errors=True)
         raise CloneError(f"git clone timed out after {CLONE_TIMEOUT_S}s") from exc
-    except subprocess.CalledProcessError as exc:
-        shutil.rmtree(target_dir, ignore_errors=True)
-        stderr = (exc.stderr or b"").decode("utf-8", "replace").strip()
-        raise CloneError(f"git clone failed: {stderr[:500] or 'unknown error'}") from exc
 
     # Collect files
     files = []
     total_bytes = 0
-    for root, _, filenames in os.walk(target_dir):
-        if ".git" in root:
-            continue
+    ignored_dirs = {".git", "node_modules", "venv", ".venv", "dist", "build", "__pycache__"}
+    for root, dirs, filenames in os.walk(target_dir):
+        # Prune ignored vendor and build directories
+        dirs[:] = [d for d in dirs if d not in ignored_dirs]
         for f in filenames:
             ext = os.path.splitext(f)[1]
             if ext in [".py", ".rs", ".js", ".ts", ".sol", ".c", ".cpp", ".java"]:

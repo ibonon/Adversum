@@ -15,6 +15,13 @@ export default defineConfig({
         timeout: 900000,
         proxyTimeout: 900000,
       },
+      // Proxy /audit endpoints to the FastAPI backend
+      "/audit": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        timeout: 900000,
+        proxyTimeout: 900000,
+      },
       // Proxy WebSocket threat stream in dev mode
       "/ws": {
         target: "ws://127.0.0.1:8000",

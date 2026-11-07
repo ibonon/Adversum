@@ -300,3 +300,9 @@ lié ne retourne pas les 2 findings, il est considéré comme périmé : le FFI 
 Raison : un build livré importait correctement, détectait \input()\ et
 retournait 0 finding sur \eval(sys.argv[1])\ — le pire mode de défaillance
 pour un scanner. Rebuild : \cd core && maturin develop --release\.
+
+---
+
+## 11. WebSocket /ws/threat-stream vs suivi de statut d'audit
+
+Le WebSocket `/ws/threat-stream` existe mais ne couvre pas encore les transitions de statut de job d'audit — le polling `GET /audit/{id}` est la source de vérité pour l'état affiché par l'orbe.
