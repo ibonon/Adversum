@@ -85,7 +85,7 @@ def analyze(content: str) -> list:
                 })
 
         # ── SOL-006: block.timestamp as exact equality or pseudo-randomness ──
-        if 'block.timestamp' in stripped:
+        if 'block.timestamp' in stripped or re.search(r'\bnow\b', stripped):
             # Unsafe: equality check (miner manipulation window)
             if re.search(r'block\.timestamp\s*==', stripped) or re.search(r'==\s*block\.timestamp', stripped):
                 findings.append({
@@ -94,8 +94,18 @@ def analyze(content: str) -> list:
                     'snippet': stripped[:120],
                 })
 
-            # Unsafe: used in keccak256 — but only flag if NOT a benign multi-input ID generator
-            elif re.search(r'keccak256\s*\(.*block\.timestamp', stripped):
+            # Unsafe: gating comparison returned / branched on (miner can
+            # nudge the timestamp across the boundary to trigger payout).
+            elif re.search(r'\breturn\b.*(?:block\.timestamp|\bnow\b)\s*(?:==|>=|<=|>|<)', stripped) or \
+                    re.search(r'\bif\s*\([^)]*(?:block\.timestamp|\bnow\b)\s*==', stripped):
+                findings.append({
+                    'rule_id': 'SOL-006',
+                    'line': i + 1,
+                    'snippet': stripped[:120],
+                })
+
+            # Unsafe: used in keccak256/sha3 — but only flag if NOT a benign multi-input ID generator
+            elif re.search(r'(?:keccak256|sha3)\s*\(.*(?:block\.timestamp|\bnow\b)', stripped):
                 if not _is_timestamp_keccak_fp(stripped, lines, i):
                     findings.append({
                         'rule_id': 'SOL-006',

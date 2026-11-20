@@ -21,6 +21,7 @@ from z3 import (
     Solver,
     Not,
     And,
+    Or,
     Int,
     UGE,
     UGT,
@@ -77,6 +78,21 @@ def _is_balanced(text: str) -> bool:
     return not stack
 
 
+_TYPE_PREFIX_RE = re.compile(
+    r"^(?:uint\d{0,3}|int\d{0,3}|address|bool|bytes\d{0,2})(?:\s+(?:public|private|internal))?\s+(?P<rest>[A-Za-z_].*)$"
+)
+
+
+def _normalize_snippet(snippet: str) -> str:
+    """Strip a leading type declaration (``uint256 total = a * b;``)."""
+    if not snippet:
+        return snippet
+    m = _TYPE_PREFIX_RE.match(snippet.strip())
+    if m and "=" in m.group("rest"):
+        return m.group("rest").strip()
+    return snippet
+
+
 def _parse_arithmetic(snippet: str):
     """Extrait (op, operande_gauche, operande_droit) d'un snippet de finding.
 
@@ -84,6 +100,7 @@ def _parse_arithmetic(snippet: str):
       - ``totalSupply = totalSupply + amount;``  (forme binaire)
       - ``totalSupply += amount;``               (forme composée)
     """
+    snippet = _normalize_snippet(snippet)
     if not snippet or not _is_balanced(snippet):
         return None
 
@@ -181,11 +198,66 @@ def _apply_bounds(solver, bounds: dict, left: str, right: str, x, y) -> None:
             solver.add(ULE(ref, hi))
 
 
+def _parse_chain(snippet: str):
+    """Parse a (possibly multi-operand) arithmetic assignment.
+
+    Returns ``(first_operand, [(op, operand), ...])`` or ``None``.
+    Covers A3 (``a = a + b + c`` folds left, every step can overflow)
+    where the old parser silently dropped operands past the second.
+    """
+    snippet = _normalize_snippet(snippet)
+    if not snippet or not _is_balanced(snippet):
+        return None
+    assign = _ASSIGN_RE.match(snippet)
+    if not assign:
+        return None
+    compound = assign.group("compound")
+    rhs = assign.group("rhs").strip().rstrip(";")
+    if compound:
+        first = assign.group("lhs")
+        toks = re.findall(r"[\w.\[\]()]+|[+\-*]", rhs)
+        if not toks:
+            return None
+        return first, [(compound, toks[0])]
+    parts = re.findall(r"[\w.\[\]()]+|[+\-*]", rhs)
+    if len(parts) < 3 or parts[1] not in ("+", "-", "*"):
+        return None
+    steps = []
+    for i in range(1, len(parts) - 1, 2):
+        if parts[i] in ("+", "-", "*") and i + 1 < len(parts):
+            steps.append((parts[i], parts[i + 1]))
+    if not steps:
+        return None
+    return parts[0], steps
+
+
+def _function_slice(content: str, line_no) -> str:
+    """Source slice of the function enclosing ``line_no`` (best effort).
+
+    Used to scope ``require`` bounds to their own function (A8): bounds
+    from a same-named variable in another function no longer leak.
+    Falls back to the whole content when no function is located.
+    """
+    if not content or not line_no:
+        return content or ""
+    try:
+        from modules.solidity.function_parser import function_at, parse_source
+        _lines, _c, functions = parse_source(content)
+        fn = function_at(functions, int(line_no))
+        if fn is not None:
+            src_lines = content.split("\n")
+            return "\n".join(src_lines[fn.body_start - 1:fn.end_line])
+    except Exception:
+        pass
+    return content
+
+
 def prove_overflow(
     finding: dict,
     bit_width: int = 256,
     bounds: dict = None,
     guarded: bool = False,
+    operand_widths: dict = None,
 ) -> dict:
     """Construit les contraintes Z3 pour un finding SOL-004 et les résout.
 
@@ -221,18 +293,53 @@ def prove_overflow(
         return base
 
     op, left, right = parsed
-    x = BitVec(left, bit_width)
-    y = BitVec(right, bit_width)
+    chain = _parse_chain(snippet) or (left, [(op, right)])
+    first_operand, steps = chain
+    operand_names = [first_operand] + [o for _op, o in steps]
+    # Solidity promotion (A4): the operation runs at the widest operand
+    # width; narrower operands keep their original range as a constraint.
+    widths = {n: int((operand_widths or {}).get(n, bit_width)) for n in operand_names}
+    promoted = max([bit_width] + list(widths.values())) if operand_widths else bit_width
+    if operand_widths:
+        promoted = max(widths.values())
+    base["bit_width"] = promoted
+    base["operand_widths"] = widths
 
     solver = Solver()
-    # Domaine plausible : les deux opérandes sont non nuls.
-    # UGT = comparaison NON SIGNÉE — indispensable, car `x > 0` sur un BitVec
-    # utilise par défaut la comparaison signée de z3 et restreindrait x à
-    # [1, 2^(w-1)-1], rendant le débordement d'une addition uint indétectable.
-    solver.add(UGT(x, 0), UGT(y, 0))
-    _apply_bounds(solver, bounds or {}, left, right, x, y)
+    vars_by_name: dict = {}
 
-    overflow_possible = _OVERFLOW_CONDITION[op](x, y)
+    def _bv(name: str):
+        if name not in vars_by_name:
+            v = BitVec(name, promoted)
+            vars_by_name[name] = v
+            # Domaine plausible : opérandes non nuls (comparaison NON
+            # SIGNÉE, sinon le débordement uint devient indétectable).
+            solver.add(UGT(v, 0))
+            origin = widths.get(name, promoted)
+            if origin < promoted:
+                solver.add(ULE(v, (1 << origin) - 1))
+            for var_name, (lo, hi) in (bounds or {}).items():
+                if var_name == name:
+                    if lo is not None:
+                        solver.add(UGE(v, lo))
+                    if hi is not None:
+                        solver.add(ULE(v, hi))
+        return vars_by_name[name]
+
+    expr = _bv(first_operand)
+    overflow_terms = []
+    for step_op, operand in steps:
+        y = _bv(operand)
+        overflow_terms.append(_OVERFLOW_CONDITION[step_op](expr, y))
+        if step_op == "+":
+            expr = expr + y
+        elif step_op == "-":
+            expr = expr - y
+        else:
+            expr = expr * y
+    x = vars_by_name[first_operand]
+    y = vars_by_name[steps[0][1]] if steps else x
+    overflow_possible = Or(*overflow_terms) if len(overflow_terms) > 1 else overflow_terms[0]
     if guarded:
         # Sémantique modélisée de la garde : le débordement déclenche un revert.
         solver.add(Not(overflow_possible))
@@ -246,8 +353,14 @@ def prove_overflow(
 
     if result == sat:
         model = solver.model()
-        x_val = model[x].as_long() if model[x] is not None else None
-        y_val = model[y].as_long() if model[y] is not None else None
+        counterexample = {}
+        for name, var in vars_by_name.items():
+            try:
+                counterexample[name] = model[var].as_long() if model[var] is not None else None
+            except Exception:
+                counterexample[name] = None
+        x_val = counterexample.get(left)
+        y_val = counterexample.get(right)
         base.update(
             {
                 "smt_verified": True,
@@ -255,11 +368,11 @@ def prove_overflow(
                 "exploitable": True,
                 "operation": op,
                 "proof": (
-                    f"Z3 SAT ({bit_width}-bit BitVec) — débordement {op} atteignable "
+                    f"Z3 SAT ({promoted}-bit BitVec) — débordement {op} atteignable "
                     f"avec {left}={x_val}, {right}={y_val}."
                 ),
                 "model": str(model),
-                "counterexample": {left: x_val, right: y_val},
+                "counterexample": counterexample,
             }
         )
         return base
@@ -267,12 +380,12 @@ def prove_overflow(
     if result == unsat:
         if guarded:
             proof = (
-                f"Z3 UNSAT ({bit_width}-bit BitVec) — aucun débordement {op} possible : "
+                f"Z3 UNSAT ({promoted}-bit BitVec) — aucun débordement {op} possible : "
                 f"la garde modélisée l'interdit. {GUARD_ASSUMPTION}"
             )
         else:
             proof = (
-                f"Z3 UNSAT ({bit_width}-bit BitVec) — aucun débordement {op} possible "
+                f"Z3 UNSAT ({promoted}-bit BitVec) — aucun débordement {op} possible "
                 "sur le domaine contraint."
             )
         base.update(
@@ -308,20 +421,115 @@ def prove_finding_in_source(finding: dict, content: str) -> dict:
     car la largeur réelle (uint8 / uint128 / uint256) change le verdict.
     """
     parsed = _parse_arithmetic(finding.get("snippet", ""))
+    chain = _parse_chain(finding.get("snippet", ""))
 
     bit_width = 256
-    if parsed:
+    operand_widths: dict = {}
+    if chain:
+        first_operand, steps = chain
+        names = [first_operand] + [o for _op, o in steps]
+        for name in names:
+            base_name = re.split(r"[.\[]", name)[0]
+            operand_widths[name] = _infer_bit_width(content, base_name)
+        bit_width = max(operand_widths.values()) if operand_widths else 256
+    elif parsed:
         _, left, right = parsed
         bit_width = _infer_bit_width(content, left)
         if bit_width == 256:
             bit_width = _infer_bit_width(content, right)
 
+    # Bounds are scoped to the enclosing function (A8 fix).
+    scoped = _function_slice(content, finding.get("line"))
     return prove_overflow(
         finding,
         bit_width=bit_width,
-        bounds=_extract_bounds(content),
+        bounds=_extract_bounds(scoped),
         guarded=_detect_guard(content),
+        operand_widths=operand_widths or None,
     )
+
+
+def prove_overflow_reachable(finding: dict, content: str) -> dict:
+    """Overflow proof + single-function reachability (P1).
+
+    Reachability is heuristic and explicitly scoped: the enclosing
+    function must be externally reachable (public/external/fallback, or
+    internal with a located caller) and at least one operand must be
+    tainted by a function parameter or ``msg.value``. The result never
+    upgrades an UNSAT, and ``exploitable`` requires SAT *and* reachable.
+    """
+    result = prove_finding_in_source(finding, content)
+    reach = {"reachable": None, "entry_point": None, "taint_sources": [],
+             "reachability_scope": "single-function heuristic (entry + param taint); not a whole-contract proof"}
+    try:
+        from modules.solidity.function_parser import function_at, parse_source
+        _lines, _c, functions = parse_source(content or "")
+        fn = function_at(functions, int(finding.get("line") or 0))
+        if fn is not None:
+            reach["entry_point"] = fn.name
+            header = fn.header.lower()
+            externally = any(k in header for k in ("public", "external")) or fn.kind in ("fallback", "receive", "constructor")
+            if not externally and fn.kind == "function":
+                # Internal/private: reachable only if a caller is located.
+                callers = [o for o in functions if o is not fn and re.search(
+                    r"\b" + re.escape(fn.name) + r"\s*\(", "\n".join(
+                        (content or "").split("\n")[o.body_start - 1:o.end_line]))]
+                externally = bool(callers)
+            parsed = _parse_chain(finding.get("snippet", "")) or (None, [])
+            names = []
+            if parsed[0]:
+                names = [parsed[0]] + [o for _op, o in parsed[1]]
+            taint = [n for n in names
+                     if re.split(r"[.\[]", n)[0] in set(fn.params)
+                     or n.startswith("msg.")]
+            reach["taint_sources"] = taint
+            reach["reachable"] = bool(externally and taint)
+    except Exception:
+        pass
+    result.update(reach)
+    result["scope"] = (
+        "overflow representable + single-function reachability-checked"
+        if reach["reachable"] else
+        "overflow representable for this operation (not reachability-proven)"
+    )
+    if result.get("verdict") == "SAT":
+        result["exploitable"] = True if reach["reachable"] else result.get("exploitable")
+        result["reachability_proven"] = bool(reach["reachable"])
+    return result
+
+
+def apply_z3_binding(findings: list, contents_by_file: dict, binding: bool = True):
+    """Split findings into (kept, suppressed) using binding Z3 verdicts.
+
+    P1: an UNSAT verdict (guard modelled, no overflow representable)
+    now *removes* the SOL-004 finding from the exploitable list instead
+    of merely annotating it (KNOWN_LIMITATIONS §4). SAT and UNPARSED
+    findings are kept, annotated with their verdict. When ``binding``
+    is False the legacy annotate-only behaviour is preserved.
+    """
+    kept, suppressed = [], []
+    for f in findings:
+        if not binding or f.get("rule_id") != "SOL-004":
+            kept.append(f)
+            continue
+        content = contents_by_file.get(f.get("file_path") or f.get("file") or "", "")
+        if not content:
+            kept.append(f)
+            continue
+        try:
+            res = prove_finding_in_source(
+                {"rule_id": "SOL-004", "line": f.get("line"), "snippet": f.get("snippet", "")},
+                content,
+            )
+        except Exception:
+            kept.append(f)
+            continue
+        annotated = {**f, "z3_verdict": res.get("verdict"), "z3_exploitable": res.get("exploitable")}
+        if res.get("verdict") == "UNSAT":
+            suppressed.append(annotated)
+        else:
+            kept.append(annotated)
+    return kept, suppressed
 
 
 def prove_reentrancy(z3_finding: dict) -> dict:

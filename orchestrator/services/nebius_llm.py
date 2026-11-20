@@ -24,6 +24,11 @@ from typing import Optional
 
 logger = logging.getLogger("adversum.nebius")
 
+try:
+    from .llm_routing import build_gasr_context, get_model_for_task, validate_validation_payload
+except (ImportError, ValueError):  # direct-module import
+    from llm_routing import build_gasr_context, get_model_for_task, validate_validation_payload  # type: ignore
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -287,13 +292,18 @@ def _get_client():
 # ---------------------------------------------------------------------------
 # Finding validation
 # ---------------------------------------------------------------------------
-async def validate_finding_with_nemotron(finding: dict) -> dict:
+async def validate_finding_with_nemotron(finding: dict, source: str = "") -> dict:
     """
     Use NVIDIA Nemotron (via Nebius Token Factory) to validate a single
     security finding and enrich it with AI-powered analysis.
 
-    Returns the original finding dict augmented with a 'nebius_ai' key
-    containing confidence score, explanation, and remediation advice.
+    P2: routed to the verification model, prompted with G-ASR graph
+    context (enclosing function, state vars, call/write ordering) when
+    ``source`` is available, and the payload is validated against a
+    JSON schema with one repair retry. Schema-invalid output is marked
+    (``ai_validation_error``), never silently trusted.
+
+    Returns the original finding dict augmented with a 'nebius_ai' key.
     Falls back gracefully if Nebius is unavailable.
     """
     if not _is_available():
@@ -304,7 +314,7 @@ async def validate_finding_with_nemotron(finding: dict) -> dict:
 
     try:
         client = _get_client()
-        snippet = (finding.get("snippet") or "")[:300]
+        context = build_gasr_context(finding, source) if source else (finding.get("snippet") or "")[:300]
         prompt = f"""You are an expert application security engineer. Analyze this SAST finding and determine if it is a true or false positive. Be concise and precise.
 
 Finding details:
@@ -312,9 +322,9 @@ Finding details:
 - Severity: {finding.get('severity', 'N/A')}
 - File: {finding.get('file', 'N/A')} (line {finding.get('line', '?')})
 - Description: {finding.get('description', 'N/A')}
-- Code snippet:
+- Graph context (G-ASR: function, state, call/write ordering):
 ```
-{snippet}
+{context}
 ```
 
 Enclose your final JSON strictly between <json> and </json> tags:
@@ -325,28 +335,37 @@ Enclose your final JSON strictly between <json> and </json> tags:
   "ai_explanation": "Brief explanation of why this is real or a false positive",
   "ai_remediation": "Specific fix recommendation",
   "attack_scenario": "Short real-world attack scenario (1 sentence)",
-  "cwe_reference": "CWE-XXX"
+  "cwe_reference": "CWE-841"
 }}
 </json>"""
 
-        response = await client.chat.completions.create(
-            model=get_active_model(),
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a SAST security analyst. Always output your final JSON object enclosed strictly between <json> and </json> tags."
-                    )
-                },
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=3500,
-        )
-
-        msg = response.choices[0].message
-        raw = (msg.content or getattr(msg, "reasoning_content", "") or "").strip()
-        ai_data = _extract_json(raw)
+        ai_data = None
+        last_errors: list = []
+        for attempt in range(2):
+            response = await client.chat.completions.create(
+                model=get_model_for_task("verification"),
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a SAST security analyst. Always output your final JSON object enclosed strictly between <json> and </json> tags."
+                        )
+                    },
+                    {"role": "user", "content": prompt if attempt == 0 else prompt + f"\n\nYour previous answer violated the schema: {last_errors}. Output only the corrected JSON."}
+                ],
+                temperature=0.2,
+                max_tokens=3500,
+            )
+            msg = response.choices[0].message
+            raw = (msg.content or getattr(msg, "reasoning_content", "") or "").strip()
+            candidate = _extract_json(raw)
+            ok, last_errors = validate_validation_payload(candidate)
+            if ok:
+                ai_data = candidate
+                break
+            logger.warning(f"[Nebius] Schema-invalid validation (attempt {attempt + 1}): {last_errors}")
+        if ai_data is None:
+            return {**finding, "ai_validation_error": last_errors, "ai_powered": True}
         logger.info(
             f"[Nebius] Validated '{finding.get('rule_id')}' — "
             f"true_positive={ai_data.get('is_true_positive')} "
@@ -362,14 +381,13 @@ Enclose your final JSON strictly between <json> and </json> tags:
 # ---------------------------------------------------------------------------
 # Batch validation (top N findings)
 # ---------------------------------------------------------------------------
-def max_validated_findings(default: int = 4) -> int:
+def max_validated_findings(default: int = 0) -> int:
     """
-    How many findings get an individual LLM validation pass.
-
-    The cap exists because the free NVIDIA NIM tier returns 504 when hit with
-    many sequential calls. It used to be a hard-coded 4 in the signature, so a
-    400-finding audit silently AI-validated only the first four while the report
-    implied otherwise. Override with NEBIUS_MAX_VALIDATED_FINDINGS.
+    Cap on individually LLM-validated findings. ``0`` (default) means
+    *all* findings: the old hard-coded cap of 4 silently validated only
+    the first four of a 400-finding audit while the report implied
+    full coverage (P2 fix). Set ``NEBIUS_MAX_VALIDATED_FINDINGS`` to a
+    positive value to re-impose a budget cap explicitly.
     """
     try:
         return max(0, int(os.getenv("NEBIUS_MAX_VALIDATED_FINDINGS", str(default))))
@@ -379,20 +397,26 @@ def max_validated_findings(default: int = 4) -> int:
 
 async def validate_findings_batch(findings: list, max_findings: Optional[int] = None) -> list:
     """
-    Validate up to `max_findings` findings sequentially with a semaphore to avoid
-    overwhelming the free-tier NVIDIA NIM rate limit and causing 504 Gateway Timeouts.
-    Returns the full findings list with AI enrichment on the first N items.
+    Validate findings with the verification model. By default every
+    finding is validated (bounded concurrency via
+    ``NEBIUS_VALIDATION_CONCURRENCY``, default 4) instead of only the
+    first N. Pass ``max_findings`` to cap explicitly.
     """
     if not _is_available() or not findings:
         return findings
 
     if max_findings is None:
-        max_findings = max_validated_findings()
+        cap = max_validated_findings()
+        max_findings = cap if cap > 0 else len(findings)
 
     top = findings[:max_findings]
     rest = findings[max_findings:]
 
-    sem = asyncio.Semaphore(1)
+    try:
+        concurrency = max(1, int(os.getenv("NEBIUS_VALIDATION_CONCURRENCY", "4")))
+    except (TypeError, ValueError):
+        concurrency = 4
+    sem = asyncio.Semaphore(concurrency)
 
     async def _throttled_validate(f):
         async with sem:

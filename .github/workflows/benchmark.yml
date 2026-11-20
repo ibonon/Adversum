@@ -1,0 +1,45 @@
+name: Adversum Benchmark (P0)
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Bundled benchmark (offline, deterministic)
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          python benchmarks/run_benchmark.py --dataset benchmarks/corpus \
+            --fail-under-f1 70
+
+      - name: LLM anti-hallucination eval
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          python benchmarks/run_llm_eval.py
+
+      - name: Throughput (versioned)
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          python benchmarks/run_throughput.py
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmarks/results/

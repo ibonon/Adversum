@@ -14,8 +14,9 @@ python-multipart>=0.0.9
 sqlmodel>=0.0.18
 SQLAlchemy>=2.0.0
 greenlet>=3.0.0
-# asyncpg — install separately if PostgreSQL is needed; no py3.14 wheel yet
-# asyncpg>=0.29.0
+# asyncpg — PostgreSQL production driver (P4). SQLite remains the
+# default; set DATABASE_URL=postgresql+asyncpg://... for Postgres.
+asyncpg>=0.29.0
 
 # AI/LLM  (grpcio excluded — no py3.14 wheel; litellm works without it for OpenAI/Anthropic)
 openai>=2.8.0

@@ -1,0 +1,10 @@
+[
+  {"file": "ReentrancyVuln.sol", "vulnerabilities": [{"lines": [5], "category": "reentrancy"}]},
+  {"file": "ReentrancySafe.sol", "vulnerabilities": []},
+  {"file": "OverflowVuln.sol", "vulnerabilities": [{"lines": [5], "category": "arithmetic"}]},
+  {"file": "OverflowSafe.sol", "vulnerabilities": []},
+  {"file": "AccessVuln.sol", "vulnerabilities": [{"lines": [5], "category": "access_control"}, {"lines": [9], "category": "access_control"}]},
+  {"file": "UncheckedVuln.sol", "vulnerabilities": [{"lines": [4], "category": "unchecked_low_level_calls"}]},
+  {"file": "RandomnessVuln.sol", "vulnerabilities": [{"lines": [5], "category": "bad_randomness"}]},
+  {"file": "DosVuln.sol", "vulnerabilities": [{"lines": [6], "category": "denial_of_service"}]}
+]

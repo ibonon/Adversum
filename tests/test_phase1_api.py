@@ -29,12 +29,14 @@ def test_api_live_fork_endpoint():
     data = response.json()
 
     assert data["rule_id"] == "SOL-001"
-    assert data["status"] == "CONFIRMED_DRAINED"
+    assert data["status"] == "SIMULATED_DRAINED"
+    assert data["execution_mode"] == "simulated"
+    assert data["is_real_execution"] is False
     assert data["initial_vault_balance_eth"] == 80.0
     assert data["final_vault_balance_eth"] == 0.0
     assert data["attacker_profit_eth"] == 80.0
-    assert data["tx_hash"].startswith("0x")
-    assert data["empirical_badge"] == "PROVEN_ON_CHAIN_FORK_0_PERCENT_FP"
+    assert data["tx_hash"].startswith("simulated:")
+    assert data["empirical_badge"] == "SIMULATED_NOT_AN_ONCHAIN_PROOF"
     assert len(data["traces"]) >= 3
 
 

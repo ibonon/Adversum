@@ -1,0 +1,12 @@
+{
+  "benchmark_version": "throughput-v1",
+  "git_sha": "d1bc5b1",
+  "target": "C:\\Users\\SMC-DXB\\Projects\\Adversum\\benchmarks\\corpus",
+  "files": 8,
+  "total_lines": 73,
+  "best_seconds": 0.0226,
+  "lines_per_second": 3225.0,
+  "engine": "Adversum native Solidity rules (single-threaded Python)",
+  "python": "3.13.15",
+  "platform": "Windows-11-10.0.26300-SP0"
+}

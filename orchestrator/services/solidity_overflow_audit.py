@@ -169,7 +169,15 @@ async def audit_solidity_source(source: str, file_path: str) -> List[Dict]:
                 z3_res=z3_res,
             )
         )
-    return findings
+    # Binding UNSAT (P1): a proven-safe operation leaves the exploitable
+    # list instead of staying as an annotated finding. UNPARSED stays
+    # (honest SUSPICIOUS), SAT stays CONFIRMED.
+    kept = [f for f in findings if f.get("z3_verdict") != "UNSAT"]
+    suppressed = len(findings) - len(kept)
+    if suppressed:
+        logger.info("[SOL-004] %s: %d finding(s) UNSAT supprimé(s) (liaison contraignante)",
+                    file_path, suppressed)
+    return kept
 
 
 async def audit_solidity_path(real_path: str) -> List[Dict]:

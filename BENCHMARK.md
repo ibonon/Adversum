@@ -2,9 +2,12 @@
 
 Quantitative evaluation of Adversum against industry-standard SAST and security auditing tools (Slither, Semgrep, and Snyk).
 
-> ⚠️ **Avertissement méthodologique et reproductibilité / Scope & Reproducibility Notice**  
-> Les métriques comparatives, débits et pourcentages présentés dans ce document sont issus d'évaluations et bancs d'essai historiques menés sur des corpus de référence spécifiques (`benchmarks/results/`, corpus SmartBugs et échantillons statiques de test).  
-> **Ces résultats ne sont pas reproduits en continu depuis ce dépôt** : la suite de tests automatisée du dépôt (`tests/`, `modules/formal_verification/`) valide la conformité fonctionnelle et la vérification formelle Z3 déterministe, mais aucun script ne rejoue l'ensemble de ces benchmarks comparatifs en continu. Les résultats réels dépendent du corpus cible, de l'environnement matériel, des versions logicielles et de la disponibilité des modèles LLM.
+> **P0 — Vérité métrique (à jour).** Les chiffres *mesurés et rejouables* sont
+> produits par `benchmarks/run_benchmark.py` (voir `benchmarks/README.md`) et
+> publiés dans `benchmarks/results/latest.md` avec SHA git et moteur identifié.
+> Tout chiffre ci-dessous marqué *historique / non reproduit* est conservé
+> uniquement comme trace d'expérimentation : il ne doit être cité ni comme
+> métrique courante, ni comme garantie. En cas de divergence, `latest.md` fait foi.
 
 ---
 
@@ -13,8 +16,8 @@ Quantitative evaluation of Adversum against industry-standard SAST and security 
 | Metric / Capability | **Adversum (Rust + Nemotron)** | **Slither** | **Semgrep** | **Snyk Code** |
 | :--- | :---: | :---: | :---: | :---: |
 | **Engine Architecture** | Native Rust (Rayon + Tree-sitter + Datalog) | Python AST / SlithIR | OCaml pattern engine | Proprietary Cloud |
-| **Scan Throughput** | **12,500+ lines/sec\*** | ~1,200 lines/sec | ~4,500 lines/sec | ~800 lines/sec (API) |
-| **False Positive Rate** | **< 2.8%\*** *(Nemotron AI verified)* | 38.4%\* | 42.1%\* | 29.5%\* |
+| **Scan Throughput** | Voir `benchmarks/results/throughput_v1.json` (versionné, rejouable) | ~1,200 lines/sec* | ~4,500 lines/sec* | ~800 lines/sec (API)* |
+| **False Positive Rate** | Voir `benchmarks/results/latest.md` (par CWE, rejouable) | 38.4%\* | 42.1%\* | 29.5%\* |
 | **Attack Graph Synthesis** | ✅ **Multi-stage Kill Chain (G-ASR)** | ❌ None | ❌ None | ❌ None |
 | **Auto-Remediation Verification** | ✅ **AVR (Autonomous Verified Remediation)** | ❌ None | ⚠️ Static patch | ⚠️ Static patch |
 | **Smart Contract Logic (DeFi)** | ✅ Reentrancy, Bridges, Merkle PoR | ✅ EVM opcodes | ⚠️ Regex/AST | ⚠️ Limited |
@@ -52,11 +55,17 @@ Snyk (Cloud API)         ██████████████████�
 Evaluating detection on 50 verified historical vulnerability benchmarks (including reentrancy, uninitialized bridge roots, and cryptographic misconfigurations):
 
 ```
+HISTORIQUE / NON REPRODUIT — ne pas citer comme métrique courante :
                      True Positives    False Positives    Precision (%)
 Adversum Raw SAST          49                18               73.1%
-Adversum + Nemotron AI     48                 1               97.9%*  <-- 95% FP reduction!
+Adversum + Nemotron AI     48                 1               97.9%*  (ancien corpus de 50 cas)
 Slither                    44                28               61.1%
 Semgrep                    41                30               57.7%
+
+MESURÉ / REJOUABLE (SmartBugs curated, 143 contrats, règles natives) :
+voir benchmarks/results/latest.md — au moment de l'écriture : 106/143
+contrats avec catégorie correcte, rappel ligne 45,9 %, F1 reentrancy
+71,4 %, F1 unchecked-call 73,3 %, F1 arithmetic 35,3 %.
 ```
 
 > ℹ️ **Corpus d'évaluation :** Évaluation historique réalisée sur un corpus de 50 cas de vulnérabilités vérifiées (dont SmartBugs et cas de synthèse, voir `benchmarks/results/smartbugs_report.json`). Le taux de précision affiché (97.9%) et la réduction relative de faux positifs représentent les résultats observés sur ce jeu de test particulier avec NVIDIA Nemotron actif, et ne constituent pas une garantie uniforme sur tout codebase arbitraire. Chiffres non reproduits en continu depuis ce dépôt.
@@ -75,6 +84,6 @@ Adversum is not just an alerting tool—it is an autonomous remediation agent:
 1. **Patch Generation**: Nemotron synthesizes a surgical patch respecting the existing AST formatting and variable scopes.
 2. **Deterministic Re-Scan**: The Rust SAST engine immediately parses the patched AST in an isolated memory buffer.
 3. **Mathematical Proof of Fix**: If the vulnerability sink is eradicated and no new sinks or syntax errors are introduced, the patch is labeled `CONFIRMED_FIXED`.
-4. **Verification Rate**: **96.4%\*** of Nemotron-generated AVR patches pass the deterministic core verification on the first attempt.
+4. **Verification Rate**: *historique / non reproduit* — formerly reported as 96.4% on the initial AVR experiment corpus; not replayed by any script in this repository and must not be cited as a current metric.
 
 <sub>\* Taux mesuré sur les scénarios AVR validés du corpus d'expérimentation initial ; non rejoué automatiquement en continu par la suite de tests du dépôt.</sub>

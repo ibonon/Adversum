@@ -1,0 +1,36 @@
+{
+  "cases": 4,
+  "passed": 4,
+  "accuracy_percent": 100.0,
+  "mode": "recorded-hypotheses (offline)",
+  "results": [
+    {
+      "id": "overflow-wrong-line",
+      "ok": true,
+      "anchor_status": "ANCRAGE_OK",
+      "resolved_line": 5,
+      "verdict": "SAT"
+    },
+    {
+      "id": "safemath-guarded",
+      "ok": true,
+      "anchor_status": "ANCRAGE_OK",
+      "resolved_line": 3,
+      "verdict": "UNSAT"
+    },
+    {
+      "id": "hallucinated-variable",
+      "ok": true,
+      "anchor_status": "ANCRAGE_ECHOUE",
+      "resolved_line": null,
+      "verdict": null
+    },
+    {
+      "id": "ambiguous-variable",
+      "ok": true,
+      "anchor_status": "ANCRAGE_ECHOUE",
+      "resolved_line": null,
+      "verdict": null
+    }
+  ]
+}

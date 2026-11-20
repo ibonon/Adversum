@@ -62,9 +62,14 @@ class ProofOfExploit:
     state_root_after: str
     traces: List[Dict[str, Any]] = field(default_factory=list)
     replayable_rpc_payload: Dict[str, Any] = field(default_factory=dict)
-    empirical_badge: str = "PROVEN_ON_CHAIN_FORK_0_PERCENT_FP"
+    empirical_badge: str = "SIMULATED_NOT_AN_ONCHAIN_PROOF"
     ai_narrative: str = ""
     timestamp_utc: str = ""
+    # P3 honesty: real Foundry/Anvil execution carries a real badge and
+    # hash; simulation is labelled as simulation and never as proof.
+    execution_mode: str = "simulated"  # simulated | foundry_local_evm_real
+    is_real_execution: bool = False
+    simulation_notice: str = "Simulated execution — NOT an on-chain proof. Install Foundry (forge/anvil) and provide contract source for real EVM execution."
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -94,6 +99,13 @@ class LiveForkEngine:
         """
         Executes the exploit against an ephemeral fork and captures full execution telemetry.
         """
+        # P3: attempt real Foundry execution first when the toolchain
+        # and contract source are available; otherwise fall through to
+        # the labelled simulation below.
+        real = self._try_real_foundry(finding, initial_vault_eth, network)
+        if real is not None:
+            return real
+
         rule_id = finding.get("rule_id", "SOL-001")
         file_path = finding.get("file", "contracts/Vault.sol")
         contract_name = Path(file_path).stem or "VulnerableTarget"
@@ -117,10 +129,11 @@ class LiveForkEngine:
         final_vault_eth = max(0.0, initial_vault_eth - profit_eth)
         profit_usd = profit_eth * self.DEFAULT_ETH_PRICE
 
-        # Compute cryptographic Proof of Execution (deterministic tx_hash & state_root)
+        # Simulated identifiers: derived from the scenario, explicitly
+        # not a chain transaction hash (previously presented as one).
         seed_data = f"{rule_id}:{contract_name}:{fork_block}:{profit_eth}:{gas_used}:{time.time()}"
-        tx_hash = "0x" + hashlib.sha256(seed_data.encode("utf-8")).hexdigest()
-        state_root = "0x" + hashlib.sha256(f"state:{tx_hash}".encode("utf-8")).hexdigest()
+        tx_hash = "simulated:" + hashlib.sha256(seed_data.encode("utf-8")).hexdigest()
+        state_root = "simulated:" + hashlib.sha256(f"state:{tx_hash}".encode("utf-8")).hexdigest()
 
         # Replayable JSON-RPC standard payload (Anvil / Hardhat ready)
         replayable_rpc = {
@@ -147,7 +160,7 @@ class LiveForkEngine:
             tx_hash=tx_hash
         )
 
-        status = "CONFIRMED_DRAINED" if profit_eth > 0 else "EXPLOIT_VERIFIED"
+        status = "SIMULATED_DRAINED" if profit_eth > 0 else "SIMULATED_EXPLOIT"
 
         return ProofOfExploit(
             finding_id=finding.get("id") or finding.get("rule_id", "FINDING-001"),
@@ -168,10 +181,81 @@ class LiveForkEngine:
             state_root_after=state_root,
             traces=traces,
             replayable_rpc_payload=replayable_rpc,
-            empirical_badge="PROVEN_ON_CHAIN_FORK_0_PERCENT_FP",
+            empirical_badge="SIMULATED_NOT_AN_ONCHAIN_PROOF",
             ai_narrative=narrative,
-            timestamp_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            timestamp_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            execution_mode="simulated",
+            is_real_execution=False,
         )
+
+    def _try_real_foundry(self, finding: Dict[str, Any], initial_vault_eth: float, network: str):
+        """Real EVM execution via Foundry, or None to fall back to simulation.
+
+        Requires forge+anvil and the target contract source (``source_code``
+        in the finding, or a readable ``.sol`` path). Generates the PoC
+        test, compiles and runs it with ``forge test``; forge's own exit
+        status decides drained vs mitigated — nothing is asserted without
+        the toolchain actually running.
+        """
+        if not self.has_native_foundry:
+            return None
+        source = finding.get("source_code") or finding.get("source") or ""
+        if not source:
+            file_path = finding.get("file", "")
+            if file_path and os.path.exists(file_path):
+                try:
+                    source = Path(file_path).read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    return None
+        if not source or "contract" not in source:
+            return None
+        try:
+            import tempfile
+            from modules.poc_generator.generator import FoundryPoCGenerator
+            poc = FoundryPoCGenerator().generate_poc(finding, source)
+            if not poc:
+                return None
+            with tempfile.TemporaryDirectory(prefix="adversum-forge-") as tmp:
+                root = Path(tmp)
+                (root / "foundry.toml").write_text('[profile.default]\nsrc = "src"\nout = "out"\n', encoding="utf-8")
+                (root / "src").mkdir()
+                contract_name = Path(finding.get("file", "VulnerableContract.sol")).stem or "VulnerableContract"
+                (root / "src" / f"{contract_name}.sol").write_text(source, encoding="utf-8")
+                (root / "src" / "ExploitPoC.t.sol").write_text(poc, encoding="utf-8")
+                proc = subprocess.run(
+                    ["forge", "test", "--match-contract", "ExploitPoC", "-vv"],
+                    cwd=tmp, capture_output=True, text=True, timeout=300,
+                )
+                drained = proc.returncode == 0
+                return ProofOfExploit(
+                    finding_id=finding.get("id") or finding.get("rule_id", "FINDING-001"),
+                    rule_id=finding.get("rule_id", "SOL-001"),
+                    title=finding.get("title") or "Live Exploit Execution",
+                    target_contract=contract_name,
+                    exploit_type="Foundry EVM execution",
+                    status="CONFIRMED_DRAINED" if drained else "MITIGATED",
+                    fork_network=network,
+                    fork_block=0,
+                    initial_vault_balance_eth=initial_vault_eth,
+                    final_vault_balance_eth=0.0 if drained else initial_vault_eth,
+                    attacker_profit_eth=initial_vault_eth if drained else 0.0,
+                    attacker_profit_usd=(initial_vault_eth * self.DEFAULT_ETH_PRICE) if drained else 0.0,
+                    eth_price_usd=self.DEFAULT_ETH_PRICE,
+                    gas_consumed=0,
+                    tx_hash="",
+                    state_root_after="",
+                    traces=[{"call_type": "FORGE_TEST", "status": "SUCCESS" if drained else "FAILED",
+                             "return_data": (proc.stdout or proc.stderr)[-2000:]}],
+                    replayable_rpc_payload={},
+                    empirical_badge="PROVEN_ON_LOCAL_EVM_FOUNDRY" if drained else "FOUNDRY_EXPLOIT_MITIGATED",
+                    ai_narrative="Real `forge test` execution (local EVM). Full output in traces[0].return_data.",
+                    timestamp_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    execution_mode="foundry_local_evm_real",
+                    is_real_execution=True,
+                    simulation_notice="",
+                )
+        except Exception:
+            return None
 
     def _simulate_evm_execution(
         self,
@@ -342,11 +426,10 @@ class LiveForkEngine:
     ) -> str:
         """Produces an executive proof-of-exploit narrative for CISO presentation."""
         return (
-            f"⚡ **Empirical On-Chain Fork Verification Result:**\n"
-            f"Adversum forked Ethereum Mainnet state and executed an active exploit vector against `{contract_name}`.\n"
-            f"- **Exploit Mechanism**: Exploit contract successfully exploited `{rule_id}` without hitting any revert conditions.\n"
-            f"- **Vault Capital Before**: {initial_eth:.2f} ETH (${initial_eth * self.DEFAULT_ETH_PRICE:,.2f})\n"
-            f"- **Siphoned to Attacker**: **{profit_eth:.2f} ETH (${profit_usd:,.2f})**\n"
-            f"- **Transaction Receipt**: `{tx_hash}` (Status: 0x1 SUCCESS)\n"
-            f"- **False Positive Probability**: **0.00%** (Cryptographically proven on-chain)."
+            f"**Simulated exploit scenario (not executed on-chain):**\n"
+            f"Adversum modelled the expected exploit vector against `{contract_name}` (`{rule_id}`).\n"
+            f"- **Vault Capital Before (modelled)**: {initial_eth:.2f} ETH (${initial_eth * self.DEFAULT_ETH_PRICE:,.2f})\n"
+            f"- **Siphoned to Attacker (modelled)**: **{profit_eth:.2f} ETH (${profit_usd:,.2f})**\n"
+            f"- **Simulated identifier**: `{tx_hash}` (not a transaction receipt)\n"
+            f"- Run with Foundry installed and contract source provided for a real EVM proof."
         )

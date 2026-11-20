@@ -95,20 +95,33 @@ async def audit_solidity_source(source: str, file_path: str) -> List[Dict]:
     except nb.NebiusReentrancyGenerationError as e:
         logger.warning("[SOL-001] Nemotron indisponible pour %s — repli regex : %s", file_path, e)
         provenance = "regex_fallback"
-        # Correction RE3-Fallback : Ne plus deviner la ligne + 1. 
-        # On délègue à l'ancrage la recherche d'une mise à jour d'état dans la même fonction.
+        # P1: the CEI rule already returns the real (call_line,
+        # update_line) pair per function — no guessed function name or
+        # fabricated state-update snippet is needed any more.
         anchored = []
         for f in reentrancy.analyze(source):
-            # Tentative d'ancrage "aveugle" pour le fallback.
-            # On met nemotron_line=None pour marquer l'absence d'IA.
-            h_mock = {
-                "function": "withdraw", 
-                "external_call_line": None, # Pas de ligne IA
-                "external_call_snippet": f["snippet"],
-                "state_update_snippet": "balances[msg.sender] = 0",
-                "guard_present": "none"
-            }
-            anchored.append(anchor_reentrancy_hypothesis(h_mock, source))
+            if f.get("call_line") and f.get("update_line"):
+                anchored.append({
+                    "anchor_status": "ANCRAGE_OK",
+                    "anchor_reason": "paire CEI réelle (règle reentrancy.py, portée fonction)",
+                    "nemotron_call_line": None,
+                    "external_call_snippet": f["snippet"],
+                    "z3_finding": {
+                        "rule_id": "SOL-001",
+                        "function": f.get("function", ""),
+                        "call_line": f["call_line"],
+                        "update_line": f["update_line"],
+                        "is_vulnerable_order": f["call_line"] < f["update_line"],
+                        "guard_present": f.get("guard_present", "none"),
+                    },
+                })
+            else:
+                anchored.append(anchor_reentrancy_hypothesis({
+                    "function": f.get("function", ""),
+                    "external_call_snippet": f["snippet"],
+                    "state_update_snippet": "",
+                    "guard_present": "none",
+                }, source))
 
     findings = []
     for a in anchored:
@@ -139,7 +152,8 @@ async def audit_solidity_source(source: str, file_path: str) -> List[Dict]:
             nemotron_line=raw_nemotron_line,
             z3_res=z3_res,
         ))
-    return findings
+    # Binding UNSAT (P1): CEI-proven-safe sequences leave the list.
+    return [f for f in findings if f.get("z3_verdict") != "UNSAT"]
 
 async def audit_solidity_path(real_path: str) -> List[Dict]:
     root = Path(real_path)

@@ -69,16 +69,15 @@ détecter des vulnérabilités manquées par la regex.
 
 ---
 
-## 4. Limitation connue — le verdict UNSAT n'est pas contraignant
+## 4. Verdict UNSAT — désormais contraignant (P1, résolu)
 
-Lorsque Z3 retourne `UNSAT` (opération prouvée protégée) ou `UNPARSED`
-(snippet non analysable), **le finding n'est pas retiré du rapport**. Le
-verdict n'annote que le patch (`is_smt_verified`), pas la liste des findings.
-
-Choix conservateur : mieux vaut sur-signaler un finding étiqueté
-« règle statique seule » que le supprimer silencieusement. Conséquence : la
-capacité de réfutation de Z3 existe mais n'est pas exploitée pour alléger le
-rapport. C'est un axe d'évolution, pas un comportement caché.
+Lorsque Z3 retourne `UNSAT` (opération prouvée protégée sous les contraintes
+modélisées), le finding SOL-004/SOL-001 est **retiré de la liste exploitable**
+(`apply_z3_binding` dans `z3_prover.py`, appliqué par
+`solidity_overflow_audit.py` / `solidity_reentrancy_audit.py`). `UNPARSED`
+reste affiché comme `SUSPICIOUS` (verdict honnête, pas une preuve).
+Historique : avant P1, le verdict n'annotait que le patch sans retirer le
+finding ; ce comportement conservateur n'est plus celui du pipeline.
 
 ---
 

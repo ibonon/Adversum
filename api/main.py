@@ -1348,7 +1348,8 @@ async def _ai_enrich_result(res: dict, repo_url: str = "", project_name: str = "
         # Step 2 — Nebius / NVIDIA Nemotron finding validation
         if _NEBIUS_LOADED and _nebius_available():
             from orchestrator.services.nebius_llm import max_validated_findings as _max_ai
-            ai_validated = min(len(findings), _max_ai())
+            _cap = _max_ai()
+            ai_validated = len(findings) if _cap <= 0 else min(len(findings), _cap)
             logger.info("AI-validating %d/%d findings (NVIDIA Nemotron)", ai_validated, len(findings))
             findings = await validate_findings_batch(findings, max_findings=ai_validated)
             # Surface the cap so the report cannot imply full AI coverage.

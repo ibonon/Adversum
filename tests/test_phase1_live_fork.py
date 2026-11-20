@@ -25,14 +25,17 @@ def test_live_fork_reentrancy_exploit():
     )
 
     assert proof.rule_id == "SOL-001"
-    assert proof.status == "CONFIRMED_DRAINED"
+    # P3: without Foundry installed this is a labelled simulation, never
+    # presented as an on-chain proof.
+    assert proof.status == "SIMULATED_DRAINED"
+    assert proof.execution_mode == "simulated"
+    assert proof.is_real_execution is False
     assert proof.initial_vault_balance_eth == 50.0
     assert proof.final_vault_balance_eth == 0.0
     assert proof.attacker_profit_eth == 50.0
     assert proof.attacker_profit_usd == 50.0 * 2650.0
-    assert proof.tx_hash.startswith("0x")
-    assert proof.state_root_after.startswith("0x")
-    assert proof.empirical_badge == "PROVEN_ON_CHAIN_FORK_0_PERCENT_FP"
+    assert proof.tx_hash.startswith("simulated:")
+    assert proof.empirical_badge == "SIMULATED_NOT_AN_ONCHAIN_PROOF"
     assert len(proof.traces) >= 4
 
     # Verify call trace contains reentrancy frames
@@ -59,7 +62,8 @@ def test_live_fork_phishing_tx_origin():
     )
 
     assert proof.rule_id == "SOL-002"
-    assert proof.status == "CONFIRMED_DRAINED"
+    assert proof.status == "SIMULATED_DRAINED"
+    assert proof.is_real_execution is False
     assert proof.attacker_profit_eth == 120.0
     assert len(proof.traces) >= 3
     assert any(t["status"] == "AUTH_BYPASSED_TX_ORIGIN" for t in proof.traces)

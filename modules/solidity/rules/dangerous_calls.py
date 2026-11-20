@@ -53,5 +53,19 @@ def analyze(content: str) -> list:
                     'snippet': stripped[:120],
                 })
 
+        # ── SOL-007: Unchecked low-level call return value (SWC-104) ───────
+        # A bare `.call(...)` / `.send(...)` statement discards the success
+        # flag. Assigned (`bool ok =`), required, asserted or branched
+        # calls are checked and not flagged.
+        if re.search(r'\.(?:call\s*\{|call\s*\(|send\s*\()', stripped):
+            checked = bool(re.search(
+                r'(?:\(?\s*bool\s+\w+|require\s*\(|assert\s*\(|if\s*\()', stripped))
+            if not checked and not stripped.startswith(('return', 'bool')):
+                findings.append({
+                    'rule_id': 'SOL-007',
+                    'line': i + 1,
+                    'snippet': stripped[:120],
+                })
+
     return findings
 

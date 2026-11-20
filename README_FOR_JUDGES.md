@@ -7,11 +7,11 @@
 
 **Adversum** is an autonomous security auditing engine that pairs high-throughput native static analysis with deep cognitive reasoning and First-Order Logic formal verification:
 
-1. **Rust AST Core:** 12,500+ lines/second extraction with thread-local Tree-sitter cursor pooling and Rayon parallelism.
-2. **NVIDIA Nemotron AI (deployed on Nebius Cloud):** Formulates formal exploit hypotheses and state invariants from AST slices with zero hallucinations.
-3. **Z3 BitVec 256 SMT Solver:** Formally proves or refutes hypotheses. 
-   - **`UNSAT`**: Guaranteed safe — **eliminating false positives**.
-   - **`SAT`**: Confirmed exploitable — generates a concrete mathematical counter-example.
+1. **Rust AST Core:** Thread-local Tree-sitter cursor pooling and Rayon parallelism. Throughput is versioned and replayable in `benchmarks/results/throughput_v1.json` (no unversioned figure is claimed).
+2. **NVIDIA Nemotron AI (deployed on Nebius Cloud):** Formulates exploit hypotheses from graph context (G-ASR). Hypotheses are anchored to real source lines and checked by Z3; unanchorable hypotheses are rejected, never trusted (see `benchmarks/run_llm_eval.py`).
+3. **Z3 BitVec SMT Solver:** Proves overflow *representability* (plus single-function reachability) or refutes it.
+   - **`UNSAT`**: No overflow representable under the modelled guard — the finding is **removed** from the exploitable list (binding verdict).
+   - **`SAT`**: Representable overflow — generates a concrete mathematical counter-example. Reachability scope is stated on every result.
 
 ---
 
@@ -19,11 +19,13 @@
 
 | Metric | Adversum (Rust + Nemotron + Z3) | Slither | Semgrep | Snyk Code |
 | :--- | :---: | :---: | :---: | :---: |
-| **Scan Throughput** | **12,500+ lines/sec** | ~1,200 lines/sec | ~4,500 lines/sec | ~800 lines/sec |
-| **False Positive Rate** | **< 2.8%** | 38.4% | 42.1% | 29.5% |
-| **Precision** | **97.9%** | 61.1% | 58.2% | 68.7% |
+| **Scan Throughput** | Versioned: `benchmarks/results/throughput_v1.json` | ~1,200 lines/sec* | ~4,500 lines/sec* | ~800 lines/sec* |
+| **Detection (SmartBugs, replayable)** | 106/143 matched · reentrancy F1 71.4% · line recall 45.9% (`benchmarks/results/latest.md`) | — | — | — |
+| **Historical precision (non-reproduced)** | 97.9% on a former 50-case corpus — do not cite as current | 61.1%* | 58.2%* | 68.7%* |
 | **Attack Graph Synthesis** | ✅ **G-ASR Kill Chain** | ❌ None | ❌ None | ❌ None |
-| **Auto-Remediation Verification** | ✅ **AVR Formal Certification** | ❌ None | ⚠️ Static patch | ⚠️ Static patch |
+| **Auto-Remediation Verification** | ✅ **AVR (re-scan verified; Foundry proof only when executed)** | ❌ None | ⚠️ Static patch | ⚠️ Static patch |
+
+<sub>* Historical comparison figures, not replayed in this repository.</sub>
 
 ---
 

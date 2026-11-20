@@ -1,0 +1,216 @@
+{
+  "dataset": "benchmarks\\corpus",
+  "format": "dappscan",
+  "engine": "Adversum native Solidity rules (Slither/Aderyn disabled)",
+  "git_sha": "d1bc5b1",
+  "generated_at_utc": "2026-11-20T23:40:19Z",
+  "tolerance": 3,
+  "totals": {
+    "contracts": 8,
+    "contracts_flagged_any_rule": 6,
+    "contracts_with_matched_category": 6,
+    "line_level_recall": 100.0,
+    "lines_evaluated": 7,
+    "macro_f1_categories_with_truth": 100.0
+  },
+  "per_category": {
+    "access_control": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 7,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "arithmetic": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 7,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "bad_randomness": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 7,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "denial_of_service": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 7,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "front_running": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "tn": 8,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "other": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "tn": 8,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "reentrancy": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 7,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "short_addresses": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "tn": 8,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "time_manipulation": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 0,
+      "tn": 7,
+      "missed_contracts": [],
+      "false_positive_contracts": [
+        "RandomnessVuln.sol"
+      ],
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "unchecked_low_level_calls": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 7,
+      "missed_contracts": [],
+      "false_positive_contracts": [],
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    }
+  },
+  "per_cwe": {
+    "CWE-841": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "CWE-190": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "CWE-284": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "CWE-252": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "CWE-330": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    },
+    "CWE-770": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 0,
+      "precision": 100.0,
+      "recall": 100.0,
+      "f1": 100.0
+    }
+  },
+  "category_rules": {
+    "access_control": [
+      "SOL-002",
+      "SOL-003"
+    ],
+    "arithmetic": [
+      "SOL-004"
+    ],
+    "bad_randomness": [
+      "SOL-006",
+      "SOL-011"
+    ],
+    "denial_of_service": [
+      "SOL-013"
+    ],
+    "front_running": [
+      "SOL-009"
+    ],
+    "other": [],
+    "reentrancy": [
+      "SOL-001"
+    ],
+    "short_addresses": [],
+    "time_manipulation": [
+      "SOL-006"
+    ],
+    "unchecked_low_level_calls": [
+      "SOL-007"
+    ]
+  }
+}

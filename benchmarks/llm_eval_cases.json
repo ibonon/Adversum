@@ -1,0 +1,31 @@
+[
+  {
+    "id": "overflow-wrong-line",
+    "file": "benchmarks/corpus/OverflowVuln.sol",
+    "hypothesis": {"variable": "total", "operation": "*", "line": 1},
+    "expected_anchor_status": "ANCRAGE_OK",
+    "expected_resolved_line": 5,
+    "expected_verdict": "SAT"
+  },
+  {
+    "id": "safemath-guarded",
+    "file": "benchmarks/corpus/OverflowSafe.sol",
+    "hypothesis": {"variable": "c", "operation": "+", "line": 99},
+    "expected_anchor_status": "ANCRAGE_OK",
+    "expected_verdict": "UNSAT"
+  },
+  {
+    "id": "hallucinated-variable",
+    "source": "pragma solidity ^0.7.0;\ncontract T { uint256 public total; function add(uint256 a) public { total = total + a; } }\n",
+    "hypothesis": {"variable": "nonexistent", "operation": "+", "line": 2},
+    "expected_anchor_status": "ANCRAGE_ECHOUE",
+    "expected_verdict": null
+  },
+  {
+    "id": "ambiguous-variable",
+    "source": "pragma solidity ^0.7.0;\ncontract T { uint256 public x; function f(uint256 a) public { x = x + a; x = x + a; } }\n",
+    "hypothesis": {"variable": "x", "operation": "+", "line": 2},
+    "expected_anchor_status": "ANCRAGE_ECHOUE",
+    "expected_verdict": null
+  }
+]
