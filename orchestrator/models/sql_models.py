@@ -57,6 +57,11 @@ class FindingModel(SQLModel, table=True):
     anchor_status: Optional[str] = None
     z3_verdict: Optional[str] = Field(None, index=True)
 
+    # -- Verdict de preuve à trois états (Étape 1) --
+    proof_verdict: str = Field(default="DETECTED_UNPROVEN", index=True)
+    witness_json: Optional[str] = None
+    verdict_reason: str = Field(default="")
+
 class AuditLog(SQLModel, table=True):
     __table_args__ = {'extend_existing': True}
     

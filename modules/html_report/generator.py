@@ -935,7 +935,7 @@ class HTMLReportGenerator:
         if patches_list:
             html_content += f"""
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-          <span class="badge" style="color: var(--high); border: 1px solid var(--high);">🧬 Z3 SAT — débordement représentable (exploitable) : {sat_count}</span>
+          <span class="badge" style="color: var(--high); border: 1px solid var(--high);">🧬 Z3 SAT — débordement représentable (non prouvé bout-en-bout) : {sat_count}</span>
           <span class="badge" style="color: var(--success); border: 1px solid var(--success);">🛡️ Z3 UNSAT — protégé / non représentable : {unsat_count}</span>
           <span class="badge" style="color: var(--text-muted); border: 1px solid var(--text-muted);">⚠️ Z3 sans conclusion (UNPARSED/UNKNOWN/ERROR) : {unproven_count}</span>
           <span class="badge" style="color: var(--text-muted); border: 1px solid var(--text-muted);">Règle statique (sans Z3) : {static_count}</span>
@@ -954,7 +954,7 @@ class HTMLReportGenerator:
                 pscope = html.escape(str(pt.get("scope", "")))
 
                 if pverdict == "SAT":
-                    pbadge = "🧬 Z3 SAT — débordement représentable (exploitable)"
+                    pbadge = "🧬 Z3 SAT — débordement représentable (non prouvé bout-en-bout)"
                     pbadge_style = "color: var(--high); border: 1px solid var(--high);"
                 elif pverdict == "UNSAT" and pguarded:
                     pbadge = "🛡️ Z3 UNSAT — protégé : garde (SafeMath / pragma ≥0.8) vérifiée"

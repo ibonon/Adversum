@@ -63,6 +63,12 @@ def _record(
     if proof:
         notes += f"; z3_proof={proof}"
 
+    # Étape 1 : l'ordre CEI seul ne prouve pas la reachability depuis un
+    # point d'entrée avec attaquant — jamais PROVEN avant Halmos (étape 2).
+    if anchor_status != "ANCRAGE_OK" or verdict in (None, "UNPARSED", "UNKNOWN"):
+        _pv, _reason = "UNKNOWN", "Verifier could not decide (anchoring/order unresolved) — not a safety claim."
+    else:
+        _pv, _reason = "DETECTED_UNPROVEN", "CEI order confirmed by Z3; attacker entry reachability not yet proven (Halmos step 2)."
     return {
         "rule_id": "SOL-001",
         "line": line,
@@ -74,6 +80,9 @@ def _record(
         "nemotron_line": nemotron_line,
         "z3_verdict": verdict,
         "z3_exploitable": exploitable,
+        "proof_verdict": _pv,
+        "witness": None,
+        "verdict_reason": _reason,
         "message": message,
         "reasoning_notes": notes,
         "validation_status": _VERDICT_TO_STATUS.get(verdict, "PENDING"),

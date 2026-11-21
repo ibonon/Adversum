@@ -2,8 +2,8 @@
   "dataset": "benchmarks\\corpus",
   "format": "dappscan",
   "engine": "Adversum native Solidity rules (Slither/Aderyn disabled)",
-  "git_sha": "d1bc5b1",
-  "generated_at_utc": "2026-11-20T23:40:19Z",
+  "git_sha": "6ad7573",
+  "generated_at_utc": "2026-11-21T18:32:24Z",
   "tolerance": 3,
   "totals": {
     "contracts": 8,
@@ -212,5 +212,66 @@
     "unchecked_low_level_calls": [
       "SOL-007"
     ]
+  },
+  "verdict_distribution": {
+    "global": {
+      "DETECTED_UNPROVEN": 6,
+      "PROVEN": 1,
+      "DEPENDENCY_PROVEN": 2
+    },
+    "global_total": 9,
+    "by_rule": {
+      "SOL-001": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "SOL-002": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "SOL-003": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "SOL-004": {
+        "PROVEN": 1,
+        "DETECTED_UNPROVEN": 1
+      },
+      "SOL-006": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "SOL-007": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "SOL-011": {
+        "DEPENDENCY_PROVEN": 1
+      },
+      "SOL-013": {
+        "DEPENDENCY_PROVEN": 1
+      }
+    },
+    "by_category": {
+      "access_control": {
+        "DETECTED_UNPROVEN": 2
+      },
+      "arithmetic": {
+        "PROVEN": 1,
+        "DETECTED_UNPROVEN": 1
+      },
+      "bad_randomness": {
+        "DETECTED_UNPROVEN": 1,
+        "DEPENDENCY_PROVEN": 1
+      },
+      "denial_of_service": {
+        "DEPENDENCY_PROVEN": 1
+      },
+      "reentrancy": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "time_manipulation": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "unchecked_low_level_calls": {
+        "DETECTED_UNPROVEN": 1
+      }
+    },
+    "note": "SOL-006 belongs to two SmartBugs categories; by_category double-counts it. UNKNOWN is reported, never hidden."
   }
 }

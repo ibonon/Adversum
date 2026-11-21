@@ -2,7 +2,7 @@
 
 - Dataset: `C:\Users\SMC-DXB\Projects\adversum-bench\smartbugs-curated` (smartbugs)
 - Engine: Adversum native Solidity rules (Slither/Aderyn disabled)
-- Git SHA: `d1bc5b1` · Generated: 2026-11-20T23:43:21Z
+- Git SHA: `6ad7573` · Generated: 2026-11-21T15:55:57Z
 - Contracts: 143 · Flagged (any rule): 130 · Matched category: 106
 - Line recall (±3): 45.9% (222 lines) · Macro-F1 (categories with truth): 30.6%
 
@@ -33,6 +33,34 @@
 | CWE-371 | 0 | 0 | 1 | 0.0 | 0.0 | 0.0 |
 | CWE-770 | 2 | 20 | 4 | 9.1 | 33.3 | 14.3 |
 | CWE-841 | 30 | 23 | 1 | 56.6 | 96.8 | 71.4 |
+
+## Verdict distribution (Step 4 — UNKNOWN never hidden)
+
+Global (556 findings): PROVEN 76 (13.7%) · DEPENDENCY_PROVEN 28 (5.0%) · DETECTED_UNPROVEN 414 (74.5%) · UNKNOWN 38 (6.8%)
+
+| Rule | PROVEN | DEPENDENCY_PROVEN | DETECTED_UNPROVEN | UNKNOWN | Total |
+|---|---:|---:|---:|---:|---:|
+| SOL-001 | 0 | 0 | 83 | 0 | 83 |
+| SOL-002 | 0 | 0 | 3 | 0 | 3 |
+| SOL-003 | 0 | 0 | 6 | 0 | 6 |
+| SOL-004 | 76 | 0 | 134 | 38 | 248 |
+| SOL-005 | 0 | 0 | 2 | 0 | 2 |
+| SOL-006 | 0 | 1 | 4 | 0 | 5 |
+| SOL-007 | 0 | 0 | 156 | 0 | 156 |
+| SOL-009 | 0 | 0 | 1 | 0 | 1 |
+| SOL-011 | 0 | 1 | 19 | 0 | 20 |
+| SOL-013 | 0 | 26 | 6 | 0 | 32 |
+
+| SmartBugs category | PROVEN | DEPENDENCY_PROVEN | DETECTED_UNPROVEN | UNKNOWN |
+|---|---:|---:|---:|---:|
+| access_control | 0 | 0 | 9 | 0 |
+| arithmetic | 76 | 0 | 134 | 38 |
+| bad_randomness | 0 | 2 | 23 | 0 |
+| denial_of_service | 0 | 26 | 6 | 0 |
+| front_running | 0 | 0 | 1 | 0 |
+| reentrancy | 0 | 0 | 83 | 0 |
+| time_manipulation | 0 | 1 | 4 | 0 |
+| unchecked_low_level_calls | 0 | 0 | 156 | 0 |
 
 ## Missed contracts (false negatives), by category
 

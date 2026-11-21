@@ -39,8 +39,8 @@ _VERDICT_TO_STATUS = {
 
 
 def _verify(snippet: str, line, content: str) -> dict:
-    """Soumet un snippet isolé à Z3, largeur/bornes/garde déduites du contexte."""
-    return z3p.prove_finding_in_source(
+    """Soumet un snippet isolé à Z3 + reachability mono-fonction (Étape 1)."""
+    return z3p.prove_overflow_reachable(
         {"rule_id": "SOL-004", "line": line, "snippet": snippet}, content
     )
 
@@ -80,6 +80,33 @@ def _record(
     if proof:
         notes += f"; z3_proof={proof}"
 
+    # ── Verdict de preuve à trois états (Étape 1) ──────────────────────
+    from orchestrator.models.findings import Witness, classify_proof_verdict
+
+    reachable = z3_res.get("reachable") if z3_res else None
+    witness = None
+    if verdict == "SAT" and reachable and z3_res is not None:
+        witness = Witness(
+            kind="z3_counterexample",
+            solver="z3",
+            entry_point=z3_res.get("entry_point"),
+            call_path=[z3_res.get("entry_point") or "?", f"line {line}"],
+            counterexample=z3_res.get("counterexample") or {},
+            scope=z3_res.get("scope", ""),
+        )
+    proof_verdict = classify_proof_verdict(
+        z3_verdict=verdict, reachable=bool(reachable),
+        witness=witness, anchor_status=anchor_status,
+    )
+    if verdict == "SAT" and not reachable:
+        verdict_reason = "Z3 SAT: overflow representable, entry reachability not proven — detected, not proven end-to-end."
+    elif proof_verdict.value == "PROVEN":
+        verdict_reason = "Z3 SAT with single-function reachable entry and concrete counterexample (witness attached)."
+    elif proof_verdict.value == "UNKNOWN":
+        verdict_reason = "Verifier could not decide (UNPARSED/UNKNOWN or failed anchoring) — not a safety claim."
+    else:
+        verdict_reason = "Heuristic/rule detection without an end-to-end witness."
+
     return {
         "rule_id": "SOL-004",
         "line": line,
@@ -92,6 +119,9 @@ def _record(
         "nemotron_line": nemotron_line,
         "z3_verdict": verdict,
         "z3_exploitable": exploitable,
+        "proof_verdict": proof_verdict.value,
+        "witness": witness.model_dump() if witness else None,
+        "verdict_reason": verdict_reason,
         "message": message,
         "reasoning_notes": notes,
         "validation_status": _VERDICT_TO_STATUS.get(verdict, "PENDING"),

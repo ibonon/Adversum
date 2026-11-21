@@ -306,6 +306,12 @@ def prove_overflow(
     base["operand_widths"] = widths
 
     solver = Solver()
+    # Bounded solving: a hard arithmetic instance must degrade to
+    # UNKNOWN (Step 1/4 honesty), never hang the pipeline forever.
+    try:
+        solver.set(timeout=int(__import__("os").getenv("ADVERSUM_Z3_TIMEOUT_MS", "5000")))
+    except Exception:
+        pass
     vars_by_name: dict = {}
 
     def _bv(name: str):

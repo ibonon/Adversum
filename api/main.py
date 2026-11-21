@@ -548,7 +548,17 @@ def _build_unified_summary(
     )
     low_count = max(0, all_findings_count - (critical_count + high_count + medium_count))
 
-    sat_suffix = f" ({sat_count} preuve{'s' if sat_count > 1 else ''} formelle{'s' if sat_count > 1 else ''} Z3 SAT)" if sat_count > 0 else ""
+    # Étape 1 : seuls les findings PROVEN (témoin joint) sont des preuves.
+    # Un SAT de représentabilité seul ne compte jamais comme prouvé.
+    proven_count = (
+        sum(1 for f in core_findings if str(getattr(f, "proof_verdict", "")).upper() == "PROVEN" or (isinstance(f, dict) and str(f.get("proof_verdict", "")).upper() == "PROVEN"))
+        + sum(1 for sf in all_sol_findings if str(sf.get("proof_verdict", "")).upper() == "PROVEN")
+    )
+    unknown_count = (
+        sum(1 for f in core_findings if str(getattr(f, "proof_verdict", "")).upper() == "UNKNOWN" or (isinstance(f, dict) and str(f.get("proof_verdict", "")).upper() == "UNKNOWN"))
+        + sum(1 for sf in all_sol_findings if str(sf.get("proof_verdict", "")).upper() == "UNKNOWN")
+    )
+    sat_suffix = f" ({proven_count} prouvé{'s' if proven_count > 1 else ''} avec témoin, {sat_count} Z3 SAT représentables, {unknown_count} INCONNU)" if (proven_count or sat_count or unknown_count) else ""
 
     summary_lines = [
         "# Rapport d'Audit de Sécurité",
@@ -635,7 +645,10 @@ async def process_audit(job_id: int, target_path: str):
                     remediation_suggestion=f.remediation_suggestion,
                     fix_description=getattr(f, 'fix_description', None),
                     fix_code=getattr(f, 'fix_code', None),
-                    proof_anchor=getattr(f.raw, 'proof_anchor', None)
+                    proof_anchor=getattr(f.raw, 'proof_anchor', None),
+                    proof_verdict=str(getattr(getattr(f, 'proof_verdict', None), 'value', getattr(f, 'proof_verdict', 'DETECTED_UNPROVEN'))),
+                    witness_json=json.dumps(f.witness.model_dump()) if getattr(f, 'witness', None) else None,
+                    verdict_reason=getattr(f, 'verdict_reason', '') or '',
                 )
                 session.add(db_finding)
 
@@ -674,6 +687,9 @@ async def process_audit(job_id: int, target_path: str):
                     resolved_line=sf["resolved_line"],
                     anchor_status=sf["anchor_status"],
                     z3_verdict=sf["z3_verdict"],
+                    proof_verdict=sf.get("proof_verdict", "DETECTED_UNPROVEN"),
+                    witness_json=json.dumps(sf["witness"]) if sf.get("witness") else None,
+                    verdict_reason=sf.get("verdict_reason", ""),
                 ))
             
             # Update Job
@@ -974,6 +990,13 @@ async def get_audit_status(
             snippet=f.snippet or "",
             proof_anchor=f.proof_anchor,
         )
+        _witness = None
+        if getattr(f, "witness_json", None):
+            try:
+                from orchestrator.models.findings import Witness as _W
+                _witness = _W(**json.loads(f.witness_json))
+            except Exception:
+                _witness = None
         mapped_results.append(ValidatedFinding(
             id=f.id,
             raw=raw,
@@ -990,6 +1013,9 @@ async def get_audit_status(
             anchor_status=f.anchor_status,
             z3_verdict=f.z3_verdict,
             is_fixed=f.is_fixed,
+            proof_verdict=getattr(f, "proof_verdict", None) or "DETECTED_UNPROVEN",
+            witness=_witness,
+            verdict_reason=getattr(f, "verdict_reason", "") or "",
         ))
 
     return JobDetailResponse(

@@ -21,11 +21,24 @@
 | :--- | :---: | :---: | :---: | :---: |
 | **Scan Throughput** | Versioned: `benchmarks/results/throughput_v1.json` | ~1,200 lines/sec* | ~4,500 lines/sec* | ~800 lines/sec* |
 | **Detection (SmartBugs, replayable)** | 106/143 matched · reentrancy F1 71.4% · line recall 45.9% (`benchmarks/results/latest.md`) | — | — | — |
+| **Verdicts (Step 4 replay, 556 findings)** | PROVEN 13.7% · DEPENDENCY_PROVEN 5.0% · DETECTED_UNPROVEN 74.5% · UNKNOWN 6.8% | — | — | — |
 | **Historical precision (non-reproduced)** | 97.9% on a former 50-case corpus — do not cite as current | 61.1%* | 58.2%* | 68.7%* |
 | **Attack Graph Synthesis** | ✅ **G-ASR Kill Chain** | ❌ None | ❌ None | ❌ None |
 | **Auto-Remediation Verification** | ✅ **AVR (re-scan verified; Foundry proof only when executed)** | ❌ None | ⚠️ Static patch | ⚠️ Static patch |
 
 <sub>* Historical comparison figures, not replayed in this repository.</sub>
+
+---
+
+## How to read a verdict (non-technical)
+
+- **PROVEN** — a concrete, replayable counterexample exists (inputs → vulnerability). Check it yourself.
+- **DEPENDENCY_PROVEN** — the path from cause to risky decision/payment is demonstrated, but a full exploit is not proven.
+- **DETECTED_UNPROVEN** — a solid rule/analysis detection, not formally verified; needs human review.
+- **UNKNOWN** — the tool cannot decide (bounds, timeout, un analysable form). It never means "safe". Step-4 replay: UNKNOWN is 6.8% overall and 15.3% of arithmetic findings — published, not averaged away.
+- Comparison note: only the Adversum column above is replayed from this repository; competitor figures are historical and not re-run here, so this is not an equal-footing comparison.
+
+DAppSCAN was not accessible in the evaluation environment; no DAppSCAN figure is published.
 
 ---
 

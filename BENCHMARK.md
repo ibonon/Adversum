@@ -11,6 +11,27 @@ Quantitative evaluation of Adversum against industry-standard SAST and security 
 
 ---
 
+## Verdict distribution — SmartBugs complet rejoué (Étape 4)
+
+Commande exacte (temps réel mesuré : **231,7 s**, dont résolution Z3 bornée à 5 s par finding) :
+
+```bash
+python benchmarks/run_benchmark.py --out-json benchmarks/results/latest.json --out-md benchmarks/results/latest.md
+```
+
+DAppSCAN : **non accessible dans cet environnement** (seul `smartbugs-curated`, 143 contrats, est présent) — aucun chiffre DAppSCAN n'est donc publié.
+
+Sur 556 findings : **PROVEN 76 (13,7 %) · DEPENDENCY_PROVEN 28 (5,0 %) · DETECTED_UNPROVEN 414 (74,5 %) · UNKNOWN 38 (6,8 %)**. Par règle : SOL-004 concentre tous les PROVEN (76) et tous les UNKNOWN (38, soit 15,3 % de ses findings — instances arithmétiques non tranchées dans les bornes) ; SOL-001 (reentrancy, F1 71,4 %) reste à 0 PROVEN dans ce benchmark car Halmos tourne par harnais versionné, pas contrat par contrat ; SOL-013 est majoritairement DEPENDENCY_PROVEN (26/32). Détail complet, par catégorie et par CWE, dans `benchmarks/results/latest.md`.
+
+### Ce que signifie chaque verdict (juge / auditeur)
+
+- **PROVEN** : un contre-exemple concret et vérifiable existe (valeurs d'entrée → vulnérabilité) ; vous pouvez le rejouer.
+- **DEPENDENCY_PROVEN** : le chemin source → problème est démontré (ex. l'heure du bloc décide du paiement), mais l'exploit complet n'est pas prouvé.
+- **DETECTED_UNPROVEN** : détection solide par règle/analyse, non vérifiée formellement ; à auditer humainement.
+- **UNKNOWN** : l'outil ne sait pas trancher (bornes, timeout, forme non analysable). Ce n'est **jamais** un verdict « sûr ».
+
+---
+
 ## 📊 1. Executive Comparison Matrix
 
 | Metric / Capability | **Adversum (Rust + Nemotron)** | **Slither** | **Semgrep** | **Snyk Code** |
@@ -18,6 +39,8 @@ Quantitative evaluation of Adversum against industry-standard SAST and security 
 | **Engine Architecture** | Native Rust (Rayon + Tree-sitter + Datalog) | Python AST / SlithIR | OCaml pattern engine | Proprietary Cloud |
 | **Scan Throughput** | Voir `benchmarks/results/throughput_v1.json` (versionné, rejouable) | ~1,200 lines/sec* | ~4,500 lines/sec* | ~800 lines/sec (API)* |
 | **False Positive Rate** | Voir `benchmarks/results/latest.md` (par CWE, rejouable) | 38.4%\* | 42.1%\* | 29.5%\* |
+
+> Comparaison honnête : seules les colonnes Adversum sont mesurées et rejouables depuis ce dépôt. Les chiffres Slither/Semgrep/Snyk sont des comparaisons historiques non rejouées ici — les outils ne sont donc pas comparés à armes égales dans ce tableau.
 | **Attack Graph Synthesis** | ✅ **Multi-stage Kill Chain (G-ASR)** | ❌ None | ❌ None | ❌ None |
 | **Auto-Remediation Verification** | ✅ **AVR (Autonomous Verified Remediation)** | ❌ None | ⚠️ Static patch | ⚠️ Static patch |
 | **Smart Contract Logic (DeFi)** | ✅ Reentrancy, Bridges, Merkle PoR | ✅ EVM opcodes | ⚠️ Regex/AST | ⚠️ Limited |
@@ -63,9 +86,11 @@ Slither                    44                28               61.1%
 Semgrep                    41                30               57.7%
 
 MESURÉ / REJOUABLE (SmartBugs curated, 143 contrats, règles natives) :
-voir benchmarks/results/latest.md — au moment de l'écriture : 106/143
+voir benchmarks/results/latest.md — rejeu Étape 4 (231,7 s) : 106/143
 contrats avec catégorie correcte, rappel ligne 45,9 %, F1 reentrancy
-71,4 %, F1 unchecked-call 73,3 %, F1 arithmetic 35,3 %.
+71,4 %, F1 unchecked-call 73,3 %, F1 arithmetic 35,3 % ; verdicts :
+PROVEN 13,7 %, DEPENDENCY_PROVEN 5,0 %, DETECTED_UNPROVEN 74,5 %,
+UNKNOWN 6,8 % (jamais masqué).
 ```
 
 > ℹ️ **Corpus d'évaluation :** Évaluation historique réalisée sur un corpus de 50 cas de vulnérabilités vérifiées (dont SmartBugs et cas de synthèse, voir `benchmarks/results/smartbugs_report.json`). Le taux de précision affiché (97.9%) et la réduction relative de faux positifs représentent les résultats observés sur ce jeu de test particulier avec NVIDIA Nemotron actif, et ne constituent pas une garantie uniforme sur tout codebase arbitraire. Chiffres non reproduits en continu depuis ce dépôt.

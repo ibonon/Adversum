@@ -74,6 +74,9 @@ _FINDING_MIGRATION_COLUMNS = (
     ("resolved_line", "INTEGER"),
     ("anchor_status", "VARCHAR"),
     ("z3_verdict", "VARCHAR"),
+    ("proof_verdict", "VARCHAR"),
+    ("witness_json", "TEXT"),
+    ("verdict_reason", "VARCHAR"),
 )
 
 

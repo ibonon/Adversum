@@ -106,6 +106,35 @@ def _prf(tp: int, fp: int, fn: int):
     return round(p * 100, 1), round(r * 100, 1), round(f1 * 100, 1)
 
 
+def _classify_verdict(finding, content: str, dep_findings: list) -> str:
+    """Step-4 verdict for one scanner finding (honest, per-rule).
+
+    PROVEN only via Z3 SAT + single-function reachability with a
+    counterexample (SOL-004). Dependency rules need a demonstrated
+    source->sink path at the finding line. Halmos runs per-harness,
+    not per-contract, so SOL-001 stays DETECTED_UNPROVEN here.
+    """
+    rule = finding.rule_id
+    if rule == "SOL-004":
+        try:
+            from modules.formal_verification.z3_prover import prove_overflow_reachable
+            res = prove_overflow_reachable(
+                {"rule_id": rule, "line": finding.line, "snippet": finding.snippet or ""}, content)
+            if res.get("verdict") == "SAT" and res.get("reachable"):
+                return "PROVEN"
+            if res.get("verdict") in ("UNPARSED", "UNKNOWN"):
+                return "UNKNOWN"
+            return "DETECTED_UNPROVEN"
+        except Exception:
+            return "UNKNOWN"
+    if rule in ("SOL-006", "SOL-009", "SOL-011", "SOL-013"):
+        for dep in dep_findings:
+            if dep["rule_id"] == rule and abs(dep["line"] - finding.line) <= 3:
+                return "DEPENDENCY_PROVEN"
+        return "DETECTED_UNPROVEN"
+    return "DETECTED_UNPROVEN"
+
+
 def evaluate(dataset: Path, fmt: str, tolerance: int) -> dict:
     from scanner import SolidityScanner  # modules/solidity on sys.path
     import rules as rules_pkg
@@ -118,14 +147,35 @@ def evaluate(dataset: Path, fmt: str, tolerance: int) -> dict:
                    "missed_contracts": [], "false_positive_contracts": []}
                for c in CATEGORY_RULES}
     per_cwe: dict = {}
+    from collections import Counter
+    verdict_global: Counter = Counter()
+    verdict_by_rule: dict = {}
+    verdict_by_category: dict = {}
     total_lines = matched_lines = 0
     flagged_any = matched_any = 0
+    try:
+        from modules.dependency.taint import analyze_dependency
+    except Exception:
+        analyze_dependency = None  # type: ignore
     for entry in entries:
         path = entry["path"]
         if not path.exists():
             continue
         truth_cats = {v["category"] for v in entry["vulnerabilities"]}
         findings = scanner.scan_file(str(path))
+        # Step 4: verdict classification per finding.
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            content = ""
+        dep_findings = analyze_dependency(content) if analyze_dependency else []
+        for f in findings:
+            verdict = _classify_verdict(f, content, dep_findings)
+            verdict_global[verdict] += 1
+            verdict_by_rule.setdefault(f.rule_id, Counter())[verdict] += 1
+            for cat, cat_rules in CATEGORY_RULES.items():
+                if f.rule_id in cat_rules:
+                    verdict_by_category.setdefault(cat, Counter())[verdict] += 1
         pred_rules = {f.rule_id for f in findings}
         if pred_rules:
             flagged_any += 1
@@ -190,6 +240,13 @@ def evaluate(dataset: Path, fmt: str, tolerance: int) -> dict:
         "per_category": per_cat,
         "per_cwe": per_cwe,
         "category_rules": CATEGORY_RULES,
+        "verdict_distribution": {
+            "global": dict(verdict_global),
+            "global_total": int(sum(verdict_global.values())),
+            "by_rule": {k: dict(v) for k, v in sorted(verdict_by_rule.items())},
+            "by_category": {k: dict(v) for k, v in sorted(verdict_by_category.items())},
+            "note": "SOL-006 belongs to two SmartBugs categories; by_category double-counts it. UNKNOWN is reported, never hidden.",
+        },
     }
 
 
@@ -218,6 +275,25 @@ def render_md(report: dict) -> str:
             "| CWE | TP | FP | FN | Precision % | Recall % | F1 % |", "|---|---:|---:|---:|---:|---:|---:|"]
     for cwe, c in sorted(report["per_cwe"].items()):
         out.append(f"| {cwe} | {c['tp']} | {c['fp']} | {c['fn']} | {c['precision']} | {c['recall']} | {c['f1']} |")
+    vd = report.get("verdict_distribution") or {}
+    total_v = vd.get("global_total") or 0
+    out += ["", "## Verdict distribution (Step 4 — UNKNOWN never hidden)", ""]
+    if total_v:
+        g = vd.get("global") or {}
+        out.append(f"Global ({total_v} findings): " + " · ".join(
+            f"{k} {g.get(k, 0)} ({round(100.0 * g.get(k, 0) / total_v, 1)}%)"
+            for k in ("PROVEN", "DEPENDENCY_PROVEN", "DETECTED_UNPROVEN", "UNKNOWN")))
+    out += ["", "| Rule | PROVEN | DEPENDENCY_PROVEN | DETECTED_UNPROVEN | UNKNOWN | Total |",
+            "|---|---:|---:|---:|---:|---:|"]
+    for rule, counts in (vd.get("by_rule") or {}).items():
+        tot = sum(counts.values())
+        out.append(f"| {rule} | {counts.get('PROVEN', 0)} | {counts.get('DEPENDENCY_PROVEN', 0)} "
+                   f"| {counts.get('DETECTED_UNPROVEN', 0)} | {counts.get('UNKNOWN', 0)} | {tot} |")
+    out += ["", "| SmartBugs category | PROVEN | DEPENDENCY_PROVEN | DETECTED_UNPROVEN | UNKNOWN |",
+            "|---|---:|---:|---:|---:|"]
+    for cat, counts in (vd.get("by_category") or {}).items():
+        out.append(f"| {cat} | {counts.get('PROVEN', 0)} | {counts.get('DEPENDENCY_PROVEN', 0)} "
+                   f"| {counts.get('DETECTED_UNPROVEN', 0)} | {counts.get('UNKNOWN', 0)} |")
     out += ["", "## Missed contracts (false negatives), by category", ""]
     for cat, c in sorted(report["per_category"].items()):
         if c["missed_contracts"]:

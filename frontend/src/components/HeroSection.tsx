@@ -20,6 +20,9 @@ interface FindingItem {
   line?: number;
   z3_verdict?: string;
   validation_status?: string;
+  proof_verdict?: string;
+  verdict_reason?: string;
+  witness?: { kind?: string; solver?: string; entry_point?: string; scope?: string } | null;
   raw?: {
     id?: string;
     rule_id?: string;
@@ -38,6 +41,41 @@ const getFindingSeverity = (f: FindingItem): string => {
 
 const getFindingZ3 = (f: FindingItem): string => {
   return (f.z3_verdict || '').toUpperCase();
+};
+
+const getProofVerdict = (f: FindingItem): string => {
+  return (f.proof_verdict || 'DETECTED_UNPROVEN').toUpperCase();
+};
+
+/** Three-state proof badge — never render PROVEN without its witness. */
+export const ProofBadge = ({ f }: { f: FindingItem }) => {
+  const verdict = getProofVerdict(f);
+  if (verdict === 'PROVEN' && f.witness) {
+    return (
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono border border-emerald-400/60 text-emerald-400" title={f.witness.scope || 'Témoin joint'}>
+        PROUVÉ · {f.witness.solver || f.witness.kind || 'témoin'}
+      </span>
+    );
+  }
+  if (verdict === 'DEPENDENCY_PROVEN') {
+    return (
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono border border-cyan-400/60 text-cyan-400" title={f.verdict_reason || 'Dépendance démontrée, exploitabilité non prouvée'}>
+        DÉPENDANCE PROUVÉE · EXPLOIT NON PROUVÉ
+      </span>
+    );
+  }
+  if (verdict === 'UNKNOWN') {
+    return (
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono border border-border text-muted-foreground" title={f.verdict_reason || ''}>
+        INCONNU
+      </span>
+    );
+  }
+  return (
+    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono border border-amber-400/60 text-amber-400" title={f.verdict_reason || ''}>
+      DÉTECTÉ · NON PROUVÉ
+    </span>
+  );
 };
 
 interface AuditJobDetail {
@@ -220,6 +258,9 @@ const HeroSection = () => {
   const criticalCount = findingsList.filter((f) => getFindingSeverity(f) === 'CRITICAL').length;
   const highCount = findingsList.filter((f) => getFindingSeverity(f) === 'HIGH').length;
   const satCount = findingsList.filter((f) => getFindingZ3(f) === 'SAT').length;
+  const provenCount = findingsList.filter((f) => getProofVerdict(f) === 'PROVEN' && f.witness).length;
+  const detectedCount = findingsList.filter((f) => getProofVerdict(f) === 'DETECTED_UNPROVEN').length;
+  const unknownCount = findingsList.filter((f) => getProofVerdict(f) === 'UNKNOWN').length;
   const robustnessScore =
     typeof jobDetail?.robustness_score === 'number'
       ? Math.round(jobDetail.robustness_score * 100)
@@ -269,7 +310,7 @@ const HeroSection = () => {
               <>
                 <span className={`w-2 h-2 rounded-full ${hasCriticalFindings ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                 <span className={hasCriticalFindings ? 'text-amber-400' : 'text-emerald-400'}>
-                  Audit complete : {totalFindings} findings ({satCount} Z3 SAT proofs)
+                  Audit complete : {totalFindings} findings ({provenCount} prouvés avec témoin · {detectedCount} détectés non prouvés · {unknownCount} inconnus)
                 </span>
               </>
             )}
@@ -356,10 +397,11 @@ const HeroSection = () => {
                 <div className="text-[10px] uppercase text-muted-foreground">High</div>
               </div>
               <div className="p-2.5 rounded-lg bg-background/50 border border-border/30">
-                <div className={`text-xl font-bold font-mono ${satCount > 0 ? 'text-cyan-400' : 'text-muted-foreground'}`}>
-                  {satCount}
+                <div className={`text-xl font-bold font-mono ${provenCount > 0 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                  {provenCount}
                 </div>
-                <div className="text-[10px] uppercase text-muted-foreground">Z3 SAT</div>
+                <div className="text-[10px] uppercase text-muted-foreground">Prouvés (témoin)</div>
+                <div className="text-[9px] text-muted-foreground">{detectedCount} détectés · {unknownCount} inconnus · {satCount} SAT représentables</div>
               </div>
             </div>
 

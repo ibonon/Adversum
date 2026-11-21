@@ -60,3 +60,7 @@ ADVERSUM_HEAL_REPORT.md
 Adversum_Judges_Benchmark_Pack.zip
 scripts/scratch/
 sigui_*
+
+# Halmos/Foundry generated artifacts (Steps 2-3)
+modules/halmos/out/
+modules/halmos/cache/
