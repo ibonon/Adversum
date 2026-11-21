@@ -2,7 +2,7 @@
 # Last updated: 2026-07-18
 
 # Web Framework
-fastapi>=0.115.0
+fastapi>=0.143.2
 uvicorn>=0.30.0
 websockets>=12.0.0
 starlette>=0.40.0
