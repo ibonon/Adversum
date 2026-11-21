@@ -9,7 +9,7 @@ mypy==1.7.1
 
 # Security Auditing
 pip-audit==2.6.1
-bandit==1.7.5
+bandit==1.9.4
 
 # Testing Extended
 pytest-cov==4.1.0
