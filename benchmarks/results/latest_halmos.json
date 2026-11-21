@@ -1,0 +1,517 @@
+{
+  "dataset": "C:\\Users\\SMC-DXB\\Projects\\adversum-bench\\smartbugs-curated",
+  "format": "smartbugs",
+  "engine": "Adversum native Solidity rules (Slither/Aderyn disabled)",
+  "git_sha": "27ed0c9",
+  "generated_at_utc": "2026-11-21T20:16:17Z",
+  "tolerance": 3,
+  "totals": {
+    "contracts": 143,
+    "contracts_flagged_any_rule": 130,
+    "contracts_with_matched_category": 106,
+    "line_level_recall": 45.9,
+    "lines_evaluated": 222,
+    "macro_f1_categories_with_truth": 30.6
+  },
+  "per_category": {
+    "access_control": {
+      "tp": 4,
+      "fp": 5,
+      "fn": 14,
+      "tn": 120,
+      "missed_contracts": [
+        "FibonacciBalance.sol",
+        "arbitrary_location_write_simple.sol",
+        "incorrect_constructor_name1.sol",
+        "incorrect_constructor_name2.sol",
+        "incorrect_constructor_name3.sol",
+        "mapping_write.sol",
+        "multiowned_vulnerable.sol",
+        "proxy.sol",
+        "rubixi.sol",
+        "simple_suicide.sol",
+        "unprotected0.sol",
+        "wallet_02_refund_nosub.sol",
+        "wallet_03_wrong_constructor.sol",
+        "wallet_04_confused_sign.sol"
+      ],
+      "false_positive_contracts": [
+        "etheraffle.sol",
+        "lottery.sol",
+        "crypto_roulette.sol",
+        "open_address_lottery.sol",
+        "0x7a8721a9d64c74da899424c1b52acbf58ddc9782.sol"
+      ],
+      "precision": 44.4,
+      "recall": 22.2,
+      "f1": 29.6
+    },
+    "arithmetic": {
+      "tp": 15,
+      "fp": 55,
+      "fn": 0,
+      "tn": 73,
+      "missed_contracts": [],
+      "false_positive_contracts": [
+        "parity_wallet_bug_1.sol",
+        "parity_wallet_bug_2.sol",
+        "rubixi.sol",
+        "wallet_02_refund_nosub.sol",
+        "wallet_03_wrong_constructor.sol",
+        "wallet_04_confused_sign.sol",
+        "blackjack.sol",
+        "etheraffle.sol",
+        "lucky_doubler.sol",
+        "random_number_generator.sol",
+        "smart_billions.sol",
+        "list_dos.sol",
+        "odds_and_evens.sol",
+        "open_address_lottery.sol",
+        "0x01f8c4e3fa3edeb29e514cba738d87ce8c091d3f.sol",
+        "0x23a91059fdc9579a9fbd0edc5f2ea0bfdb70deb4.sol",
+        "0x4320e6f8c05b27ab4707cd1f6d5ce6f3e4b3a5a1.sol",
+        "0x4e73b32ed6c35f570686b89848e5f39f20ecc106.sol",
+        "0x561eac93c92360949ab1f1403323e6db345cbf31.sol",
+        "0x627fa62ccbb1c1b04ffaecd72a53e37fc0e17839.sol",
+        "0x7a8721a9d64c74da899424c1b52acbf58ddc9782.sol",
+        "0x8c7777c45481dba411450c228cb692ac3d550344.sol",
+        "0x941d225236464a25eb18076df7da6a91d0f95e9e.sol",
+        "0xaae1f51cf3339f18b6d3f3bdc75a5facd744b0b8.sol",
+        "0xb5e1b1ee15c6fa0e48fce100125569d430f1bd12.sol",
+        "0xb93430ce38ac4a6bb47fb1fc085ea669353fd89e.sol",
+        "0xbaf51e761510c1a11bf48dd87c0307ac8a8c8a4f.sol",
+        "etherbank.sol",
+        "etherstore.sol",
+        "reentrance.sol",
+        "reentrancy_cross_function.sol",
+        "reentrancy_dao.sol",
+        "reentrancy_simple.sol",
+        "simple_dao.sol",
+        "spank_chain_payment.sol",
+        "short_address_example.sol",
+        "ether_lotto.sol",
+        "governmental_survey.sol",
+        "0x07f7ecb66d788ab01dc93b9b71a88401de7d0f2e.sol",
+        "0x19cf8481ea15427a98ba3cdd6d9e14690011ab10.sol",
+        "0x39cfd754c85023648bf003bea2dd498c5612abfa.sol",
+        "0x3a0e9acd953ffc0dd18d63603488846a6b8b2b01.sol",
+        "0x627fa62ccbb1c1b04ffaecd72a53e37fc0e17839.sol",
+        "0x663e4229142a27f00bafb5d087e1e730648314c3.sol",
+        "0x7d09edb07d23acb532a82be3da5c17d9d85806b4.sol",
+        "0x89c1b3807d4c67df034fffb62f3509561218d30b.sol",
+        "0x8fd1e427396ddb511533cf9abdbebd0a7e08da35.sol",
+        "0x9d06cbafa865037a01d322d3f4222fa3e04e5488.sol",
+        "0xb11b2fed6c9354f7aa2f658d3b4d7b31d8a13b77.sol",
+        "0xbaa3de6504690efb064420d89e871c27065cdd52.sol",
+        "0xbebbfe5b549f5db6e6c78ca97cac19d1fb03082c.sol",
+        "0xe09b1ab8111c2729a76f16de96bc86a7af837928.sol",
+        "0xe894d54dca59cb53fe9cbc5155093605c7068220.sol",
+        "0xec329ffc97d75fe03428ae155fc7793431487f63.sol",
+        "king_of_the_ether_throne.sol"
+      ],
+      "precision": 21.4,
+      "recall": 100.0,
+      "f1": 35.3
+    },
+    "bad_randomness": {
+      "tp": 5,
+      "fp": 11,
+      "fn": 3,
+      "tn": 124,
+      "missed_contracts": [
+        "etheraffle.sol",
+        "lucky_doubler.sol",
+        "old_blockhash.sol"
+      ],
+      "false_positive_contracts": [
+        "parity_wallet_bug_1.sol",
+        "parity_wallet_bug_2.sol",
+        "crypto_roulette.sol",
+        "ether_lotto.sol",
+        "roulette.sol",
+        "timed_crowdsale.sol",
+        "0x07f7ecb66d788ab01dc93b9b71a88401de7d0f2e.sol",
+        "0x663e4229142a27f00bafb5d087e1e730648314c3.sol",
+        "0x7d09edb07d23acb532a82be3da5c17d9d85806b4.sol",
+        "0xb620cee6b52f96f3c6b253e6eea556aa2d214a99.sol",
+        "0xe09b1ab8111c2729a76f16de96bc86a7af837928.sol"
+      ],
+      "precision": 31.2,
+      "recall": 62.5,
+      "f1": 41.7
+    },
+    "denial_of_service": {
+      "tp": 2,
+      "fp": 20,
+      "fn": 4,
+      "tn": 117,
+      "missed_contracts": [
+        "auction.sol",
+        "dos_address.sol",
+        "dos_simple.sol",
+        "list_dos.sol"
+      ],
+      "false_positive_contracts": [
+        "parity_wallet_bug_1.sol",
+        "parity_wallet_bug_2.sol",
+        "rubixi.sol",
+        "BECToken.sol",
+        "blackjack.sol",
+        "etheraffle.sol",
+        "smart_billions.sol",
+        "spank_chain_payment.sol",
+        "0x2972d548497286d18e92b5fa1f8f9139e5653fd2.sol",
+        "0x4051334adc52057aca763453820cb0e045076ef3.sol",
+        "0x4a66ad0bca2d700f11e1f2fc2c106f7d3264504c.sol",
+        "0x4b71ad9c1a84b9b643aa54fdd66e2dec96e8b152.sol",
+        "0x52d2e0f9b01101a59b38a3d05c80b7618aeed984.sol",
+        "0xa1fceeff3acc57d257b917e30c4df661401d6431.sol",
+        "0xa46edd6a9a93feec36576ee5048146870ea2c3ae.sol",
+        "0xd5967fed03e85d1cce44cab284695b41bc675b5c.sol",
+        "0xe894d54dca59cb53fe9cbc5155093605c7068220.sol",
+        "0xec329ffc97d75fe03428ae155fc7793431487f63.sol",
+        "0xf2570186500a46986f3139f65afedc2afe4f445d.sol",
+        "etherpot_lotto.sol"
+      ],
+      "precision": 9.1,
+      "recall": 33.3,
+      "f1": 14.3
+    },
+    "front_running": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 4,
+      "tn": 138,
+      "missed_contracts": [
+        "ERC20.sol",
+        "FindThisHash.sol",
+        "eth_tx_order_dependence_minimal.sol",
+        "odds_and_evens.sol"
+      ],
+      "false_positive_contracts": [
+        "BECToken.sol"
+      ],
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "other": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 3,
+      "tn": 140,
+      "missed_contracts": [
+        "crypto_roulette.sol",
+        "name_registrar.sol",
+        "open_address_lottery.sol"
+      ],
+      "false_positive_contracts": [],
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "reentrancy": {
+      "tp": 30,
+      "fp": 23,
+      "fn": 1,
+      "tn": 89,
+      "missed_contracts": [
+        "spank_chain_payment.sol"
+      ],
+      "false_positive_contracts": [
+        "parity_wallet_bug_1.sol",
+        "parity_wallet_bug_2.sol",
+        "rubixi.sol",
+        "wallet_02_refund_nosub.sol",
+        "wallet_03_wrong_constructor.sol",
+        "wallet_04_confused_sign.sol",
+        "lucky_doubler.sol",
+        "smart_billions.sol",
+        "list_dos.sol",
+        "eth_tx_order_dependence_minimal.sol",
+        "ether_lotto.sol",
+        "governmental_survey.sol",
+        "0x07f7ecb66d788ab01dc93b9b71a88401de7d0f2e.sol",
+        "0x39cfd754c85023648bf003bea2dd498c5612abfa.sol",
+        "0x3a0e9acd953ffc0dd18d63603488846a6b8b2b01.sol",
+        "0x627fa62ccbb1c1b04ffaecd72a53e37fc0e17839.sol",
+        "0x663e4229142a27f00bafb5d087e1e730648314c3.sol",
+        "0x7d09edb07d23acb532a82be3da5c17d9d85806b4.sol",
+        "0x89c1b3807d4c67df034fffb62f3509561218d30b.sol",
+        "0x8fd1e427396ddb511533cf9abdbebd0a7e08da35.sol",
+        "0xb7c5c5aa4d42967efe906e1b66cb8df9cebf04f7.sol",
+        "0xe09b1ab8111c2729a76f16de96bc86a7af837928.sol",
+        "etherpot_lotto.sol"
+      ],
+      "precision": 56.6,
+      "recall": 96.8,
+      "f1": 71.4
+    },
+    "short_addresses": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "tn": 142,
+      "missed_contracts": [
+        "short_address_example.sol"
+      ],
+      "false_positive_contracts": [],
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "time_manipulation": {
+      "tp": 2,
+      "fp": 3,
+      "fn": 3,
+      "tn": 135,
+      "missed_contracts": [
+        "governmental_survey.sol",
+        "lottopollo.sol",
+        "roulette.sol"
+      ],
+      "false_positive_contracts": [
+        "guess_the_random_number.sol",
+        "crypto_roulette.sol",
+        "0x663e4229142a27f00bafb5d087e1e730648314c3.sol"
+      ],
+      "precision": 40.0,
+      "recall": 40.0,
+      "f1": 40.0
+    },
+    "unchecked_low_level_calls": {
+      "tp": 48,
+      "fp": 31,
+      "fn": 4,
+      "tn": 60,
+      "missed_contracts": [
+        "0x84d9ec85c9c568eb332b7226a8f826d897e0a4a8.sol",
+        "0xb0510d68f210b7db66e8c7c814f22680f2b8d1d6.sol",
+        "0xb7c5c5aa4d42967efe906e1b66cb8df9cebf04f7.sol",
+        "0xf29ebe930a539a60279ace72c707cba851a57707.sol"
+      ],
+      "false_positive_contracts": [
+        "FibonacciBalance.sol",
+        "incorrect_constructor_name1.sol",
+        "incorrect_constructor_name2.sol",
+        "incorrect_constructor_name3.sol",
+        "multiowned_vulnerable.sol",
+        "mycontract.sol",
+        "phishable.sol",
+        "rubixi.sol",
+        "wallet_02_refund_nosub.sol",
+        "wallet_03_wrong_constructor.sol",
+        "wallet_04_confused_sign.sol",
+        "BECToken.sol",
+        "timelock.sol",
+        "tokensalechallenge.sol",
+        "etheraffle.sol",
+        "guess_the_random_number.sol",
+        "lucky_doubler.sol",
+        "old_blockhash.sol",
+        "smart_billions.sol",
+        "list_dos.sol",
+        "FindThisHash.sol",
+        "eth_tx_order_dependence_minimal.sol",
+        "odds_and_evens.sol",
+        "crypto_roulette.sol",
+        "open_address_lottery.sol",
+        "0x627fa62ccbb1c1b04ffaecd72a53e37fc0e17839.sol",
+        "spank_chain_payment.sol",
+        "ether_lotto.sol",
+        "governmental_survey.sol",
+        "lottopollo.sol",
+        "roulette.sol"
+      ],
+      "precision": 60.8,
+      "recall": 92.3,
+      "f1": 73.3
+    }
+  },
+  "per_cwe": {
+    "CWE-252": {
+      "tp": 48,
+      "fp": 31,
+      "fn": 4,
+      "tn": 0,
+      "precision": 60.8,
+      "recall": 92.3,
+      "f1": 73.3
+    },
+    "CWE-284": {
+      "tp": 5,
+      "fp": 5,
+      "fn": 13,
+      "tn": 0,
+      "precision": 50.0,
+      "recall": 27.8,
+      "f1": 35.7
+    },
+    "CWE-770": {
+      "tp": 2,
+      "fp": 20,
+      "fn": 4,
+      "tn": 0,
+      "precision": 9.1,
+      "recall": 33.3,
+      "f1": 14.3
+    },
+    "CWE-841": {
+      "tp": 30,
+      "fp": 23,
+      "fn": 1,
+      "tn": 0,
+      "precision": 56.6,
+      "recall": 96.8,
+      "f1": 71.4
+    },
+    "CWE-190": {
+      "tp": 15,
+      "fp": 55,
+      "fn": 0,
+      "tn": 0,
+      "precision": 21.4,
+      "recall": 100.0,
+      "f1": 35.3
+    },
+    "CWE-330": {
+      "tp": 8,
+      "fp": 8,
+      "fn": 5,
+      "tn": 0,
+      "precision": 50.0,
+      "recall": 61.5,
+      "f1": 55.2
+    },
+    "CWE-362": {
+      "tp": 0,
+      "fp": 1,
+      "fn": 4,
+      "tn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    },
+    "CWE-371": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 1,
+      "tn": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    }
+  },
+  "category_rules": {
+    "access_control": [
+      "SOL-002",
+      "SOL-003"
+    ],
+    "arithmetic": [
+      "SOL-004"
+    ],
+    "bad_randomness": [
+      "SOL-006",
+      "SOL-011"
+    ],
+    "denial_of_service": [
+      "SOL-013"
+    ],
+    "front_running": [
+      "SOL-009"
+    ],
+    "other": [],
+    "reentrancy": [
+      "SOL-001"
+    ],
+    "short_addresses": [],
+    "time_manipulation": [
+      "SOL-006"
+    ],
+    "unchecked_low_level_calls": [
+      "SOL-007"
+    ]
+  },
+  "verdict_distribution": {
+    "global": {
+      "DETECTED_UNPROVEN": 385,
+      "PROVEN": 112,
+      "UNKNOWN": 31,
+      "DEPENDENCY_PROVEN": 28
+    },
+    "global_total": 556,
+    "by_rule": {
+      "SOL-001": {
+        "DETECTED_UNPROVEN": 75,
+        "PROVEN": 8
+      },
+      "SOL-002": {
+        "DETECTED_UNPROVEN": 3
+      },
+      "SOL-003": {
+        "DETECTED_UNPROVEN": 6
+      },
+      "SOL-004": {
+        "PROVEN": 86,
+        "DETECTED_UNPROVEN": 131,
+        "UNKNOWN": 31
+      },
+      "SOL-005": {
+        "DETECTED_UNPROVEN": 2
+      },
+      "SOL-006": {
+        "DETECTED_UNPROVEN": 4,
+        "DEPENDENCY_PROVEN": 1
+      },
+      "SOL-007": {
+        "DETECTED_UNPROVEN": 138,
+        "PROVEN": 18
+      },
+      "SOL-009": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "SOL-011": {
+        "DETECTED_UNPROVEN": 19,
+        "DEPENDENCY_PROVEN": 1
+      },
+      "SOL-013": {
+        "DEPENDENCY_PROVEN": 26,
+        "DETECTED_UNPROVEN": 6
+      }
+    },
+    "by_category": {
+      "access_control": {
+        "DETECTED_UNPROVEN": 9
+      },
+      "arithmetic": {
+        "PROVEN": 86,
+        "DETECTED_UNPROVEN": 131,
+        "UNKNOWN": 31
+      },
+      "bad_randomness": {
+        "DETECTED_UNPROVEN": 23,
+        "DEPENDENCY_PROVEN": 2
+      },
+      "denial_of_service": {
+        "DEPENDENCY_PROVEN": 26,
+        "DETECTED_UNPROVEN": 6
+      },
+      "front_running": {
+        "DETECTED_UNPROVEN": 1
+      },
+      "reentrancy": {
+        "DETECTED_UNPROVEN": 75,
+        "PROVEN": 8
+      },
+      "time_manipulation": {
+        "DETECTED_UNPROVEN": 4,
+        "DEPENDENCY_PROVEN": 1
+      },
+      "unchecked_low_level_calls": {
+        "DETECTED_UNPROVEN": 138,
+        "PROVEN": 18
+      }
+    },
+    "note": "SOL-006 belongs to two SmartBugs categories; by_category double-counts it. UNKNOWN is reported, never hidden."
+  }
+}

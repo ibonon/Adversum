@@ -153,6 +153,11 @@ def build_harness(source: str, finding: dict) -> Optional[dict]:
     lines, _contracts, functions = parse_source(source or "")
     fn_name = finding.get("function") or ""
     target_fn = next((f for f in functions if f.name == fn_name), None)
+    if target_fn is None and finding.get("line"):
+        from modules.solidity.function_parser import function_at
+        target_fn = function_at(functions, int(finding["line"]))
+        if target_fn is not None:
+            fn_name = target_fn.name
     if target_fn is None or not target_fn.contract:
         return None
     credit = _detect_credit_function(functions, lines)
@@ -167,6 +172,77 @@ def build_harness(source: str, finding: dict) -> Optional[dict]:
         "withdraw_function": fn_name,
         "pragma_family": family,
     }
+
+
+def execute_harness(source: str, harness: str, check: str, timeout: int = 180) -> dict:
+    """Compile source+harness in a temp project and run Halmos for real.
+
+    Returns {status: counterexample|no_counterexample|timeout|
+    unavailable|error|unsupported_shape, ...} — raw tool outcome only,
+    verdict mapping belongs to the caller.
+    """
+    bins = halmos_available()
+    if not bins.get("halmos") or not bins.get("forge"):
+        return {"status": "unavailable", "error": "forge/halmos not found"}
+    import os
+    env = dict(os.environ)
+    env["PATH"] = str(Path(bins["forge"]).parent) + os.pathsep + env.get("PATH", "")
+    with tempfile.TemporaryDirectory(prefix="adversum-halmos-pc-") as tmp:
+        root = Path(tmp)
+        (root / "foundry.toml").write_text(
+            '[profile.default]\nsrc = "src"\nout = "out"\nauto_detect_solc = true\n', encoding="utf-8")
+        (root / "src").mkdir()
+        (root / "src" / "Target.sol").write_text(source, encoding="utf-8")
+        (root / "src" / "Harness.t.sol").write_text(harness, encoding="utf-8")
+        out_json = root / "halmos.json"
+        try:
+            proc = subprocess.run(
+                [bins["halmos"], "--root", str(root), "--contract", "AdversumPerContractTest",
+                 "--json-output", str(out_json)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout, env=env)
+        except subprocess.TimeoutExpired:
+            return {"status": "timeout", "error": f"halmos exceeded {timeout}s"}
+        try:
+            data = json.loads(out_json.read_text(encoding="utf-8"))
+        except Exception:
+            return {"status": "error", "error": "compile/tool failure",
+                    "stdout_tail": (proc.stdout or "")[-400:]}
+        for _file, tests in (data.get("test_results") or {}).items():
+            for test in tests:
+                if not test.get("name", "").startswith(check):
+                    continue
+                models = [{str(v.get("variable_name") or k): v.get("value")
+                           for k, v in (m.get("model") or {}).items() if isinstance(v, dict)}
+                          for m in test.get("models") or []]
+                if test.get("exitcode") == 1:
+                    return {"status": "counterexample", "counterexample": models,
+                            "num_paths": test.get("num_paths")}
+                if test.get("exitcode") == 0:
+                    return {"status": "no_counterexample", "counterexample": []}
+                note = "unsupported opcode SELFDESTRUCT (halmos 0.3.3)" if "SELFDESTRUCT" in (proc.stdout or "") else f"halmos exitcode {test.get('exitcode')}"
+                return {"status": "error", "error": note}
+    return {"status": "error", "error": "check not found in halmos output"}
+
+
+def _fragment(rule_label: str, outcome: dict, entry: str, contract: str) -> dict:
+    if outcome.get("status") == "counterexample":
+        return {"proof_verdict": "PROVEN",
+                "witness": {"kind": "halmos_counterexample", "solver": "halmos (per-contract)",
+                            "entry_point": entry,
+                            "call_path": ["check_per_contract", f"{contract}.{entry}"],
+                            "counterexample": {"models": outcome.get("counterexample"), "contract": contract},
+                            "scope": f"Halmos bounded symbolic execution on the actual contract ({rule_label}); whole-contract completeness not claimed.",
+                            "artifact": "per-contract harness (temp project, generated from finding)"},
+                "verdict_reason": f"Halmos found a concrete counterexample on the actual contract ({rule_label}).",
+                "halmos": outcome}
+    if outcome.get("status") == "no_counterexample":
+        return {"proof_verdict": "DETECTED_UNPROVEN", "witness": None,
+                "verdict_reason": f"Per-contract Halmos found no violation within bounds ({rule_label}) — bounded absence, not proven safe.",
+                "halmos": outcome}
+    return {"proof_verdict": "UNKNOWN", "witness": None,
+            "verdict_reason": f"Per-contract Halmos could not decide ({rule_label}: {outcome.get('status')}: {outcome.get('error', '')}) — UNKNOWN, never safe.",
+            "halmos": outcome}
 
 
 def run_per_contract(source: str, finding: dict, timeout: int = 180) -> dict:

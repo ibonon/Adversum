@@ -25,6 +25,10 @@ class SolFinding:
     snippet: str
     recommendation: str
     cvss_score: float
+    # Step 2/extension: per-contract Halmos verdict (opt-in only).
+    proof_verdict: str = "DETECTED_UNPROVEN"
+    witness: Optional[dict] = None
+    verdict_reason: str = ""
 
 class SolidityScanner:
     def __init__(
@@ -121,6 +125,35 @@ class SolidityScanner:
                         ))
             except Exception as e:
                 print(f"[WARN] Error scanning file {path}: {e}")
+
+        # Opt-in per-contract Halmos (ADVERSUM_HALMOS_PER_CONTRACT=1):
+        # enrich the first finding of each provable rule with a real
+        # Halmos verdict on this file's source. Off by default (cost).
+        if findings and os.getenv("ADVERSUM_HALMOS_PER_CONTRACT", "0") == "1":
+            try:
+                with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+                    _src = fh.read()
+                from modules.halmos.per_contract import run_per_contract as _run_sol001
+                from modules.halmos.per_contract_rules import run_per_contract_rule
+                seen_rules = set()
+                for f in findings:
+                    if f.rule_id in seen_rules:
+                        continue
+                    if f.rule_id == "SOL-001":
+                        seen_rules.add(f.rule_id)
+                        frag = _run_sol001(_src, {"function": getattr(f, "function", None) or "",
+                                                   "line": f.line, "snippet": f.snippet})
+                    elif f.rule_id in ("SOL-004", "SOL-002", "SOL-007", "SOL-003", "SOL-012"):
+                        seen_rules.add(f.rule_id)
+                        frag = run_per_contract_rule(f.rule_id, _src,
+                                                     {"line": f.line, "snippet": f.snippet})
+                    else:
+                        continue
+                    f.proof_verdict = frag.get("proof_verdict", f.proof_verdict)
+                    f.witness = frag.get("witness")
+                    f.verdict_reason = frag.get("verdict_reason", "")
+            except Exception:
+                pass  # prover failure must never break the scan
 
         # If running on single file and orchestrator is enabled, pass findings through deduplicator
         if self.orchestrator:

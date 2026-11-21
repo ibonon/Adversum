@@ -106,15 +106,62 @@ def _prf(tp: int, fp: int, fn: int):
     return round(p * 100, 1), round(r * 100, 1), round(f1 * 100, 1)
 
 
+_HALMOS_CACHE: dict = {}
+_HALMOS_ENABLED = False
+
+
+def _halmos_verdict(finding, content: str):
+    """Per-contract Halmos verdict, cached per file+rule+function.
+
+    The witness belongs to one located function: applying a contract's
+    PROVEN to a different function of the same rule would fabricate
+    coverage, so the cache key includes the enclosing function.
+    """
+    fn_name = getattr(finding, "function", None) or ""
+    if not fn_name:
+        try:
+            from modules.solidity.function_parser import function_at, parse_source
+            _l, _c, fns = parse_source(content)
+            fn = function_at(fns, int(finding.line or 0))
+            fn_name = fn.name if fn else ""
+        except Exception:
+            fn_name = ""
+    key = (hash(content), finding.rule_id, fn_name, finding.line)
+    if key in _HALMOS_CACHE:
+        return _HALMOS_CACHE[key]
+    result = None
+    try:
+        fd = {"line": finding.line, "snippet": finding.snippet or "", "function": fn_name}
+        if finding.rule_id == "SOL-001":
+            from modules.halmos.per_contract import run_per_contract
+            result = run_per_contract(content, fd, timeout=90).get("proof_verdict")
+        elif finding.rule_id in ("SOL-004", "SOL-002", "SOL-007", "SOL-003", "SOL-012"):
+            from modules.halmos.per_contract_rules import run_per_contract_rule
+            result = run_per_contract_rule(finding.rule_id, content, fd, timeout=90).get("proof_verdict")
+    except Exception:
+        result = "UNKNOWN"
+    _HALMOS_CACHE[key] = result
+    return result
+
+
 def _classify_verdict(finding, content: str, dep_findings: list) -> str:
     """Step-4 verdict for one scanner finding (honest, per-rule).
 
     PROVEN only via Z3 SAT + single-function reachability with a
     counterexample (SOL-004). Dependency rules need a demonstrated
-    source->sink path at the finding line. Halmos runs per-harness,
-    not per-contract, so SOL-001 stays DETECTED_UNPROVEN here.
+    source->sink path at the finding line. With --halmos-per-contract,
+    the provable rules are additionally run through per-contract
+    Halmos on the actual source (cached per contract+rule).
     """
     rule = finding.rule_id
+    # Composition rule (measured, do not regress): verdict strength is
+    # the MAX over engines. A Halmos PROVEN upgrades; a Halmos UNKNOWN
+    # or no-counterexample never downgrades a Z3 PROVEN or a static
+    # detection — the first superposition attempt did exactly that and
+    # moved global PROVEN 76 -> 38 with UNKNOWN 38 -> 404.
+    if _HALMOS_ENABLED and rule in ("SOL-001", "SOL-002", "SOL-003", "SOL-004", "SOL-007", "SOL-012"):
+        if _halmos_verdict(finding, content) == "PROVEN":
+            return "PROVEN"
     if rule == "SOL-004":
         try:
             from modules.formal_verification.z3_prover import prove_overflow_reachable
@@ -311,7 +358,11 @@ def main(argv=None) -> int:
     ap.add_argument("--out-md", default=str(ROOT / "benchmarks/results/latest.md"))
     ap.add_argument("--fail-under-f1", type=float, default=None,
                     help="Exit 1 when macro-F1 (categories with truth) is below this percent.")
+    ap.add_argument("--halmos-per-contract", action="store_true",
+                    help="Also run per-contract Halmos for provable rules (slow; needs forge+halmos).")
     args = ap.parse_args(argv)
+    global _HALMOS_ENABLED
+    _HALMOS_ENABLED = bool(args.halmos_per_contract)
     dataset = Path(args.dataset) if args.dataset else None
     if dataset is None or not dataset.exists():
         external = Path(r"C:\Users\SMC-DXB\Projects\adversum-bench\smartbugs-curated")

@@ -87,6 +87,34 @@ def test_per_contract_halmos_proves_actual_old_contract():
     assert res["witness"]["counterexample"]["contract"] == "SimpleDAO"
 
 
+UNCHECKED_08 = """pragma solidity ^0.8.20;
+contract Failing { receive() external payable { revert("no"); } }
+contract Pay {
+    bool public paid;
+    function pay(address target) public {
+        target.call{value: 1}("");
+        paid = true;
+    }
+}
+"""
+
+
+@requires_halmos
+def test_per_contract_rules_dispatch_and_honest_unknown():
+    from modules.halmos.per_contract_rules import run_per_contract_rule
+
+    res = run_per_contract_rule("SOL-007", UNCHECKED_08,
+                                {"rule_id": "SOL-007", "line": 6, "snippet": 'target.call{value: 1}("");'},
+                                timeout=300)
+    assert res["proof_verdict"] in ("PROVEN", "DETECTED_UNPROVEN", "UNKNOWN")
+    if res["halmos"].get("status") == "counterexample":
+        assert res["proof_verdict"] == "PROVEN"
+    # Unsupported rule / shape must be UNKNOWN, never fabricated.
+    bad = run_per_contract_rule("SOL-004", UNCHECKED_08,
+                                {"rule_id": "SOL-004", "line": 6, "snippet": "x = x + y;"}, timeout=60)
+    assert bad["proof_verdict"] == "UNKNOWN"
+
+
 @requires_halmos
 def test_sol003_selfdestruct_is_unknown_not_faked():
     """Halmos 0.3.3 cannot symbolically execute SELFDESTRUCT.
