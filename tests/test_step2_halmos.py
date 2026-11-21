@@ -60,6 +60,33 @@ def test_vulnerable_harness_yields_counterexample(rule_id):
     assert fragment["witness"]["call_path"], "witness must carry the explored path"
 
 
+SIMPLE_DAO_04 = """pragma solidity ^0.4.2;
+contract SimpleDAO {
+  mapping (address => uint) public credit;
+  function donate(address to) payable { credit[to] += msg.value; }
+  function withdraw(uint amount) {
+    if (credit[msg.sender] >= amount) {
+      bool res = msg.sender.call.value(amount)();
+      credit[msg.sender] -= amount;
+    }
+  }
+}
+"""
+
+
+@requires_halmos
+def test_per_contract_halmos_proves_actual_old_contract():
+    from modules.halmos.per_contract import run_per_contract
+    from modules.solidity.rules import reentrancy
+
+    findings = reentrancy.analyze(SIMPLE_DAO_04)
+    assert findings, "CEI rule must find the reentrancy first"
+    res = run_per_contract(SIMPLE_DAO_04, findings[0], timeout=300)
+    assert res["proof_verdict"] == "PROVEN", res
+    assert res["witness"]["kind"] == "halmos_counterexample"
+    assert res["witness"]["counterexample"]["contract"] == "SimpleDAO"
+
+
 @requires_halmos
 def test_sol003_selfdestruct_is_unknown_not_faked():
     """Halmos 0.3.3 cannot symbolically execute SELFDESTRUCT.

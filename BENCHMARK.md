@@ -21,7 +21,9 @@ python benchmarks/run_benchmark.py --out-json benchmarks/results/latest.json --o
 
 DAppSCAN : **non accessible dans cet environnement** (seul `smartbugs-curated`, 143 contrats, est présent) — aucun chiffre DAppSCAN n'est donc publié.
 
-Sur 556 findings : **PROVEN 76 (13,7 %) · DEPENDENCY_PROVEN 28 (5,0 %) · DETECTED_UNPROVEN 414 (74,5 %) · UNKNOWN 38 (6,8 %)**. Par règle : SOL-004 concentre tous les PROVEN (76) et tous les UNKNOWN (38, soit 15,3 % de ses findings — instances arithmétiques non tranchées dans les bornes) ; SOL-001 (reentrancy, F1 71,4 %) reste à 0 PROVEN dans ce benchmark car Halmos tourne par harnais versionné, pas contrat par contrat ; SOL-013 est majoritairement DEPENDENCY_PROVEN (26/32). Détail complet, par catégorie et par CWE, dans `benchmarks/results/latest.md`.
+Sur 556 findings : **PROVEN 76 (13,7 %) · DEPENDENCY_PROVEN 28 (5,0 %) · DETECTED_UNPROVEN 414 (74,5 %) · UNKNOWN 38 (6,8 %)**. Par règle : SOL-004 concentre tous les PROVEN (76) et tous les UNKNOWN (38, soit 15,3 % de ses findings — instances arithmétiques non tranchées dans les bornes) ; SOL-013 est majoritairement DEPENDENCY_PROVEN (26/32). Détail complet, par catégorie et par CWE, dans `benchmarks/results/latest.md`.
+
+**Branchement pipeline (post-Étape 4)** : Halmos tourne désormais aussi *par contrat réel* pour SOL-001 (`modules/halmos/per_contract.py`, opt-in `ADVERSUM_HALMOS_PER_CONTRACT=1` dans l'audit reentrancy, harnais généré depuis le finding et déployé par bytecode pour les cibles pré-0.8). Mesure rejouée par `benchmarks/run_halmos_smartbugs.py` (21,6 s) sur les 31 contrats SmartBugs étiquetés reentrancy : **PROVEN 4 · DETECTED_UNPROVEN (aucun drain dans les bornes) 8 · UNKNOWN 18 · sans finding 1** (`benchmarks/results/halmos_smartbugs_reentrancy.json`). Les 18 UNKNOWN sont publiés tels quels : formes non harnaissables (pas de paire crédit/retrait localisée) et limites moteur Halmos sur bytecode ancien — aucune conversion artificielle en PROVEN.
 
 ### Ce que signifie chaque verdict (juge / auditeur)
 

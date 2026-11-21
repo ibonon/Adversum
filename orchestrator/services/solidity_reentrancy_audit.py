@@ -161,8 +161,27 @@ async def audit_solidity_source(source: str, file_path: str) -> List[Dict]:
             nemotron_line=raw_nemotron_line,
             z3_res=z3_res,
         ))
-    # Binding UNSAT (P1): CEI-proven-safe sequences leave the list.
-    return [f for f in findings if f.get("z3_verdict") != "UNSAT"]
+    kept = [f for f in findings if f.get("z3_verdict") != "UNSAT"]
+    # Pipeline branching (opt-in): run Halmos on the *actual* source for
+    # the first finding of this file. Off by default (toolchain cost);
+    # enable with ADVERSUM_HALMOS_PER_CONTRACT=1. Outcomes stay honest:
+    # counterexample -> PROVEN, no drain in bounds -> DETECTED_UNPROVEN,
+    # anything else -> UNKNOWN with the reason attached.
+    import os
+    if kept and os.getenv("ADVERSUM_HALMOS_PER_CONTRACT", "0") == "1":
+        try:
+            from modules.halmos.per_contract import run_per_contract
+            from modules.solidity.rules import reentrancy as _re_rule
+            raw = _re_rule.analyze(source)
+            if raw:
+                frag = run_per_contract(source, raw[0])
+                kept[0] = {**kept[0],
+                           "proof_verdict": frag["proof_verdict"],
+                           "witness": frag.get("witness"),
+                           "verdict_reason": frag.get("verdict_reason", "")}
+        except Exception as exc:  # never let the prover break the audit
+            logger.warning("[SOL-001] Per-contract Halmos skipped: %s", exc)
+    return kept
 
 async def audit_solidity_path(real_path: str) -> List[Dict]:
     root = Path(real_path)
