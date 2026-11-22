@@ -485,10 +485,41 @@ def prove_overflow_reachable(finding: dict, content: str) -> dict:
             names = []
             if parsed[0]:
                 names = [parsed[0]] + [o for _op, o in parsed[1]]
-            taint = [n for n in names
-                     if re.split(r"[.\[]", n)[0] in set(fn.params)
-                     or n.startswith("msg.")]
+
+            # 1-level intra-function alias tracking (Option B):
+            # If var = param or var = msg.xxx appears before the finding line,
+            # var inherits taint from param / msg.xxx.
+            # Strict boundary: single-level direct assignment only (no chaining a = b; c = a).
+            aliases = {}
+            target_line = int(finding.get("line") or 0)
+            src_lines = (content or "").split("\n")
+            param_set = set(fn.params)
+            assign_re = re.compile(
+                r'^\s*(?:[A-Za-z0-9_\[\]]+\s+)*(?:memory\s+|storage\s+|calldata\s+)?([A-Za-z0-9_]+)\s*=\s*([^;]+);'
+            )
+            for idx in range(fn.body_start - 1, min(len(src_lines), fn.end_line)):
+                line_no = idx + 1
+                if target_line and line_no >= target_line:
+                    break
+                code = re.sub(r'//.*$', '', src_lines[idx]).strip()
+                m = assign_re.search(code)
+                if m:
+                    lhs = m.group(1).strip()
+                    rhs = m.group(2).strip()
+                    cast_m = re.match(r'^(?:uint\d*|int\d*|address|bytes\d*)\s*\((.+)\)$', rhs)
+                    raw_rhs = cast_m.group(1).strip() if cast_m else rhs
+                    if raw_rhs in param_set or raw_rhs.startswith("msg."):
+                        aliases[lhs] = raw_rhs
+
+            taint = []
+            for n in names:
+                base = re.split(r"[.\[]", n)[0]
+                if base in param_set or n.startswith("msg."):
+                    taint.append(n)
+                elif base in aliases:
+                    taint.append(f"{n} (alias of {aliases[base]})")
             reach["taint_sources"] = taint
+            reach["aliases"] = aliases
             reach["reachable"] = bool(externally and taint)
     except Exception:
         pass

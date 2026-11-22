@@ -104,6 +104,40 @@ def test_z3_binding_unsat_suppresses_and_reachability():
     assert reach["verdict"] in ("SAT", "UNPARSED", "UNKNOWN")
 
 
+def test_z3_single_level_alias_reachability():
+    # 1-level alias from param and msg.value within the function body
+    src = """pragma solidity ^0.7.0;
+contract Vault {
+    uint256 public total;
+    function deposit(uint256 val) public payable {
+        uint256 amt = val;
+        total = total + amt;
+        uint256 fee = msg.value;
+        total = total + fee;
+    }
+}
+"""
+    # 1. Alias of val
+    res1 = prove_overflow_reachable(
+        {"rule_id": "SOL-004", "line": 6, "snippet": "total = total + amt;"},
+        src,
+    )
+    assert res1["verdict"] == "SAT"
+    assert res1["reachable"] is True
+    assert any("amt" in s for s in res1["taint_sources"])
+    assert res1["aliases"].get("amt") == "val"
+
+    # 2. Alias of msg.value
+    res2 = prove_overflow_reachable(
+        {"rule_id": "SOL-004", "line": 8, "snippet": "total = total + fee;"},
+        src,
+    )
+    assert res2["verdict"] == "SAT"
+    assert res2["reachable"] is True
+    assert any("fee" in s for s in res2["taint_sources"])
+    assert res2["aliases"].get("fee") == "msg.value"
+
+
 def test_p2_llm_routing_schema_and_gasr():
     from orchestrator.services.llm_routing import (
         build_gasr_context,
