@@ -36,6 +36,7 @@
 - **DEPENDENCY_PROVEN** — the path from cause to risky decision/payment is demonstrated, but a full exploit is not proven.
 - **DETECTED_UNPROVEN** — a solid rule/analysis detection, not formally verified; needs human review.
 - **UNKNOWN** — the tool cannot decide (bounds, timeout, un analysable form). It never means "safe". Step-4 replay: UNKNOWN is 6.8% overall and 15.3% of arithmetic findings — published, not averaged away.
+- Scope note on access-control proofs: Halmos 0.3.3 proves 0% of SOL-002/003 targets here. That is a limitation of that tool on those targets (tx.origin alignment in harnesses, and the SELFDESTRUCT opcode it cannot execute symbolically) — not a claim that these vulnerabilities are unprovable in general; other engines (HEVM symbolic execution, dedicated Z3 models) could in principle cover them and are not implemented here, so the published verdict stays UNKNOWN.
 - Comparison note: only the Adversum column above is replayed from this repository; competitor figures are historical and not re-run here, so this is not an equal-footing comparison.
 
 DAppSCAN was not accessible in the evaluation environment; no DAppSCAN figure is published.

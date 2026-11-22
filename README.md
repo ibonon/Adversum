@@ -2,129 +2,113 @@
 
 **AI-Powered Security Reasoning Engine & Autonomous SOC**
 
-Adversum est un moteur d'analyse de sécurité avancé qui combine l'analyse statique de code (SAST) à grande échelle avec un raisonnement IA pour détecter, valider, corriger et surveiller les vulnérabilités de sécurité en continu — 24/7, sans intervention humaine.
+Adversum est un moteur d'analyse de securite neuro-symbolique pour smart contracts et code multi-langage. Il combine l'analyse statique deterministe (SAST), le raisonnement d'un modele de langage (NVIDIA Nemotron), un ancrage syntaxique precis dans l'AST et la verification formelle mathematique via le solveur SMT Z3.
+
+> [!IMPORTANT]
+> **Portee et limitations verifiables (transparence technique)**  
+> Adversum ne pretend pas remplacer un audit humain complet ni garantir l'absence totale de vulnerabilites. Pour comprendre precisement ce que le solveur Z3 prouve (representabilite mathematique d'un debordement avec contre-exemple concret) et ce qu'il ne prouve pas (reachability a l'echelle du contrat complet, faux negatifs hors regex), consultez imperativement [KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md).  
+> Les metriques d'evaluation historiques sont detaillees dans [BENCHMARK.md](./BENCHMARK.md). La suite de tests automatisee du depot compte **263 tests unitaires et d'integration** (`pytest`), tous verts.
 
 ---
 
-## 🚀 Fonctionnalités
+## Fonctionnalites
 
-### Phase 1 — Live Exploitation & Self-Healing
-- **🔍 Analyse Statique Multi-Langage**: Analyse AST/CFG déterministe via Tree-sitter & Ascent Datalog (Rust core)
-- **🤖 Raisonnement NVIDIA Nemotron**: Validation contextuelle sur Nebius Token Factory (< 2.8% faux positifs*)
-- **⚡ Live Fork Exploit Execution (PoE)**: Validation empirique d'exploits sur fork Ethereum Mainnet (0% faux positifs*)
-- **🛠️ Self-Healing Tri-Partite (Auto-PR)**: Comité d'agents (Attaquant vs Défenseur vs Juge) générant des PRs GitHub vérifiées
-- **🌐 Threat Intelligence Temps Réel**: Corrélation d'advisories et de CVEs en direct via l'API Tavily
-- **🧪 PoC d'Exploit Foundry**: Génération automatique de suites de tests `.t.sol` prêtes à l'emploi
+### Phase 1 - Verification Neuro-Symbolique et Preuves Z3
+- **Analyse Statique Multi-Langage**: Analyse AST/CFG deterministe via Tree-sitter et Ascent Datalog (Rust core).
+- **Pipeline Neuro-Symbolique (Nemotron -> Ancrage -> Z3)**:
+  1. *Detection*: Reperage des motifs suspects par les regles statiques ou proposition LLM (NVIDIA Nemotron).
+  2. *Ancrage syntaxique*: Resolution exacte de la ligne, du snippet et du contexte de garde dans l'AST.
+  3. *Preuve formelle Z3*: Resolution SMT (BitVec 256-bit pour SOL-004 overflow/underflow, et validation de l'ordonnancement des appels pour SOL-001 reentrance). Un verdict **SAT** fournit un contre-exemple concret verifiable.
+- **Live Fork Exploit Execution (PoE)**: Validation empirique d'exploits sur fork Ethereum ephemeral via Anvil (Foundry).
+- **Self-Healing Tri-Partite (Auto-PR)**: Comite d'agents (Attaquant vs Defenseur vs Juge) generant des correctifs verifies.
+- **Threat Intelligence Temps Reel**: Correlation d'advisories et de CVEs en direct via l'API Tavily.
+- **PoC d'Exploit Foundry**: Generation automatique de suites de tests `.t.sol` executables.
 
-<sub>\* Taux mesurés sur les corpus de `BENCHMARK.md` / `benchmarks/results/`, avec les versions et réglages
-du moment. Ce ne sont pas des garanties générales : un taux de faux positifs dépend du corpus, du langage
-et du modèle. Aucun script du dépôt ne rejoue ces chiffres en continu.</sub>
+### Phase 2 - AI-ASOC (Autonomous Security Operations Center)
+- **WebSocket Threat Stream**: Bus d'evenements temps reel avec fan-out pub/sub pour tous les events de securite.
+- **MEV & Flash Loan Intelligence**: Detection multi-chain sur 7 reseaux (Ethereum, Arbitrum, Base, Optimism, Polygon, BSC, Avalanche) de sandwich attacks, flash loans, manipulations d'oracles et rug pulls.
+- **Modelisation Autonome des Menaces**: Generation structuree STRIDE, PASTA (7 etapes) et matrices MITRE ATT&CK adaptees au Web3.
+- **Compliance SOC2 / ISO27001 / SARIF**: Exportation automatique de rapports de conformite exploitables par GitHub Code Scanning et SIEM.
 
+### Phase 3 - Cross-Protocol Attack Simulator & Interactive War Room
+- **Scenarios d'Exploits Reels**: Reconstitution et simulation de vecteurs d'attaque historiques (Euler Finance, Ronin Bridge, Wormhole, Mango Markets).
+- **Composite Risk Scorer**: Calcul deterministe du score de risque combinant exposition financiere, complexite et impact systemique.
+- **War Room Interactive (`/war-room`)**: Visualisation DAG des etapes d'attaque via React Flow (`@xyflow/react`), timeline chronologique et matrice de risque.
 
-### Phase 2 — AI-ASOC (Autonomous Security Operations Center)
-- **📡 WebSocket Threat Stream**: Bus d'événements temps réel avec fan-out pub/sub pour tous les events de sécurité
-- **💸 MEV & Flash Loan Intelligence**: Détection multi-chain (7 chaînes) de Sandwich, Flash Loan, Oracle Manipulation, Rug Pull
-- **🗺️ Modélisation Autonome des Menaces**: STRIDE complet + PASTA 7 étapes + MITRE ATT\&CK for Web3 en < 60s
-- **📋 Compliance SOC2/ISO27001/SARIF**: Rapports de conformité automatiques exportables GitHub/Azure DevOps/SIEM
-- **🖥️ Dashboard SOC Live**: Interface React 18 temps réel avec feed menaces, heatmap, et gauges de conformité
+### Phase 4 - Autonomous Incident Response & Resilience Arena (AI-AIRA)
+- **Synthetiseur de Coupe-Circuit**: Generation automatique de contrats Solidity de circuit breaker multi-niveaux (Soft Pause, Hard Freeze, Rate Limit).
+- **Evaluateur d'Invariants DeFi**: Verification de 10 regles fondamentales de resilience (conservation des reserves, solvabilite, ancrage des prix).
+- **Resilience Arena**: Simulateur de confrontation Attaquant vs Defenseur mesurant le taux d'attenuation des pertes et le surcout en gas.
 
-### Phase 3 — Cross-Protocol Attack Simulator & Interactive War Room
-- **⚔️ Scénarios d'Exploits Réels**: Modélisation complète de hacks majeurs (Euler Finance $197M, Ronin Bridge $625M, Wormhole $320M, Mango Markets $116M)
-- **📊 Composite Risk Scorer**: Calcul déterministe du risque (exposition financière, complexité, impact systémique)
-- **🗺️ War Room Interactive**: Visualisation DAG des étapes d'attaque via React Flow (`@xyflow/react`), timeline chronologique et matrice de risque
-- **🧪 Intégration PoC Foundry**: Génération automatique des contrats d'attaque et des tests `.t.sol` pour rejouer l'attaque sur fork
-
-### Phase 4 — Autonomous Incident Response & Resilience Arena (AI-AIRA)
-- **⚡ Synthétiseur de Coupe-Circuit**: Génération automatique de contrats Solidity de circuit breaker multi-niveaux (Soft Pause, Hard Freeze, Rate Limit)
-- **📐 Évaluateur d'Invariants DeFi**: Vérification de 10 règles fondamentales (conservation des réserves, solvabilité, ancrage des prix)
-- **🛡️ Resilience Arena**: Simulateur de confrontation Attaquant vs Défenseur mesurant le taux d'atténuation des pertes, le capital préservé et le surcoût en gas
-
-### Phase 5 — Institutional Production Stack & Threat Hunting Watchtower
-- **🛰️ Daemon de Surveillance Active**: Scan continu des nouveaux blocs EVM et détection de bytecode suspect (`delegatecall`, `selfdestruct`, `tx.origin`, `CREATE2`)
-- **🏥 Enterprise Health Probes**: Endpoints `/health/live` et `/health/ready` compatibles Kubernetes et load-balancers
-- **🐳 Déploiement Production 1-Click**: Stack Docker Compose complète (FastAPI multi-workers, Nginx optimisé, Redis pub/sub, instance Anvil)
+### Phase 5 - Institutional Production Stack & Threat Hunting Watchtower
+- **Daemon de Surveillance Active**: Scan continu des nouveaux blocs EVM et detection d'opcodes sensibles (`delegatecall`, `selfdestruct`, `tx.origin`, `CREATE2`).
+- **Enterprise Health Probes**: Endpoints `/health/live` et `/health/ready` compatibles Kubernetes et reverse-proxies.
+- **Deploiement Conteneurise**: Configuration Docker Compose incluant FastAPI, Redis pub/sub et instance locale Anvil.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 adversum/
-├── core/              # Unified Adversarial & SAST Engine (Rust, Rayon, Datalog)
-├── orchestrator/      # Python pipeline, AI reasoning (Nemotron) & Tri-Partite Self-Healing
-├── modules/           # Scanners (Solidity, Crypto, IaC, PoR, Live Fork, PoC Generator) + Formal Verification (Z3)
-├── api/               # FastAPI REST endpoints sécurisés
-├── frontend/          # Vite + React 18 + Tailwind CSS cybersecurity dashboard
-├── knowledge/         # Base de connaissances sécurité & standards CCSS
-└── docs/              # Spécifications & guides d'architecture
+├── core/              # Moteur deterministe Rust (Rayon, Tree-sitter, Ascent Datalog)
+├── orchestrator/      # Pipeline Python, ingestion de repos, services de verification Z3
+├── modules/           # Modules specialises (Solidity, MEV, formal_verification, PoC Foundry)
+├── api/               # API FastAPI avec authentification par cle et rate limiting
+├── frontend/          # Application web React 18 + Vite + Tailwind CSS + Lucide
+├── knowledge/         # Base de connaissances de vulnerabilites et regles CCSS
+└── docs/              # Specifications d'architecture et guides
 ```
 
 ### Stack Technique
 
-- **Core**: Rust (SAST + ML Adversarial Kit - PGD, FGSM, C&W)
-- **Formal Verification**: Python (`z3-solver`) — preuves SMT sur BitVec, règle SOL-004 (overflow/underflow)
-- **AI Infrastructure**: Nebius Token Factory / NVIDIA NIM (`nvidia/Nemotron-3_5-Lightning`)
-- **Live Fork**: Anvil / Ephemeral EVM state simulator (Foundry stack)
-- **Threat Intel**: Tavily Search API (CVE / NVD / Snyk live correlation)
-- **Backend**: Python 3.11+, FastAPI, SQLModel (SQLite/PostgreSQL)
-- **Frontend**: React 18 + Vite + Tailwind CSS + Radix UI + Lucide
-
+- **Core**: Rust (SAST haute performance, parsing AST via Tree-sitter)
+- **Verification Formelle**: Python (`z3-solver`) - solveur SMT BitVec pour SOL-004 (arithmetique) et SOL-001 (reentrance)
+- **AI Reasoning**: NVIDIA Nemotron (`nvidia/Nemotron-3_5-Lightning`) via Nebius Token Factory
+- **Simulation EVM**: Anvil (Foundry stack) pour execution d'exploits sur fork
+- **Threat Intel**: Tavily Search API (correlation CVE / NVD)
+- **Backend API**: Python 3.11+, FastAPI, SQLModel (SQLite aiosqlite en WAL mode / PostgreSQL)
+- **Frontend**: React 18, Vite, Tailwind CSS, Radix UI, Lucide React, React Flow (`@xyflow/react`)
 
 ---
 
-## ⚙️ Prérequis
+## Prerequis
 
-### Outils de Développement
-
-1. **Python 3.10+**
+1. **Python 3.10+** (Python 3.11 ou 3.12 recommande)
 2. **Node.js 20+** et npm
-3. **Rust 1.70+** et Cargo
-4. **Visual Studio Build Tools** (Windows) avec C++ Build Tools
-
-### Installation des Prérequis
-
-#### Windows
-
-1. **Node.js**: [Télécharger Node.js LTS](https://nodejs.org/)
-2. **Rust**: [Télécharger rustup](https://rustup.rs/)
-3. **Visual Studio Build Tools**: 
-   - [Télécharger Build Tools](https://visualstudio.microsoft.com/downloads/)
-   - Sélectionner "Desktop development with C++"
+3. **Rust 1.75+** et Cargo
+4. **Git** installe et accessible dans le PATH
 
 ---
 
-## 📦 Installation
+## Installation
 
 ### 1. Cloner le Projet
 
 ```bash
-git clone <repository-url>
-cd adversum
+git clone https://github.com/ibonon/Adversum.git
+cd Adversum
 ```
 
-### 2. Installer les Dépendances Backend (Python)
+### 2. Installer les Dependances Backend
 
 ```bash
-# À la racine du projet
+# Installation des dependances Python
 pip install -r requirements.txt
-
-# Orchestrator (optionnel si requirements.txt racine est complet)
-cd orchestrator
-pip install -r requirements.txt
-cd ..
 ```
 
-### 3. Compiler le Core Rust
+### 3. Compiler l'Extension Rust
+
+Le core Rust utilise PyO3 pour s'interfacer avec Python. La compilation et l'installation s'effectuent via `maturin` :
 
 ```bash
+pip install maturin
 cd core
-cargo build --release
+maturin develop --release
 cd ..
 ```
 
-> **Note**: La compilation génère une bibliothèque Python (`adversum_core.pyd` sur Windows) utilisable par l'orchestrator.
-
-### 4. Installer les Dépendances Frontend
+### 4. Installer les Dependances Frontend
 
 ```bash
 cd frontend
@@ -134,199 +118,126 @@ cd ..
 
 ---
 
-## 🚀 Démarrage
+## Demarrage
 
-### 1. Démarrer l'API Backend
+### 1. Demarrer le Serveur Backend
 
 ```bash
-cd api
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-L'API sera accessible sur `http://localhost:8000`
+L'API est accessible sur `http://127.0.0.1:8000` (documentation Swagger sur `http://127.0.0.1:8000/docs`).
 
-### 2. Démarrer le Frontend
+### 2. Demarrer le Frontend
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-Le dashboard sera accessible sur `http://localhost:3000`
+L'application web est accessible sur `http://localhost:5173`.
 
 ---
 
-## 🔑 Configuration
+## Configuration
 
-### Variables d'Environnement
-
-Créer un fichier `.env` à la racine :
+Creer un fichier `.env` a la racine du projet :
 
 ```env
-# API Security
-API_KEY=votre-clé-api-sécurisée
+# Cle d'authentification API (valeur par defaut en dev: adv-dev-key-123)
+API_KEY=adv-dev-key-123
 
-# OpenAI (pour le raisonnement IA)
-OPENAI_API_KEY=sk-...
+# Cles optionnelles pour l'enrichissement IA et threat intel
+NEBIUS_API_KEY=votre-cle-nebius
+TAVILY_API_KEY=votre-cle-tavily
 
-# Database (optionnel, par défaut: SQLite local)
-DATABASE_URL=sqlite:///./adversum.db
+# Base de donnees locale (SQLite aiosqlite avec WAL active)
+DATABASE_URL=sqlite+aiosqlite:///adversum_local.db
 ```
-
-### Configuration de l'API Key
-
-- **Développement**: Clé par défaut `adv-dev-key-123`
-- **Production**: Définir `API_KEY` dans les variables d'environnement
 
 ---
 
-## 📖 Utilisation
+## Utilisation
 
-### Via API (cURL)
+### Interface Web (`http://localhost:5173`)
+
+L'interface principale (`/`) offre un espace d'audit interactif epure :
+1. Saisir le chemin d'un dossier local ou l'URL HTTPS d'un depot Git distant.
+2. Cliquer sur **Launch Audit** pour demarrer le scan.
+3. Suivre l'etat en temps reel via l'orbe holographique et le badge de progression. L'etat de scan persiste en session (`sessionStorage`), permettant de rafraichir la page sans perdre le suivi du job actif.
+4. Consulter la carte des resultats a la fin du scan : decompte par severite, preuves formelles **Z3 SAT** avec ancrage de ligne, et resume d'audit consolide.
+5. Les vues analytiques et operations sont accessibles a la demande : `/soc` (dashboard SOC), `/war-room` (simulateur d'attaques), `/analytics` (metriques).
+
+### Via API REST (cURL)
 
 ```bash
-# Soumettre un audit
-curl -X POST http://localhost:8000/audit \
+# 1. Soumettre un audit
+curl -X POST http://127.0.0.1:8000/audit \
   -H "X-API-Key: adv-dev-key-123" \
   -H "Content-Type: application/json" \
   -d '{
-    "target_path": "/chemin/vers/projet",
-    "project_name": "mon-projet"
+    "target_path": "modules/solidity/tests/test_contracts",
+    "project_name": "solidity-test"
   }'
 
-# Réponse: {"id": 1, "status": "pending", "created_at": "..."}
+# Reponse: {"id": 131, "status": "PENDING", ...}
 
-# Récupérer le résultat
-curl http://localhost:8000/audit/1 \
+# 2. Consulter l'etat et les resultats detailles
+curl http://127.0.0.1:8000/audit/131 \
   -H "X-API-Key: adv-dev-key-123"
 ```
 
-### Via Dashboard
-
-1. Ouvrir `http://localhost:3000`
-2. Utiliser l'interface pour soumettre un audit
-3. Visualiser les résultats en temps réel
-4. Appliquer les correctifs automatiques en un clic
-
 ---
 
-## 🧪 Tests
+## Tests et Verification
 
-### Backend
+Pour verifier l'integrite du systeme sur votre machine :
+
+### Backend (Suite complete de 263 tests)
 
 ```bash
-cd api
-python test_api_local.py
-python test_api_persistence.py
-python test_auto_fix.py
+# Executer l'ensemble des 263 tests unitaires et d'integration
+pytest
+
+# Executer uniquement les tests de l'API REST
+pytest api/
+
+# Verifier l'extension native Rust
+pytest tests/test_rust_core_hardened.py
 ```
 
 ### Frontend
 
 ```bash
 cd frontend
-npm run build  # Vérifie que le build fonctionne
-npm run lint   # Vérification du code
-```
+# Verification stricte du typage TypeScript (0 erreur)
+npx --no-install tsc --noEmit
 
-### Core Rust
-
-```bash
-cd core
-cargo test
-cargo check
+# Analyse statique du code React
+npm run lint
 ```
 
 ---
 
-## 📚 Documentation API
+## Documentation et References
 
-Une fois l'API démarrée, la documentation interactive Swagger est disponible sur :
-
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
-
-### Endpoints Principaux
-
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/` | Status de l'API |
-| POST | `/audit` | Soumettre un audit de sécurité |
-| GET | `/audit/{id}` | Récupérer les résultats d'un audit |
-| POST | `/fix/{finding_id}` | Appliquer un correctif automatique |
+- **Limitations formelles et portee Z3**: [KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)
+- **Bancs d'essai comparatifs et precision historique**: [BENCHMARK.md](./BENCHMARK.md)
+- **Documentation API interactive**: `http://127.0.0.1:8000/docs` (Swagger UI) et `/redoc`
 
 ---
 
-## 🐳 Docker (Optionnel)
+## Contribution
 
-```bash
-# Build et démarrer avec Docker Compose
-docker-compose up --build
-
-# API sera sur http://localhost:8000
-# Frontend sera sur http://localhost:3000
-```
-
----
-
-## 🛠️ Développement
-
-### Structure des Modules
-
-#### Core (Rust) - [Détails techniques](./core/README.md)
-- `ast/`: Analyse syntaxique abstraite
-- `ir/`: Représentation intermédiaire
-- `cfg/`: Control Flow Graph
-- `dataflow/`: Analyse de flux de données
-- `rules/`: Règles de détection de vulnérabilités
-- `scoring/`: Scoring de sévérité
-- `semantic/`: Analyse sémantique
-- `attack_graph/`: Graphe des chemins d'attaque
-- `adversarial/`: Fast Adversarial Kit (PGD, FGSM, C&W)
-
-#### Orchestrator (Python)
-- `ingestion/`: Lecture et parsing de projets
-- `pipeline/`: Orchestration de l'analyse
-- `ai_reasoning/`: Interface LLM
-- `scanner/`: Détection de vulnérabilités
-- `reporting/`: Génération de rapports
-- `services/`: Services (DB, patcher, etc.)
+1. Fork le depot
+2. Creer une branche fonctionnelle (`git checkout -b feature/ma-fonctionnalite`)
+3. Valider que `pytest` et `npx tsc --noEmit` passent sans aucune regression
+4. Committer les modifications (`git commit -m "feat: description factuelle"`)
+5. Pousser vers la branche (`git push origin feature/ma-fonctionnalite`)
+6. Ouvrir une Pull Request
 
 ---
 
-## 🤝 Contribution
+## Licence
 
-1. Fork le projet
-2. Créer une branche feature (`git checkout -b feature/amazing-feature`)
-3. Commit les changements (`git commit -m 'Add amazing feature'`)
-4. Push vers la branche (`git push origin feature/amazing-feature`)
-5. Ouvrir une Pull Request
-
----
-
-## 📝 Licence
-
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
-
----
-
-## 🆘 Support
-
-Pour toute question ou problème :
-
-1. Consulter la [documentation complète](./docs/)
-2. Ouvrir une [issue GitHub](https://github.com/votre-repo/adversum/issues)
-3. Contacter l'équipe de développement
-
----
-
-## 🙏 Remerciements
-
-- Tree-sitter pour l'analyse syntaxique
-- FastAPI pour le framework backend
-- Nebius Token Factory pour l'infrastructure d'inférence IA
-- NVIDIA pour les modèles open-source Nemotron
-
----
-
-**Construit avec ❤️ pour la sécurité du code**
+Ce projet est sous licence MIT. Voir le fichier [LICENSE](./LICENSE) pour plus de details.
