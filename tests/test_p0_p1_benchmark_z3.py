@@ -138,6 +138,86 @@ contract Vault {
     assert res2["aliases"].get("fee") == "msg.value"
 
 
+def test_z3_implicit_visibility_pre_05():
+    # Positive: Solidity 0.4 contract with implicit visibility (defaults to public in EVM)
+    src_pos = """pragma solidity ^0.4.24;
+contract Vault {
+    uint256 public total;
+    function add(uint256 val) returns (bool) {
+        total = total + val;
+        return true;
+    }
+}
+"""
+    res_pos = prove_overflow_reachable(
+        {"rule_id": "SOL-004", "line": 5, "snippet": "total = total + val;"},
+        src_pos,
+    )
+    assert res_pos["verdict"] == "SAT"
+    assert res_pos["reachable"] is True
+    assert any("val" in s for s in res_pos["taint_sources"])
+
+    # Guard 1 Negative: Solidity 0.8+ does NOT allow implicit public visibility
+    src_g1 = """pragma solidity ^0.8.0;
+contract VaultModern {
+    uint256 public total;
+    function add(uint256 val) {
+        total = total + val;
+    }
+}
+"""
+    res_g1 = prove_overflow_reachable(
+        {"rule_id": "SOL-004", "line": 5, "snippet": "total = total + val;"},
+        src_g1,
+    )
+    assert res_g1["reachable"] is False
+
+    # Guard 2 Negative: Library container with implicit visibility is NOT externally callable
+    src_g2 = """pragma solidity ^0.4.24;
+library MathLib {
+    function add(uint256 a, uint256 b) returns (uint256) {
+        return a + b;
+    }
+}
+"""
+    res_g2 = prove_overflow_reachable(
+        {"rule_id": "SOL-004", "line": 4, "snippet": "return a + b;"},
+        src_g2,
+    )
+    assert res_g2["reachable"] is False
+
+    # Guard 3 Negative: Explicit private/internal function is NOT externally callable
+    src_g3 = """pragma solidity ^0.4.24;
+contract VaultPrivate {
+    uint256 private total;
+    function add(uint256 val) private returns (bool) {
+        total = total + val;
+        return true;
+    }
+}
+"""
+    res_g3 = prove_overflow_reachable(
+        {"rule_id": "SOL-004", "line": 5, "snippet": "total = total + val;"},
+        src_g3,
+    )
+    assert res_g3["reachable"] is False
+
+    # Guard 4 Negative: Eponym constructor (fn.name == fn.contract) is NOT a runtime entry point
+    src_g4 = """pragma solidity ^0.4.24;
+contract VaultConstructor {
+    uint256 public total;
+    function VaultConstructor(uint256 initVal) {
+        total = total + initVal;
+    }
+}
+"""
+    res_g4 = prove_overflow_reachable(
+        {"rule_id": "SOL-004", "line": 5, "snippet": "total = total + initVal;"},
+        src_g4,
+    )
+    assert res_g4["reachable"] is False
+
+
 def test_p2_llm_routing_schema_and_gasr():
     from orchestrator.services.llm_routing import (
         build_gasr_context,

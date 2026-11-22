@@ -469,18 +469,35 @@ def prove_overflow_reachable(finding: dict, content: str) -> dict:
              "reachability_scope": "single-function heuristic (entry + param taint); not a whole-contract proof"}
     try:
         from modules.solidity.function_parser import function_at, parse_source
-        _lines, _c, functions = parse_source(content or "")
+        _lines, contracts, functions = parse_source(content or "")
         fn = function_at(functions, int(finding.get("line") or 0))
         if fn is not None:
             reach["entry_point"] = fn.name
             header = fn.header.lower()
             externally = any(k in header for k in ("public", "external")) or fn.kind in ("fallback", "receive", "constructor")
             if not externally and fn.kind == "function":
-                # Internal/private: reachable only if a caller is located.
-                callers = [o for o in functions if o is not fn and re.search(
-                    r"\b" + re.escape(fn.name) + r"\s*\(", "\n".join(
-                        (content or "").split("\n")[o.body_start - 1:o.end_line]))]
-                externally = bool(callers)
+                # Option B bis: Implicit visibility in Solidity < 0.5.0.
+                # In solc < 0.5.0, functions without an explicit visibility specifier default to public.
+                # Strictly guarded by 4 conditions:
+                # 1. Pragma is < 0.5.0 (or absent, targeting early solc)
+                # 2. Enclosing container is a contract (not a library or interface)
+                # 3. Strict absence of private or internal in header
+                # 4. Exclusion of eponym constructors (fn.name != fn.contract)
+                pm = re.search(r"pragma\s+solidity\s+[^;]*?0\.(\d+)", content or "")
+                minor = int(pm.group(1)) if pm else 4
+                c_span = next((c for c in contracts if c.name == fn.contract), None)
+                c_kind = c_span.kind if c_span else "contract"
+                has_private_or_internal = any(k in header for k in ("private", "internal"))
+                is_eponym_constructor = bool(fn.contract and fn.name == fn.contract)
+
+                if minor <= 4 and c_kind == "contract" and not has_private_or_internal and not is_eponym_constructor:
+                    externally = True
+                else:
+                    # Internal/private: reachable only if a caller is located.
+                    callers = [o for o in functions if o is not fn and re.search(
+                        r"\b" + re.escape(fn.name) + r"\s*\(", "\n".join(
+                            (content or "").split("\n")[o.body_start - 1:o.end_line]))]
+                    externally = bool(callers)
             parsed = _parse_chain(finding.get("snippet", "")) or (None, [])
             names = []
             if parsed[0]:

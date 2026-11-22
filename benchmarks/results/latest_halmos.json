@@ -2,8 +2,8 @@
   "dataset": "C:\\Users\\SMC-DXB\\Projects\\adversum-bench\\smartbugs-curated",
   "format": "smartbugs",
   "engine": "Adversum native Solidity rules (Slither/Aderyn disabled)",
-  "git_sha": "12ca7fb",
-  "generated_at_utc": "2026-11-22T02:10:40Z",
+  "git_sha": "59d5d22",
+  "generated_at_utc": "2026-11-22T19:39:52Z",
   "tolerance": 3,
   "totals": {
     "contracts": 143,
@@ -329,6 +329,15 @@
     }
   },
   "per_cwe": {
+    "CWE-252": {
+      "tp": 48,
+      "fp": 31,
+      "fn": 4,
+      "tn": 0,
+      "precision": 60.8,
+      "recall": 92.3,
+      "f1": 73.3
+    },
     "CWE-284": {
       "tp": 5,
       "fp": 5,
@@ -338,14 +347,14 @@
       "recall": 27.8,
       "f1": 35.7
     },
-    "CWE-252": {
-      "tp": 48,
-      "fp": 31,
+    "CWE-770": {
+      "tp": 2,
+      "fp": 20,
       "fn": 4,
       "tn": 0,
-      "precision": 60.8,
-      "recall": 92.3,
-      "f1": 73.3
+      "precision": 9.1,
+      "recall": 33.3,
+      "f1": 14.3
     },
     "CWE-841": {
       "tp": 30,
@@ -364,15 +373,6 @@
       "precision": 21.4,
       "recall": 100.0,
       "f1": 35.3
-    },
-    "CWE-770": {
-      "tp": 2,
-      "fp": 20,
-      "fn": 4,
-      "tn": 0,
-      "precision": 9.1,
-      "recall": 33.3,
-      "f1": 14.3
     },
     "CWE-330": {
       "tp": 8,
@@ -434,8 +434,8 @@
   },
   "verdict_distribution": {
     "global": {
-      "DETECTED_UNPROVEN": 377,
-      "PROVEN": 113,
+      "DETECTED_UNPROVEN": 355,
+      "PROVEN": 135,
       "UNKNOWN": 38,
       "DEPENDENCY_PROVEN": 28
     },
@@ -452,8 +452,8 @@
         "DETECTED_UNPROVEN": 6
       },
       "SOL-004": {
-        "PROVEN": 87,
-        "DETECTED_UNPROVEN": 123,
+        "PROVEN": 109,
+        "DETECTED_UNPROVEN": 101,
         "UNKNOWN": 38
       },
       "SOL-005": {
@@ -484,8 +484,8 @@
         "DETECTED_UNPROVEN": 9
       },
       "arithmetic": {
-        "PROVEN": 87,
-        "DETECTED_UNPROVEN": 123,
+        "PROVEN": 109,
+        "DETECTED_UNPROVEN": 101,
         "UNKNOWN": 38
       },
       "bad_randomness": {
